@@ -27,8 +27,7 @@ class AuthService {
     try {
       await _supabaseClient.auth.signOut();
     } catch (e) {
-      // Log error but don't throw - sign out should be best effort
-      print('Error during sign out: $e');
+      // Sign out should be best effort - don't throw
     }
   }
 
@@ -37,36 +36,26 @@ class AuthService {
     required String password,
     required Map<String, dynamic> userData,
   }) async {
-    print('[DEBUG] Starting signup process in AuthService');
-    print('[DEBUG] Email: ${email.split('@')[0]}@... (partially hidden)');
     try {
       // 1. Perform the core Auth signup (only email/password needed by Supabase Auth)
-      print('[DEBUG] Calling Supabase auth.signUp...');
       final response = await _supabaseClient.auth.signUp(
         email: email,
         password: password,
       );
       
       // 2. If Auth user creation succeeded, create the user profile record
-      print('[DEBUG] Auth signup response received: ${response.user != null ? 'User created' : 'No user in response'}');
       if (response.user != null) {
-        print('[DEBUG] Creating user profile...');
         await _createUserProfile(
           userId: response.user!.id,
           userData: userData,
         );
-        print('[DEBUG] User profile created successfully');
       }
       
       return response;
     } on AuthException catch (e) {
-      // Re-throw with the original message but also print for debug in logs
-      print('Auth signUp AuthException: ${e.message}');
       throw AuthException(e.message);
     } catch (e) {
-      // Provide more helpful error text (include runtime type and message)
-      print('Auth signUp unexpected error (${e.runtimeType}): $e');
-      throw AuthException('An unexpected error occurred during signup: $e');
+      throw AuthException('An unexpected error occurred during signup');
     }
   }
 
@@ -122,7 +111,7 @@ class AuthService {
             final suffix = DateTime.now().millisecondsSinceEpoch.toString().substring(9); // short suffix
             final newUsername = '${baseUsername}_$suffix';
             profileData['username'] = newUsername;
-            print('Duplicate username detected, retrying with username: $newUsername (attempt $attempt)');
+            // Retrying with modified username due to duplicate
             continue;
           }
           // If it's not a duplicate-username issue or we've exhausted retries, rethrow
@@ -130,8 +119,7 @@ class AuthService {
         }
       }
     } catch (e) {
-      // Log the error but don't throw as the auth user was created successfully
-      print('Error creating user profile: $e');
+      // Error creating profile - auth user was created successfully
     }
   }
 
@@ -161,9 +149,6 @@ class AuthService {
         }),
       );
 
-      print('[DEBUG] verify-otp status: ${resp.statusCode}');
-      print('[DEBUG] verify-otp body: ${resp.body}');
-
       final body = jsonDecode(resp.body ?? '{}');
 
       if (resp.statusCode >= 400) {
@@ -179,8 +164,6 @@ class AuthService {
         if (combinedError.contains('createsession is not a function') || 
             combinedError.contains('createsession') ||
             errorField.toLowerCase().contains('createsession')) {
-          print('[INFO] OTP verified successfully, but session creation failed. Proceeding anyway.');
-          print('[DEBUG] Error details: message=$messageField, error=$errorField');
           // Return a success response even though session creation failed
           // The OTP was verified, which is what matters - user can sign in separately
           return {
@@ -205,17 +188,12 @@ class AuthService {
           await _supabaseClient.auth.setSession(
             body['refresh_token'] as String,
           );
-          print('[DEBUG] Session set successfully after OTP verification');
         } catch (e) {
-          print('[WARN] Failed to set session after OTP verification: $e');
           // Don't throw - the OTP was verified successfully
         }
       } else if (body is Map<String, dynamic> && body.containsKey('user_id')) {
         // OTP verified but no tokens returned (session creation failed in edge function)
-        // This means the backend edge function has an issue with createSession
-        print('[WARN] OTP verified but no session tokens returned. Edge function may need fixing.');
         // We can still proceed - the OTP is verified, user just needs to sign in
-        // Or we could try to sign them in, but we don't have their password here
       }
 
       return Map<String, dynamic>.from(body);
@@ -229,8 +207,6 @@ class AuthService {
   /// Call the resend-otp edge function which delegates to send-otp with rate limiting.
   Future<Map<String, dynamic>> resendOtp({String? email, String? phone}) async {
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/resend-otp');
-    print('[DEBUG] Resend OTP request to: $uri');
-    print('[DEBUG] Request body: ${jsonEncode({'email': email, 'phone': phone})}');
 
     try {
       // Use anon key for edge function calls
@@ -247,9 +223,6 @@ class AuthService {
         body: jsonEncode({'email': email, 'phone': phone}),
       );
 
-      print('[DEBUG] resend-otp status: ${resp.statusCode}');
-      print('[DEBUG] resend-otp body: ${resp.body}');
-
       final body = jsonDecode(resp.body ?? '{}');
       if (resp.statusCode >= 400) {
         throw Exception(body['message'] ?? 'Failed to resend OTP');
@@ -263,8 +236,6 @@ class AuthService {
   /// Call the send-otp edge function to send an OTP to email or phone.
   Future<Map<String, dynamic>> sendOtp({String? email, String? phone, String? userId}) async {
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/send-otp');
-    print('[DEBUG] Sending OTP request to: $uri');
-    print('[DEBUG] Request body: ${jsonEncode({'email': email, 'phone': phone, 'user_id': userId})}');
 
     try {
       // Use anon key for edge function calls (edge function uses service role internally)
@@ -285,27 +256,7 @@ class AuthService {
         }),
       );
 
-      print('[DEBUG] OTP response status: ${resp.statusCode}');
-      print('[DEBUG] OTP response body: ${resp.body}');
-
       final body = jsonDecode(resp.body ?? '{}');
-      print('[DEBUG] Raw response body: ${resp.body}');
-      print('[DEBUG] Parsed response body: $body');
-      // For debugging: if the edge function returns otp_code (dev mode), print it so
-      // developers can see the code in the console even if email delivery isn't configured.
-      try {
-        if (body is Map<String, dynamic>) {
-          print('[DEBUG] Response fields: ${body.keys.join(', ')}');
-          if (body.containsKey('otp_code')) {
-            print('[DEV] ✨ OTP Code found in response: ${body['otp_code']} ✨');
-            print('[DEV] ✨ Use this code to verify: ${body['otp_code']} ✨');
-          } else {
-            print('[DEBUG] No otp_code in response (expected in production mode)');
-          }
-        }
-      } catch (e) {
-        print('[DEBUG] Error parsing response: $e');
-      }
       if (resp.statusCode >= 400) {
         throw Exception(body['message'] ?? 'Failed to send OTP');
       }
@@ -321,8 +272,6 @@ class AuthService {
     required String email,
   }) async {
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/forgot-password');
-    print('[DEBUG] Forgot password request to: $uri');
-    print('[DEBUG] Request body: ${jsonEncode({'email': email})}');
 
     try {
       // Use anon key for edge function calls
@@ -341,19 +290,11 @@ class AuthService {
         }),
       );
 
-      print('[DEBUG] forgot-password status: ${resp.statusCode}');
-      print('[DEBUG] forgot-password body: ${resp.body}');
-
       final body = jsonDecode(resp.body ?? '{}');
 
       if (resp.statusCode >= 400) {
         final message = body['message'] ?? body['error'] ?? 'Failed to send password reset OTP';
         throw AuthException(message);
-      }
-
-      // Log OTP code if present (development mode)
-      if (body is Map<String, dynamic> && body.containsKey('otp_code')) {
-        print('[DEV] ✨ Password Reset OTP Code: ${body['otp_code']} ✨');
       }
 
       return Map<String, dynamic>.from(body);
@@ -381,10 +322,6 @@ class AuthService {
     required String newPassword,
   }) async {
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/reset-password');
-    print('[DEBUG] Reset password request to: $uri');
-    print('[DEBUG] Email: ${email.replaceAll(RegExp(r'(?<=.{2}).*(?=@)'), '***')}');
-    print('[DEBUG] OTP code length: ${otpCode.trim().length}');
-    print('[DEBUG] Password length: ${newPassword.length}');
 
     try {
       // Use anon key for edge function calls
@@ -405,9 +342,6 @@ class AuthService {
         }),
       );
 
-      print('[DEBUG] reset-password status: ${resp.statusCode}');
-      print('[DEBUG] reset-password body: ${resp.body}');
-
       final body = jsonDecode(resp.body ?? '{}');
 
       if (resp.statusCode >= 400) {
@@ -419,14 +353,11 @@ class AuthService {
         throw AuthException(body['message'] ?? 'Failed to reset password');
       }
 
-      print('[DEBUG] ✅ Password reset successful');
       return Map<String, dynamic>.from(body);
     } on AuthException catch (e) {
-      print('[ERROR] AuthException in resetPassword: ${e.message}');
       throw AuthException(e.message);
     } catch (e) {
-      print('[ERROR] Unexpected error in resetPassword: $e');
-      throw AuthException('An unexpected error occurred: $e');
+      throw AuthException('An unexpected error occurred');
     }
   }
 }

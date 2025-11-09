@@ -1199,7 +1199,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       } catch (otpError) {
         // If OTP sending fails, still allow user to proceed to OTP screen
         // They can request a new OTP there
-        print('[WARN] Failed to send OTP during signup: $otpError');
+        // Failed to send OTP during signup
       }
 
       if (!mounted) return;
