@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/auth_service.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key, required this.email});
+  const ResetPasswordScreen({
+    super.key,
+    required this.email,
+    required this.otpCode,
+  });
 
   final String email;
+  final String otpCode;
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -22,6 +29,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _isSubmitting = false;
   int _passwordStrength = 0;
   bool _passwordsMatch = false;
+  final AuthService _authService = AuthService();
 
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _headlineColor = Color(0xFF0F172A);
@@ -85,18 +93,83 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   Future<void> _handleReset() async {
     if (!_validateForm()) return;
+    
     setState(() => _isSubmitting = true);
 
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
+    try {
+      // Call reset-password edge function
+      // This edge function calls verify_password_reset_otp RPC which:
+      // - Verifies the OTP (checks expiration, attempts, validity)
+      // - Validates password strength (8-128 chars, uppercase, lowercase, number, special char)
+      // - Hashes password with bcrypt
+      // - Updates password in auth.users table
+      // All in one atomic operation
+      final response = await _authService.resetPassword(
+        email: widget.email,
+        otpCode: widget.otpCode,
+        newPassword: _passwordController.text.trim(),
+      );
 
-    setState(() => _isSubmitting = false);
+      if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password reset successfully')),
-    );
+      setState(() => _isSubmitting = false);
 
-    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(response['message'] ?? 'Password reset successfully'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Navigate to login screen
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      
+      // Set appropriate error messages
+      final errorMessage = e.message.toLowerCase();
+      if (errorMessage.contains('otp') || errorMessage.contains('code') || errorMessage.contains('expired')) {
+        // OTP error - might need to go back
+        setState(() {
+          _passwordError = 'Invalid or expired reset code. Please request a new one.';
+        });
+      } else if (errorMessage.contains('password') || errorMessage.contains('strength')) {
+        setState(() {
+          _passwordError = e.message;
+        });
+      } else {
+        setState(() {
+          _passwordError = 'Failed to reset password. Please try again.';
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('An unexpected error occurred. Please try again.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      
+      setState(() {
+        _passwordError = 'An unexpected error occurred. Please try again.';
+      });
+    }
   }
 
   @override

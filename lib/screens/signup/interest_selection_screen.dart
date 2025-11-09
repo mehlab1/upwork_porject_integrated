@@ -55,7 +55,13 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => OtpVerificationScreen(email: widget.email),
+        builder: (context) => OtpVerificationScreen(
+          email: widget.email,
+          isPasswordReset: false,
+          onSuccess: (otpCode) {
+            // OTP verified in the screen itself
+          },
+        ),
       ),
     );
   }

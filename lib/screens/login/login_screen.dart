@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/auth_service.dart';
 import '../signup/signup_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
 
@@ -15,8 +17,10 @@ class _LoginScreenState extends State<LoginScreen>
   final TextEditingController _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscurePassword = true;
+  bool _isLoading = false;
   String? _emailError;
   String? _passwordError;
+  final AuthService _authService = AuthService();
 
   // Animation for shifting form to the left
   AnimationController? _shiftAnimationController;
@@ -366,37 +370,34 @@ class _LoginScreenState extends State<LoginScreen>
                               child: Material(
                                 color: Colors.transparent,
                                 child: InkWell(
-                                  onTap: () async {
+                                  onTap: _isLoading ? null : () async {
                                     if (_validateLogin()) {
-                                      // Shift form to the left
-                                      if (!_isFormShifted &&
-                                          _shiftAnimationController != null) {
-                                        setState(() {
-                                          _isFormShifted = true;
-                                        });
-                                        await _shiftAnimationController!.forward();
-                                      }
-
-                                      if (!mounted) return;
-
-                                      Navigator.of(context).pushNamedAndRemoveUntil(
-                                        '/home',
-                                        (route) => false,
-                                      );
+                                      await _handleLogin();
                                     }
                                   },
                                   borderRadius: BorderRadius.circular(20),
                                   child: Center(
-                                    child: Text(
-                                      'Sign In',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight:
-                                            FontWeight.w500, // Poppins Medium
-                                        color: Colors.white,
-                                        fontFamily: 'Poppins',
-                                      ),
-                                    ),
+                                    child: _isLoading
+                                        ? SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
+                                            ),
+                                          )
+                                        : Text(
+                                            'Sign In',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight:
+                                                  FontWeight.w500, // Poppins Medium
+                                              color: Colors.white,
+                                              fontFamily: 'Poppins',
+                                            ),
+                                          ),
                                   ),
                                 ),
                               ),
@@ -573,5 +574,123 @@ class _LoginScreenState extends State<LoginScreen>
       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
     );
     return emailRegex.hasMatch(email);
+  }
+
+  /// Handles the login process with Supabase backend
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    setState(() {
+      _isLoading = true;
+      _emailError = null;
+      _passwordError = null;
+    });
+
+    try {
+      // Shift form to the left for visual feedback
+      if (!_isFormShifted && _shiftAnimationController != null) {
+        setState(() {
+          _isFormShifted = true;
+        });
+        await _shiftAnimationController!.forward();
+      }
+
+      // Authenticate with Supabase
+      final response = await _authService.signIn(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      // Check if user exists and session is valid
+      if (response.user == null || response.session == null) {
+        setState(() {
+          _isLoading = false;
+          _passwordError = 'Invalid email or password';
+        });
+        return;
+      }
+
+      // Check if account is deactivated
+      final supabase = Supabase.instance.client;
+      final deactivationCheck = await supabase
+          .from('account_deactivations')
+          .select()
+          .eq('user_id', response.user!.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (deactivationCheck != null) {
+        setState(() {
+          _isLoading = false;
+          _emailError = 'This account has been deactivated';
+        });
+        // Sign out the user since account is deactivated
+        await _authService.signOut();
+        return;
+      }
+
+      // Check profile status
+      final profile = await supabase
+          .from('profiles')
+          .select('account_status, is_deactivated')
+          .eq('id', response.user!.id)
+          .maybeSingle();
+
+      if (profile != null) {
+        final accountStatus = profile['account_status'] as String?;
+        final isDeactivated = profile['is_deactivated'] as bool? ?? false;
+
+        if (isDeactivated || accountStatus == 'suspended' || accountStatus == 'banned') {
+          setState(() {
+            _isLoading = false;
+            _emailError = 'This account has been deactivated or suspended';
+          });
+          await _authService.signOut();
+          return;
+        }
+      }
+
+      // Login successful - navigate to home
+      if (!mounted) return;
+      
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+        arguments: {'showWelcomeModal': true},
+      );
+    } on AuthException catch (e) {
+      // Handle authentication errors
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+
+      final errorMessage = e.message.toLowerCase();
+      if (errorMessage.contains('invalid login credentials') ||
+          errorMessage.contains('email not confirmed') ||
+          errorMessage.contains('wrong password')) {
+        setState(() {
+          _passwordError = 'Invalid email or password';
+        });
+      } else if (errorMessage.contains('email')) {
+        setState(() {
+          _emailError = e.message;
+        });
+      } else {
+        setState(() {
+          _passwordError = e.message;
+        });
+      }
+    } catch (e) {
+      // Handle unexpected errors
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _passwordError = 'An unexpected error occurred. Please try again.';
+      });
+    }
   }
 }

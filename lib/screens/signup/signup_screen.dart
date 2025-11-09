@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
-import 'interest_selection_screen.dart';
+import '../otp/otp_verification_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -41,6 +43,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _confirmPasswordError;
   String? _genderError;
   String? _accountTypeError;
+  bool _isLoading = false;
+  final AuthService _authService = AuthService();
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -760,35 +764,39 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 width: 338,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: _primaryColor,
+                  color: _isLoading ? _primaryColor.withOpacity(0.7) : _primaryColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: () {
+                    onTap: _isLoading ? null : () async {
                       if (_validateSignUp()) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => InterestSelectionScreen(
-                              email: _emailController.text.trim(),
-                            ),
-                          ),
-                        );
+                        await _handleSignUp();
                       }
                     },
                     borderRadius: BorderRadius.circular(20),
                     child: Center(
-                      child: Text(
-                        'Sign up',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500, // Poppins Medium
-                          color: Colors.white,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
+                      child: _isLoading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              'Sign up',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500, // Poppins Medium
+                                color: Colors.white,
+                                fontFamily: 'Poppins',
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -1114,6 +1122,130 @@ class _SignUpScreenState extends State<SignUpScreen> {
       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
     );
     return emailRegex.hasMatch(email);
+  }
+
+  /// Handles the signup process with Supabase backend
+  Future<void> _handleSignUp() async {
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final username = _usernameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final gender = _selectedGender?.toLowerCase();
+
+    setState(() {
+      _isLoading = true;
+      // Clear previous errors
+      _firstNameError = null;
+      _lastNameError = null;
+      _usernameError = null;
+      _emailError = null;
+      _passwordError = null;
+      _genderError = null;
+    });
+
+    try {
+      // Calculate birthday (must be at least 13 years ago, use 14 to be safe)
+      final birthday = DateTime.now().subtract(const Duration(days: 365 * 14));
+      final birthdayString = birthday.toIso8601String().substring(0, 10); // YYYY-MM-DD
+
+      // Map gender to schema format
+      String? genderValue;
+      if (gender == 'male') {
+        genderValue = 'male';
+      } else if (gender == 'female') {
+        genderValue = 'female';
+      } else if (gender == 'other') {
+        genderValue = 'other';
+      } else {
+        genderValue = 'prefer_not_to_say';
+      }
+
+      // Prepare user data for profile creation
+      final userData = {
+        'username': username,
+        'gender': genderValue,
+        'birthday': birthdayString,
+        'terms_accepted': _agreeToTerms,
+        'privacy_accepted': _agreeToTerms,
+        'role': 'user',
+        'account_status': 'active',
+      };
+
+      // Sign up with Supabase
+      final response = await _authService.signUp(
+        email: email,
+        password: password,
+        userData: userData,
+      );
+
+      if (!mounted) return;
+
+      // Check if signup was successful
+      if (response.user == null) {
+        setState(() {
+          _isLoading = false;
+          _emailError = 'Failed to create account. Please try again.';
+        });
+        return;
+      }
+
+      // Send OTP to the user's email
+      try {
+        await _authService.sendOtp(
+          email: email,
+          userId: response.user!.id,
+        );
+      } catch (otpError) {
+        // If OTP sending fails, still allow user to proceed to OTP screen
+        // They can request a new OTP there
+        print('[WARN] Failed to send OTP during signup: $otpError');
+      }
+
+      if (!mounted) return;
+
+      // Navigate to OTP verification screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OtpVerificationScreen(
+            email: email,
+            isPasswordReset: false, // This is for signup
+            // No onSuccess callback - OTP screen handles navigation itself
+          ),
+        ),
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+
+      final errorMessage = e.message.toLowerCase();
+      if (errorMessage.contains('email') || errorMessage.contains('already registered')) {
+        setState(() {
+          _emailError = 'This email is already registered';
+        });
+      } else if (errorMessage.contains('username') || errorMessage.contains('duplicate')) {
+        setState(() {
+          _usernameError = 'This username is already taken';
+        });
+      } else if (errorMessage.contains('password')) {
+        setState(() {
+          _passwordError = e.message;
+        });
+      } else {
+        setState(() {
+          _emailError = e.message;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _emailError = 'An unexpected error occurred. Please try again.';
+      });
+    }
   }
 }
 
