@@ -34,16 +34,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Future<void> _loadCategories() async {
     try {
-      print('[CREATE_POST] Loading categories...');
       final categories = await _postService.getCategories();
-      print('[CREATE_POST] Categories loaded: $categories');
       if (mounted) {
         setState(() {
           _categoryMap = categories;
         });
       }
     } catch (e) {
-      print('[CREATE_POST] Error loading categories: $e');
       // Silently fail - categories will be empty if not found
     }
   }
@@ -472,7 +469,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: Colors.white,
                   ),
                   child: SvgPicture.asset(
-                    'assets/images/newPost.svg',
+                    'assets/feedPage/newPosticon.svg',
                     width: 10,
                     height: 10,
                     fit: BoxFit.scaleDown,
@@ -639,21 +636,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     });
 
     try {
-      print('[CREATE_POST] Starting post creation');
-      print('[CREATE_POST] Content length: ${content.length}');
-      print('[CREATE_POST] Active category: $_activeCategory');
-      print('[CREATE_POST] Category map: $_categoryMap');
-      
       // Get category_id from the category map
       String? categoryId;
       if (_categoryMap.containsKey(_activeCategory)) {
         categoryId = _categoryMap[_activeCategory];
-        print('[CREATE_POST] Found category ID: $categoryId');
-      } else {
-        print('[CREATE_POST] Warning: Category "$_activeCategory" not found in map');
       }
-
-      print('[CREATE_POST] Spotlight enabled: $_spotlightEnabled');
 
       // Call the post service
       final response = await _postService.createPost(
@@ -664,8 +651,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         enableMonthlySpotlight: _spotlightEnabled,
       );
 
-      print('[CREATE_POST] Response received: $response');
-
       if (!mounted) return;
 
       setState(() {
@@ -674,7 +659,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       // Show success message
       final message = response['message'] ?? 'Post created successfully';
-      print('[CREATE_POST] Showing success message: $message');
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -686,10 +670,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       // Close the dialog
       Navigator.of(context).pop();
-    } catch (e, stackTrace) {
-      print('[CREATE_POST] Error caught: $e');
-      print('[CREATE_POST] Stack trace: $stackTrace');
-      
+    } catch (e) {
       if (!mounted) return;
       
       setState(() {
@@ -698,7 +679,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       // Show error message
       final errorMessage = e.toString().replaceFirst('Exception: ', '');
-      print('[CREATE_POST] Showing error message: $errorMessage');
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

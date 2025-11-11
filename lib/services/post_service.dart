@@ -53,9 +53,6 @@ class PostService {
       }
 
       // Make the request
-      print('[POST_SERVICE] Request body: ${jsonEncode(requestBody)}');
-      print('[POST_SERVICE] Has session token: ${sessionToken != null}');
-      
       final resp = await http.post(
         uri,
         headers: {
@@ -66,21 +63,15 @@ class PostService {
         body: jsonEncode(requestBody),
       );
 
-      print('[POST_SERVICE] Response status: ${resp.statusCode}');
-      print('[POST_SERVICE] Response body: ${resp.body}');
-
       final body = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
 
       if (resp.statusCode >= 400) {
         final errorMessage = body['error'] ?? body['message'] ?? 'Failed to create post';
-        print('[POST_SERVICE] Error: $errorMessage');
         throw Exception(errorMessage);
       }
 
-      print('[POST_SERVICE] Success: ${body['success']}');
       return body;
     } catch (e) {
-      print('[POST_SERVICE] Exception caught: $e');
       rethrow;
     }
   }
@@ -89,14 +80,10 @@ class PostService {
   /// Returns a map of category name to category ID
   Future<Map<String, String>> getCategories() async {
     try {
-      print('[POST_SERVICE] Fetching categories...');
       final response = await _supabaseClient
           .from('categories')
           .select('id, name')
           .eq('is_active', true);
-
-      print('[POST_SERVICE] Categories response type: ${response.runtimeType}');
-      print('[POST_SERVICE] Categories response: $response');
 
       final categories = <String, String>{};
       if (response != null) {
@@ -108,17 +95,13 @@ class PostService {
               final id = category['id'] as String?;
               if (name != null && id != null) {
                 categories[name] = id;
-                print('[POST_SERVICE] Added category: $name -> $id');
               }
             }
           }
         }
       }
-      print('[POST_SERVICE] Final categories map: $categories');
       return categories;
-    } catch (e, stackTrace) {
-      print('[POST_SERVICE] Error fetching categories: $e');
-      print('[POST_SERVICE] Stack trace: $stackTrace');
+    } catch (e) {
       // Return empty map if fetch fails
       return {};
     }
