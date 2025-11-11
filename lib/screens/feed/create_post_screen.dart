@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../../services/post_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -11,10 +12,41 @@ class CreatePostScreen extends StatefulWidget {
 class _CreatePostScreenState extends State<CreatePostScreen> {
   String _activeCategory = 'Gist';
   bool _spotlightEnabled = true;
+  bool _isSubmitting = false;
+  Map<String, String> _categoryMap = {};
+  final PostService _postService = PostService();
+
+  static const Map<String, Color> _categoryColors = {
+    'Gist': Color(0xFFAD46FF),
+    'Ask': Color(0xFF00C950),
+    'Discussion': Color(0xFFFE9A00),
+  };
 
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
   final FocusNode _titleFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      print('[CREATE_POST] Loading categories...');
+      final categories = await _postService.getCategories();
+      print('[CREATE_POST] Categories loaded: $categories');
+      if (mounted) {
+        setState(() {
+          _categoryMap = categories;
+        });
+      }
+    } catch (e) {
+      print('[CREATE_POST] Error loading categories: $e');
+      // Silently fail - categories will be empty if not found
+    }
+  }
 
   @override
   void dispose() {
@@ -67,6 +99,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       _buildComposer(),
                       const SizedBox(height: 20),
                       _buildLocationCard(),
+                      const SizedBox(height: 12),
+                      _buildCharacterLimitIndicator(),
                       const SizedBox(height: 16),
                       _buildSpotlightCard(),
                       const SizedBox(height: 18),
@@ -143,6 +177,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         final label = entry.key;
         final iconPath = entry.value;
         final isSelected = label == _activeCategory;
+        final selectedColor = _categoryColors[label]!;
         return Padding(
           padding: EdgeInsets.only(right: label == 'Discussion' ? 0 : 8),
           child: GestureDetector(
@@ -151,20 +186,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.fromLTRB(15.989, 10.511, 15.343, 9.48),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? const Color(0xFFAD46FF)
-                    : const Color(0xFFF1F5F9),
+                color: isSelected ? selectedColor : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(25378200),
                 boxShadow: isSelected
-                    ? const [
+                    ? [
                         BoxShadow(
-                          color: Color(0xFFE9D4FF),
+                          color: selectedColor.withOpacity(0.32),
                           offset: Offset(0, 4),
                           blurRadius: 6,
                           spreadRadius: -1,
                         ),
                         BoxShadow(
-                          color: Color(0xFFE9D4FF),
+                          color: selectedColor.withOpacity(0.24),
                           offset: Offset(0, 2),
                           blurRadius: 4,
                           spreadRadius: -2,
@@ -207,6 +240,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildComposer() {
+    final isOverLimit = _bodyController.text.length > 1000;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -236,11 +270,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         const SizedBox(height: 12),
         TextField(
           controller: _bodyController,
-          maxLines: 4,
-          style: const TextStyle(
+          keyboardType: TextInputType.multiline,
+          minLines: 5,
+          maxLines: null,
+          onChanged: (_) => setState(() {}),
+          style: TextStyle(
             fontSize: 14,
             height: 20 / 14,
-            color: Color(0xFF90A1B9),
+            color: isOverLimit
+                ? const Color(0xFFE7000B)
+                : const Color(0xFF90A1B9),
             fontWeight: FontWeight.w400,
             fontFamily: 'Inter',
           ),
@@ -321,6 +360,34 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCharacterLimitIndicator() {
+    final characterCount = _bodyController.text.length;
+    final isOverLimit = characterCount > 1000;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          'Location added',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: _textSecondary,
+            fontFamily: 'Inter',
+          ),
+        ),
+        Text(
+          '$characterCount/1000 characters',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: isOverLimit ? const Color(0xFFE7000B) : _muted,
+            fontFamily: 'Inter',
+          ),
+        ),
+      ],
     );
   }
 
@@ -424,6 +491,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildFooterActions() {
+    final isOverLimit = _bodyController.text.length > 1000;
     return Container(
       width: 360,
       height: 64,
@@ -450,40 +518,51 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             icon: SvgPicture.asset(
-              'assets/feedPage/pencilIcon.svg',
+              isOverLimit
+                  ? 'assets/images/askIcon.svg'
+                  : 'assets/feedPage/pencilIcon.svg',
               width: 16,
               height: 16,
-              colorFilter: ColorFilter.mode(_muted, BlendMode.srcIn),
+              colorFilter: ColorFilter.mode(
+                isOverLimit ? const Color(0xFFE7000B) : _muted,
+                BlendMode.srcIn,
+              ),
             ),
-            label: const Text(
-              'Add a title to get started',
+            label: Text(
+              isOverLimit
+                  ? 'Content exceeds character limit'
+                  : 'Add a title to get started',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
-                color: _muted,
+                color: isOverLimit ? const Color(0xFFE7000B) : _muted,
                 fontFamily: 'Inter',
               ),
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              _handleSubmit();
-              Navigator.of(context).pop();
-            },
+            onPressed: (isOverLimit || _isSubmitting)
+                ? null
+                : () {
+                    _handleSubmit();
+                  },
             style: ButtonStyle(
               backgroundColor: WidgetStateProperty.resolveWith((states) {
+                final selectedColor = _categoryColors[_activeCategory]!;
+                if (states.contains(WidgetState.disabled)) {
+                  return _muted.withOpacity(0.3);
+                }
                 if (states.contains(WidgetState.hovered) ||
                     states.contains(WidgetState.pressed)) {
-                  return const Color(0xFF155DFC);
+                  return _darken(selectedColor, 0.08);
                 }
-                return _outline;
+                return selectedColor;
               }),
               foregroundColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.hovered) ||
-                    states.contains(WidgetState.pressed)) {
-                  return Colors.white;
+                if (states.contains(WidgetState.disabled)) {
+                  return _muted;
                 }
-                return _muted;
+                return Colors.white;
               }),
               elevation: WidgetStateProperty.all(0),
               padding: WidgetStateProperty.all(
@@ -493,24 +572,148 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
             ),
-            child: const Text(
-              'Post',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                fontFamily: 'Inter',
-              ),
-            ),
+            child: _isSubmitting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text(
+                    'Post',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  void _handleSubmit() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post functionality coming soon.')),
-    );
+  Future<void> _handleSubmit() async {
+    // Validate content
+    final title = _titleController.text.trim();
+    final body = _bodyController.text.trim();
+    
+    // Combine title and body into content
+    String content = '';
+    if (title.isNotEmpty && body.isNotEmpty) {
+      content = '$title\n\n$body';
+    } else if (title.isNotEmpty) {
+      content = title;
+    } else if (body.isNotEmpty) {
+      content = body;
+    } else {
+      // Show error if both are empty
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter some content for your post'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Validate content length
+    if (content.length > 1000) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Content must be 1000 characters or less'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      print('[CREATE_POST] Starting post creation');
+      print('[CREATE_POST] Content length: ${content.length}');
+      print('[CREATE_POST] Active category: $_activeCategory');
+      print('[CREATE_POST] Category map: $_categoryMap');
+      
+      // Get category_id from the category map
+      String? categoryId;
+      if (_categoryMap.containsKey(_activeCategory)) {
+        categoryId = _categoryMap[_activeCategory];
+        print('[CREATE_POST] Found category ID: $categoryId');
+      } else {
+        print('[CREATE_POST] Warning: Category "$_activeCategory" not found in map');
+      }
+
+      print('[CREATE_POST] Spotlight enabled: $_spotlightEnabled');
+
+      // Call the post service
+      final response = await _postService.createPost(
+        content: content,
+        categoryId: categoryId,
+        locationId: null, // Location selection not implemented yet
+        imageUrl: null, // Image upload not implemented yet
+        enableMonthlySpotlight: _spotlightEnabled,
+      );
+
+      print('[CREATE_POST] Response received: $response');
+
+      if (!mounted) return;
+
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      // Show success message
+      final message = response['message'] ?? 'Post created successfully';
+      print('[CREATE_POST] Showing success message: $message');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      // Close the dialog
+      Navigator.of(context).pop();
+    } catch (e, stackTrace) {
+      print('[CREATE_POST] Error caught: $e');
+      print('[CREATE_POST] Stack trace: $stackTrace');
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _isSubmitting = false;
+      });
+
+      // Show error message
+      final errorMessage = e.toString().replaceFirst('Exception: ', '');
+      print('[CREATE_POST] Showing error message: $errorMessage');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Color _darken(Color color, [double amount = 0.1]) {
+    final hsl = HSLColor.fromColor(color);
+    final lightness = (hsl.lightness - amount).clamp(0.0, 1.0);
+    return hsl.withLightness(lightness).toColor();
   }
 }
 
