@@ -1,6 +1,7 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
   final _supabaseClient = Supabase.instance.client; // Direct client access
@@ -15,6 +16,12 @@ class AuthService {
         email: email,
         password: password,
       );
+      final accessToken = response.session?.accessToken;
+      if (accessToken != null) {
+        debugPrint('[AuthService] access token: $accessToken');
+      } else {
+        debugPrint('[AuthService] signIn completed without an access token.');
+      }
       return response;
     } on AuthException catch (e) {
       throw AuthException(e.message);

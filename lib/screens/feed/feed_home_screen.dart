@@ -5,6 +5,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'create_post_screen.dart';
 import 'widgets/post_card.dart';
+import '../../services/post_service.dart';
+import '../../utils/time_formatter.dart';
 
 class Variables {
   static const Color stateLayersErrorContainerOpacity16 = Color(0x29F9DEDC);
@@ -35,6 +37,18 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   bool _isLoadingMore = false;
   int _visiblePostLimit = _pageSize;
   int _initialVisiblePostCapacity = _pageSize;
+  
+  // API integration state
+  final PostService _postService = PostService();
+  List<PostCardData> _apiPosts = [];
+  bool _isLoadingPosts = false;
+  Map<String, dynamic>? _pagination;
+  String? _errorMessage;
+  Map<String, String> _categoryMap = {}; // category name -> id
+  Map<String, String> _locationMap = {}; // location name -> id
+  bool _isLoadingHotTopic = false;
+  _TrendingOption? _currentHotTopic;
+  List<_TrendingOption> _trendingOptionsFromApi = [];
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -115,8 +129,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   ];
 
   bool _shouldShowWelcomeModal = false;
-  late final List<PostCardData> _posts = _buildSeedPosts();
-
+  
+  // Preserve hardcoded posts
+  late final List<PostCardData> _hardcodedPosts = _buildSeedPosts();
   static const PostCardData _pinnedAdminPost = PostCardData(
     variant: PostCardVariant.newPost,
     username: 'Pal Admin',
@@ -128,32 +143,372 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         "Stay vigilant when attending Detty December events. Keep your valuables secure, move with trusted pals, and share updates in the community if you notice anything unusual.",
     commentsCount: 6,
     votes: 128,
+    id: null,
     avatarAsset: 'assets/feedPage/profile.png',
     comments: null,
   );
 
+  // Combined posts: pinned admin + first 2 hardcoded + API posts
+  List<PostCardData> get _allPosts {
+    // First 2 hardcoded posts (preserve them)
+    final firstTwoHardcoded = _hardcodedPosts.take(2).toList();
+    // Combine: pinned admin + first 2 hardcoded + API posts
+    return [_pinnedAdminPost, ...firstTwoHardcoded, ..._apiPosts];
+  }
+  
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
 
   List<PostCardData> get _visiblePosts {
     final posts = _filteredPosts;
     if (posts.isEmpty) return const <PostCardData>[];
-    final limit = math.min(_visiblePostLimit, posts.length);
-    return posts.take(limit).toList();
+    
+    // Remove hardcoded posts from visible posts (they're displayed separately)
+    final apiPostsOnly = posts.where((post) => 
+      post != _pinnedAdminPost && 
+      !_hardcodedPosts.take(2).contains(post)
+    ).toList();
+    
+    final limit = math.min(_visiblePostLimit, apiPostsOnly.length);
+    return apiPostsOnly.take(limit).toList();
   }
 
   List<PostCardData> _postsForFilter(String filter) {
+    final allPosts = _allPosts;
     switch (filter) {
       case 'Hot':
-        return _posts
+        return allPosts
             .where((post) => post.variant == PostCardVariant.hot)
             .toList();
       case 'Top':
-        return _posts
+        return allPosts
             .where((post) => post.variant == PostCardVariant.top)
             .toList();
       case 'New':
       default:
-        return _posts;
+        return allPosts;
+    }
+  }
+
+  // ============================================
+  // Data Mapping Functions
+  // ============================================
+
+  /// Maps API post response to PostCardData
+  PostCardData _mapApiPostToPostCardData(Map<String, dynamic> apiPost, String sortFilter) {
+    // Determine variant based on sort filter and post metadata
+    PostCardVariant variant;
+    if (sortFilter == 'Hot' || apiPost['is_trending'] == true) {
+      variant = PostCardVariant.hot;
+    } else if (sortFilter == 'Top' || apiPost['is_monthly_spotlight'] == true) {
+      variant = PostCardVariant.top;
+    } else {
+      variant = PostCardVariant.newPost;
+    }
+
+    // Extract username - try different possible field names
+    final username = apiPost['username'] as String? ?? 
+                    apiPost['user_username'] as String? ?? 
+                    '@user';
+
+    // Format time ago
+    final createdAt = apiPost['created_at'] as String? ?? 
+                     apiPost['created_at_iso'] as String?;
+    final timeAgo = createdAt != null 
+        ? TimeFormatter.formatTimeAgo(createdAt)
+        : 'recently';
+
+    // Extract location and category names
+    final location = apiPost['location_name'] as String? ?? 
+                    apiPost['location'] as String? ?? 
+                    '';
+    final category = apiPost['category_name'] as String? ?? 
+                    apiPost['category'] as String? ?? 
+                    '';
+
+    // Extract content and split into title (first sentence) and body
+    final content = apiPost['content'] as String? ?? '';
+    
+    // Split content into first sentence (title) and remaining (body)
+    final parts = _splitContentIntoTitleAndBody(content);
+    final title = parts['title'] ?? '';
+    final body = parts['body'] ?? '';
+
+    // Extract counts
+    final commentsCount = (apiPost['comment_count'] as num?)?.toInt() ?? 0;
+    final upvotes = (apiPost['upvote_count'] as num?)?.toInt() ?? 0;
+    final downvotes = (apiPost['downvote_count'] as num?)?.toInt() ?? 0;
+    final votes = upvotes - downvotes;
+
+    // Extract avatar
+    final avatarAsset = apiPost['profile_picture_url'] as String? ?? 
+                       apiPost['avatar_url'] as String? ?? 
+                       'assets/feedPage/profile.png';
+
+    return PostCardData(
+      variant: variant,
+      username: username,
+      timeAgo: timeAgo,
+      location: location,
+      category: category,
+      title: title,
+      body: body,
+      commentsCount: commentsCount,
+      votes: votes,
+      id: apiPost['id'] as String?,
+      avatarAsset: avatarAsset,
+      comments: null, // Comments loaded on demand
+    );
+  }
+
+  /// Splits content into title (first sentence) and body (remaining content)
+  Map<String, String> _splitContentIntoTitleAndBody(String content) {
+    if (content.isEmpty) {
+      return {'title': '', 'body': ''};
+    }
+
+    // Find the first sentence ending (period, exclamation mark, or question mark)
+    final sentenceEndings = RegExp(r'[.!?]');
+    final match = sentenceEndings.firstMatch(content);
+    
+    if (match != null) {
+      final firstSentenceEnd = match.end;
+      // Extract title without trailing punctuation and body without leading space
+      final title = content.substring(0, match.start).trim();
+      final body = content.substring(firstSentenceEnd).trim();
+      return {'title': title, 'body': body};
+    } else {
+      // If no sentence ending found, use first 100 characters as title
+      final title = content.length > 100 ? content.substring(0, 100).trim() : content.trim();
+      final body = content.length > 100 ? content.substring(100).trim() : '';
+      return {'title': title, 'body': body};
+    }
+  }
+
+  /// Maps API comment response to CommentData
+  CommentData _mapApiCommentToCommentData(Map<String, dynamic> apiComment) {
+    // Extract author
+    final author = apiComment['username'] as String? ?? 
+                  apiComment['user_username'] as String? ?? 
+                  '@user';
+
+    // Format time ago
+    final createdAt = apiComment['created_at'] as String? ?? 
+                     apiComment['created_at_iso'] as String?;
+    final timeAgo = createdAt != null 
+        ? TimeFormatter.formatTimeAgo(createdAt)
+        : 'recently';
+
+    // Extract content
+    final body = apiComment['content'] as String? ?? '';
+
+    // Extract votes
+    final upvotes = (apiComment['upvote_count'] as num?)?.toInt() ?? 0;
+    final downvotes = (apiComment['downvote_count'] as num?)?.toInt() ?? 0;
+
+    // Extract avatar
+    final avatarAsset = apiComment['profile_picture_url'] as String? ?? 
+                       apiComment['avatar_url'] as String?;
+
+    // Generate initials from username if no avatar
+    final initials = avatarAsset == null && author.isNotEmpty
+        ? author.replaceAll('@', '').substring(0, math.min(2, author.length)).toUpperCase()
+        : null;
+
+    return CommentData(
+      author: author,
+      timeAgo: timeAgo,
+      body: body,
+      upvotes: upvotes,
+      downvotes: downvotes,
+      avatarAsset: avatarAsset,
+      initials: initials,
+    );
+  }
+
+  /// Maps API hot topic response to _TrendingOption
+  _TrendingOption _mapApiHotTopicToTrendingOption(Map<String, dynamic> apiHotTopic) {
+    final title = apiHotTopic['title'] as String? ?? 'Trending Topic';
+    final description = apiHotTopic['description'] as String? ?? '';
+    final postCount = (apiHotTopic['post_count'] as num?)?.toInt() ?? 0;
+    final isActive = apiHotTopic['is_active'] as bool? ?? false;
+
+    // Use default icon and color for now
+    // Can be customized based on hot topic data if needed
+    return _TrendingOption(
+      tag: 'Monthly Spotlight',
+      label: title,
+      description: description,
+      iconAsset: 'assets/images/dettyIcon.svg',
+      iconColor: const Color.fromRGBO(79, 57, 246, 1),
+      postCount: postCount,
+      isActive: isActive,
+    );
+  }
+
+  // ============================================
+  // API Integration Methods
+  // ============================================
+
+  /// Loads initial data: categories, locations, hot topic, and feed
+  Future<void> _loadInitialData() async {
+    try {
+      // Load categories and locations in parallel
+      final categoriesFuture = _postService.getCategories();
+      final locationsFuture = _postService.getLocations();
+      
+      // Load hot topic
+      _loadHotTopic();
+      
+      // Load categories and locations
+      _categoryMap = await categoriesFuture;
+      _locationMap = await locationsFuture;
+      
+      // Load feed posts
+      await _loadFeedPosts();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load data: ${e.toString()}';
+        });
+      }
+    }
+  }
+
+  /// Loads hot topic for Monthly Spotlight
+  Future<void> _loadHotTopic() async {
+    if (_isLoadingHotTopic) return;
+    
+    setState(() {
+      _isLoadingHotTopic = true;
+    });
+
+    try {
+      final response = await _postService.getHotTopic(includePosts: false);
+      
+      if (response['success'] == true && response['hot_topic'] != null) {
+        final hotTopic = _mapApiHotTopicToTrendingOption(response['hot_topic'] as Map<String, dynamic>);
+        
+        if (mounted) {
+          setState(() {
+            _currentHotTopic = hotTopic;
+            _trendingOptionsFromApi = [hotTopic];
+            _selectedTrending = hotTopic;
+            _isLoadingHotTopic = false;
+          });
+        }
+      } else {
+        // Fallback to hardcoded trending options if API fails
+        if (mounted) {
+          setState(() {
+            _isLoadingHotTopic = false;
+          });
+        }
+      }
+    } catch (e) {
+      // Fallback to hardcoded trending options on error
+      if (mounted) {
+        setState(() {
+          _isLoadingHotTopic = false;
+        });
+      }
+    }
+  }
+
+  /// Loads feed posts from API
+  Future<void> _loadFeedPosts({bool loadMore = false}) async {
+    if (_isLoadingPosts && !loadMore) return;
+    if (_isLoadingMore && loadMore) return;
+
+    if (mounted) {
+      setState(() {
+        if (loadMore) {
+          _isLoadingMore = true;
+        } else {
+          _isLoadingPosts = true;
+          _errorMessage = null;
+        }
+      });
+    }
+
+    try {
+      // Map filter to sort parameter
+      String sort;
+      String timeFilter = 'all'; // Default time filter
+      switch (_selectedFilter) {
+        case 'Hot':
+          sort = 'hot';
+          break;
+        case 'Top':
+          sort = 'top';
+          // For top posts, we might want to add UI for time filter selection
+          // For now, using 'all' as default
+          break;
+        case 'New':
+        default:
+          sort = 'latest';
+          break;
+      }
+
+      // Get category and location IDs
+      String? categoryId;
+      if (_selectedCategory != null && _selectedCategory != _categoryOptions.first) {
+        categoryId = _categoryMap[_selectedCategory];
+      }
+
+      String? locationId;
+      if (_selectedLocation != null && _selectedLocation != _locationOptions.first) {
+        locationId = _locationMap[_selectedLocation];
+      }
+
+      // Calculate offset
+      final offset = loadMore ? (_apiPosts.length) : 0;
+
+      // Call API
+      final response = await _postService.getFeed(
+        sort: sort,
+        limit: _pageSize,
+        offset: offset,
+        categoryId: categoryId,
+        locationId: locationId,
+        timeFilter: timeFilter, // Add timeFilter parameter
+      );
+
+      if (response['success'] == true) {
+        final posts = response['posts'] as List<dynamic>? ?? [];
+        final pagination = response['pagination'] as Map<String, dynamic>?;
+
+        // Map posts to PostCardData
+        final mappedPosts = posts
+            .map((post) => _mapApiPostToPostCardData(
+                  post as Map<String, dynamic>,
+                  _selectedFilter,
+                ))
+            .toList();
+
+        if (mounted) {
+          setState(() {
+            if (loadMore) {
+              _apiPosts.addAll(mappedPosts);
+            } else {
+              _apiPosts = mappedPosts;
+            }
+            _pagination = pagination;
+            _isLoadingPosts = false;
+            _isLoadingMore = false;
+            _errorMessage = null;
+          });
+        }
+      } else {
+        throw Exception(response['error'] ?? response['message'] ?? 'Failed to load posts');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPosts = false;
+          _isLoadingMore = false;
+          _errorMessage = 'Failed to load posts: ${e.toString()}';
+        });
+      }
     }
   }
 
@@ -161,6 +516,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
+    // Initialize with hardcoded options, will be updated when API loads
     _selectedTrending = _trendingOptions.first;
     // During development we always surface the welcome modal so the team can iterate on the UI.
     _shouldShowWelcomeModal = true;
@@ -169,6 +525,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _initializeVisibleLimit(),
+    );
+    // Load initial data from API
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadInitialData(),
     );
   }
 
@@ -393,10 +753,15 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
                     const SizedBox(height: 24),
 
-                    PostCard(data: _pinnedAdminPost, isPinnedAdmin: true),
+                    PostCard(data: _pinnedAdminPost, isPinnedAdmin: true, postService: _postService),
+                    const SizedBox(height: 24),
+                    
+                    // First 2 hardcoded posts (preserve them)
+                    for (final post in _hardcodedPosts.take(2)) PostCard(data: post, postService: _postService),
                     const SizedBox(height: 24),
 
-                    for (final post in _visiblePosts) PostCard(data: post),
+                    // API posts
+                    for (final post in _visiblePosts) PostCard(data: post, postService: _postService),
                     if (_isLoadingMore)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
@@ -490,8 +855,20 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   void _loadMorePosts() {
+    // Check if we have more posts from API
+    final hasMore = _pagination?['has_more'] == true;
+    
+    if (_isLoadingMore) return;
+    
+    // If API has more posts, load them
+    if (hasMore) {
+      _loadFeedPosts(loadMore: true);
+      return;
+    }
+    
+    // Otherwise, use existing pagination logic for visible posts
     final totalPosts = _filteredPosts.length;
-    if (_isLoadingMore || _visiblePostLimit >= totalPosts) {
+    if (_visiblePostLimit >= totalPosts) {
       return;
     }
 
@@ -539,6 +916,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Looking for a cozy, semi-outdoor space around VI that can host about 30 people. Prefer somewhere with good WiFi and accessible parking.',
         commentsCount: hotComments.length,
         votes: 186,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
         comments: hotComments,
       ),
@@ -553,6 +931,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             "Yellow Chilli? Ofada Boy? Share your undefeated jollof spots so we can plan a weekend tasting crawl.",
         commentsCount: 54,
         votes: 124,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
         comments: const <CommentData>[],
       ),
@@ -567,6 +946,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Need recommendations for coworking spots on the mainland that stay powered through late nights. Bonus points for ergonomic chairs.',
         commentsCount: 12,
         votes: 8,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -580,6 +960,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Trying to stay consistent with morning runs. Anyone up for a Lekki-Ikate loop twice a week?',
         commentsCount: 6,
         votes: 21,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -593,6 +974,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Share your favourite vendors for statement pieces. Looking for something extra for New Year’s Eve.',
         commentsCount: 33,
         votes: 98,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -606,6 +988,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Curious about the mentorship quality and if they really provide access to investors as promised in the deck.',
         commentsCount: 18,
         votes: 142,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -619,6 +1002,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Planning a Sunday outing with two toddlers. Need spots with playgrounds or activity corners.',
         commentsCount: 4,
         votes: 5,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -632,6 +1016,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Looking for somewhere quiet past 9pm to get work done. Preferably with outdoor seating.',
         commentsCount: 17,
         votes: 77,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -645,6 +1030,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Heard there’s a rooftop jazz session somewhere around Onikan. Anyone got the plug?',
         commentsCount: 29,
         votes: 201,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -658,6 +1044,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Trying to map out 20km loops with minimal traffic. Any cyclist groups open to new members?',
         commentsCount: 9,
         votes: 12,
+        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
     ];
@@ -727,6 +1114,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               _isLoadingMore = false;
               _resetVisibleLimitForFilter(label);
             });
+            // Reload feed with new filter
+            _loadFeedPosts();
             _scrollToTop();
           },
           borderRadius: BorderRadius.circular(10),
@@ -868,6 +1257,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 _selectedLocation = value;
                 _isLocationDropdownOpen = false;
               });
+              // Reload feed with new location filter
+              _loadFeedPosts();
             },
           ),
       ],
@@ -988,6 +1379,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 _selectedCategory = value;
                 _isCategoryDropdownOpen = false;
               });
+              // Reload feed with new category filter
+              _loadFeedPosts();
             },
           ),
       ],
@@ -995,7 +1388,11 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Widget _buildMonthlySpotlight() {
-    final trending = _selectedTrending ?? _trendingOptions.first;
+    // Use API data if available, otherwise fallback to hardcoded
+    final availableOptions = _trendingOptionsFromApi.isNotEmpty 
+        ? _trendingOptionsFromApi 
+        : _trendingOptions;
+    final trending = _selectedTrending ?? availableOptions.first;
     final postCountValue = trending.postCount ?? 0;
     final tagLabel = (trending.tag ?? 'Trending Topic').toUpperCase();
     final postsLabel = '$postCountValue post${postCountValue == 1 ? '' : 's'}';
@@ -1185,10 +1582,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        itemCount: _trendingOptions.length,
+        itemCount: (_trendingOptionsFromApi.isNotEmpty ? _trendingOptionsFromApi : _trendingOptions).length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, index) {
-          final option = _trendingOptions[index];
+          final availableOptions = _trendingOptionsFromApi.isNotEmpty 
+              ? _trendingOptionsFromApi 
+              : _trendingOptions;
+          final option = availableOptions[index];
           final isSelected = option.label == currentSelection.label;
           return _TrendingDropdownTile(
             option: option,

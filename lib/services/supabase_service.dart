@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseService {
@@ -31,10 +32,17 @@ class SupabaseService {
     required String email,
     required String password,
   }) async {
-    return _supabase.auth.signInWithPassword(
+    final response = await _supabase.auth.signInWithPassword(
       email: email,
       password: password,
     );
+    final accessToken = response.session?.accessToken;
+    if (accessToken != null) {
+      debugPrint('[SupabaseService] access token: $accessToken');
+    } else {
+      debugPrint('[SupabaseService] signIn completed without an access token.');
+    }
+    return response;
   }
 
   Future<void> signOut() async {

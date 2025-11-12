@@ -6,6 +6,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'delete_comment_dialog.dart';
 import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
+import '../../../services/post_service.dart';
+import '../../../widgets/error_dialog.dart';
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 const _menuDeleteIconUrl = 'assets/feedPage/deleteIcon.svg';
@@ -35,6 +37,7 @@ class PostCardData {
     required this.body,
     required this.commentsCount,
     required this.votes,
+    this.id,
     this.avatarAsset,
     this.comments,
   });
@@ -48,10 +51,11 @@ class PostCardData {
   final String body;
   final int commentsCount;
   final int votes;
+  final String? id;
   final String? avatarAsset;
   final List<CommentData>? comments;
 
-  PostCardData copyWith({int? votes}) {
+  PostCardData copyWith({int? votes, List<CommentData>? comments}) {
     return PostCardData(
       variant: variant,
       username: username,
@@ -62,8 +66,9 @@ class PostCardData {
       body: body,
       commentsCount: commentsCount,
       votes: votes ?? this.votes,
+      id: id,
       avatarAsset: avatarAsset,
-      comments: comments,
+      comments: comments ?? this.comments,
     );
   }
 }
@@ -89,10 +94,11 @@ class CommentData {
 }
 
 class PostCard extends StatefulWidget {
-  const PostCard({super.key, required this.data, this.isPinnedAdmin = false});
+  const PostCard({super.key, required this.data, this.isPinnedAdmin = false, this.postService});
 
   final PostCardData data;
   final bool isPinnedAdmin;
+  final PostService? postService;
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -102,9 +108,13 @@ class _PostCardState extends State<PostCard> {
   final GlobalKey _menuKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   bool _showComments = false;
+  bool _isLoadingComments = false;
+  bool _commentsLoaded = false;
+  List<CommentData> _loadedComments = const [];
   final TextEditingController _commentController = TextEditingController();
   late int _currentVotes;
   int _userVote = 0; // 1 = upvoted, -1 = downvoted, 0 = neutral
+  late final PostService _postService;
 
   PostCardData get data => widget.data;
 
@@ -112,6 +122,7 @@ class _PostCardState extends State<PostCard> {
   void initState() {
     super.initState();
     _currentVotes = data.votes;
+    _postService = widget.postService ?? PostService();
   }
 
   @override
@@ -159,12 +170,15 @@ class _PostCardState extends State<PostCard> {
                   onReport: () async {
                     _removeOverlay();
                     if (!mounted) return;
-                    await _showReportPostSheet(parentContext);
+                    // Check if post has an ID before showing report sheet
+                    if (data.id != null) {
+                      await _showReportPostSheet(parentContext, data.id!);
+                    }
                   },
                   onDelete: () async {
                     _removeOverlay();
                     if (!mounted) return;
-                    await _showDeleteDialog(parentContext, data.title);
+                    await _showDeleteDialog(parentContext, data.title, data.id, _postService);
                   },
                 ),
               ),
@@ -177,10 +191,105 @@ class _PostCardState extends State<PostCard> {
     Overlay.of(parentContext, rootOverlay: true).insert(_overlayEntry!);
   }
 
+  Future<void> _loadComments() async {
+    print('=== DEBUG: Starting _loadComments ===');
+    // Only load comments if the post has an ID and comments aren't already loaded
+    if (data.id == null) {
+      print('ERROR: Cannot load comments - post ID is null');
+      return;
+    }
+    
+    if (_commentsLoaded) {
+      print('DEBUG: Comments already loaded, skipping');
+      return;
+    }
+    
+    if (_isLoadingComments) {
+      print('DEBUG: Already loading comments, skipping');
+      return;
+    }
+
+    print('DEBUG: Setting _isLoadingComments to true');
+    setState(() {
+      _isLoadingComments = true;
+    });
+
+    try {
+      print('DEBUG: Calling _postService.getComments with postId: ${data.id}');
+      final response = await _postService.getComments(postId: data.id!);
+      print('DEBUG: Received response from getComments: $response');
+      
+      if (response['success'] == true) {
+        print('DEBUG: Success response received');
+        final List<dynamic> commentsData = response['comments'] as List<dynamic>;
+        print('DEBUG: Comments data length: ${commentsData.length}');
+        final List<CommentData> comments = commentsData.map((comment) {
+          print('DEBUG: Processing comment: $comment');
+          // Map the comment data to CommentData objects
+          if (comment is Map<String, dynamic>) {
+            return CommentData(
+              author: comment['author'] as String? ?? 'Anonymous',
+              timeAgo: comment['time_ago'] as String? ?? 'Just now',
+              body: comment['content'] as String? ?? '',
+              upvotes: (comment['upvote_count'] as num?)?.toInt() ?? 0,
+              downvotes: (comment['downvote_count'] as num?)?.toInt() ?? 0,
+              avatarAsset: comment['avatar_url'] as String?,
+              initials: comment['initials'] as String?,
+            );
+          }
+          print('DEBUG: Comment is not a Map, using default');
+          return const CommentData(
+            author: 'Anonymous',
+            timeAgo: 'Just now',
+            body: '',
+            upvotes: 0,
+            downvotes: 0,
+          );
+        }).toList();
+
+        if (mounted) {
+          print('DEBUG: Updating state with ${comments.length} comments');
+          setState(() {
+            _loadedComments = comments;
+            _isLoadingComments = false;
+            _commentsLoaded = true;
+          });
+        }
+      } else {
+        print('DEBUG: Error response received');
+        if (mounted) {
+          setState(() {
+            _isLoadingComments = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load comments: ${response['error'] ?? 'Unknown error'}')),
+          );
+        }
+      }
+    } catch (e) {
+      print('=== ERROR: Exception in _loadComments ===');
+      print('Exception: ${e.toString()}');
+      print('Exception type: ${e.runtimeType}');
+      if (mounted) {
+        setState(() {
+          _isLoadingComments = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading comments: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = _PostCardPalette.fromVariant(data.variant);
     final bool isAdminPinned = widget.isPinnedAdmin;
+    
+    // Determine which comments to display
+    final List<CommentData> displayComments = _loadedComments.isNotEmpty 
+        ? _loadedComments 
+        : (data.comments ?? const []);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -238,10 +347,15 @@ class _PostCardState extends State<PostCard> {
                               ? null
                               : () => _toggleMenu(context),
                           moreButtonKey: isAdminPinned ? null : _menuKey,
-                          onToggleComments: () {
+                          onToggleComments: () async {
                             setState(() {
                               _showComments = !_showComments;
                             });
+                            
+                            // Load comments when expanding the section
+                            if (_showComments) {
+                              await _loadComments();
+                            }
                           },
                           commentsExpanded: _showComments,
                           showMoreButton: !isAdminPinned,
@@ -250,12 +364,13 @@ class _PostCardState extends State<PostCard> {
                           const _PostCommentsDivider(),
                           _CommentsSection(
                             palette: palette,
-                            data: data,
+                            data: data.copyWith(comments: displayComments),
                             controller: _commentController,
                             onReportComment: (comment) =>
                                 _showReportCommentSheet(context, comment),
                             onDeleteComment: (comment) =>
                                 _showDeleteCommentDialog(context, comment),
+                            isLoading: _isLoadingComments,
                           ),
                         ],
                       ],
@@ -270,18 +385,64 @@ class _PostCardState extends State<PostCard> {
     );
   }
 
-  void _handleUpvote() {
-    setState(() {
-      _currentVotes += 1;
-      _userVote = 1;
-    });
+  void _handleUpvote() async {
+    // Don't allow voting on hardcoded posts (they don't have IDs)
+    if (data.id == null) {
+      return;
+    }
+    
+    try {
+      // Send 'upvote' - the backend will toggle if already upvoted
+      final response = await _postService.votePost(
+        postId: data.id!,
+        voteType: 'upvote',
+      );
+      
+      if (response['success'] == true) {
+        setState(() {
+          _currentVotes = response['net_score'] as int? ?? _currentVotes;
+          // Update user vote state based on response
+          _userVote = response['user_vote'] == 'upvote' ? 1 : 0;
+        });
+      }
+    } catch (e) {
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to vote: ${e.toString()}')),
+        );
+      }
+    }
   }
 
-  void _handleDownvote() {
-    setState(() {
-      _currentVotes -= 1;
-      _userVote = -1;
-    });
+  void _handleDownvote() async {
+    // Don't allow voting on hardcoded posts (they don't have IDs)
+    if (data.id == null) {
+      return;
+    }
+    
+    try {
+      // Send 'downvote' - the backend will toggle if already downvoted
+      final response = await _postService.votePost(
+        postId: data.id!,
+        voteType: 'downvote',
+      );
+      
+      if (response['success'] == true) {
+        setState(() {
+          _currentVotes = response['net_score'] as int? ?? _currentVotes;
+          // Update user vote state based on response
+          _userVote = response['user_vote'] == 'downvote' ? -1 : 0;
+        });
+      }
+    } catch (e) {
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to vote: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   Future<void> _showDeleteCommentDialog(
@@ -312,7 +473,7 @@ class _PostCardState extends State<PostCard> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const ReportPostSheet(),
+      builder: (_) => const ReportPostSheet(), // No postId for comment reporting
     );
 
     if (result != null && context.mounted) {
@@ -636,24 +797,26 @@ class _PostFooter extends StatelessWidget {
   }
 }
 
-Future<void> _showReportPostSheet(BuildContext context) async {
+Future<void> _showReportPostSheet(BuildContext context, String postId) async {
   final result = await showModalBottomSheet<ReportResult?>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const ReportPostSheet(),
+    builder: (_) => ReportPostSheet(postId: postId),
   );
 
   if (result != null && context.mounted) {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const ReportSuccessDialog(),
-    );
+    if (result.success) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const ReportSuccessDialog(),
+      );
+    }
   }
 }
 
-Future<void> _showDeleteDialog(BuildContext context, String title) async {
+Future<void> _showDeleteDialog(BuildContext context, String title, String? postId, PostService postService) async {
   final result = await showDialog<DeletePostResult>(
     context: context,
     barrierDismissible: false,
@@ -661,10 +824,30 @@ Future<void> _showDeleteDialog(BuildContext context, String title) async {
   );
 
   if (result?.confirmed == true && context.mounted) {
-    // TODO: Hook into actual delete logic when available.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post deleted (placeholder).')),
-    );
+    // Check if post has an ID before attempting to delete
+    if (postId != null) {
+      try {
+        final response = await postService.deletePost(postId: postId);
+        if (response['success'] == true && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response['message'] ?? 'Post deleted successfully')),
+          );
+          // TODO: Refresh the feed or remove the post from UI
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete post: ${e.toString()}')),
+          );
+        }
+      }
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot delete this post')),
+        );
+      }
+    }
   }
 }
 
@@ -1087,6 +1270,7 @@ class _CommentsSection extends StatelessWidget {
     required this.controller,
     required this.onReportComment,
     required this.onDeleteComment,
+    this.isLoading = false,
   });
 
   final _PostCardPalette palette;
@@ -1094,6 +1278,7 @@ class _CommentsSection extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<CommentData> onReportComment;
   final ValueChanged<CommentData> onDeleteComment;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -1108,8 +1293,29 @@ class _CommentsSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CommentInputField(palette: palette, controller: controller),
-            if (comments.isNotEmpty) ...[
+            _CommentInputField(
+              palette: palette, 
+              controller: controller,
+              postId: data.id ?? '', // Pass the post ID
+            ),
+            if (isLoading) ...[
+              const SizedBox(height: 16),
+              const Center(
+                child: Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 8),
+                    Text(
+                      'Loading comments...',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (comments.isNotEmpty) ...[
               const SizedBox(height: 16),
               for (int i = 0; i < comments.length; i++) ...[
                 _CommentCard(
@@ -1120,6 +1326,18 @@ class _CommentsSection extends StatelessWidget {
                 ),
                 if (i != comments.length - 1) const SizedBox(height: 12),
               ],
+            ] else if (data.id != null) ...[
+              // Show loading indicator or message when there are no comments but the post has an ID
+              const SizedBox(height: 16),
+              const Center(
+                child: Text(
+                  'No comments yet. Be the first to comment!',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ),
             ],
           ],
         ),
@@ -1128,14 +1346,144 @@ class _CommentsSection extends StatelessWidget {
   }
 }
 
-class _CommentInputField extends StatelessWidget {
-  const _CommentInputField({required this.palette, required this.controller});
+class _CommentInputField extends StatefulWidget {
+  const _CommentInputField({required this.palette, required this.controller, required this.postId});
 
   final _PostCardPalette palette;
   final TextEditingController controller;
+  final String postId;
+
+  @override
+  State<_CommentInputField> createState() => _CommentInputFieldState();
+}
+
+class _CommentInputFieldState extends State<_CommentInputField> {
+  bool _isSubmitting = false;
+  final PostService _postService = PostService();
+
+  Future<void> _submitComment() async {
+    print('=== DEBUG: Starting _submitComment ===');
+    
+    // Check if postId is valid
+    print('DEBUG: Post ID: "${widget.postId}"');
+    if (widget.postId.isEmpty) {
+      print('ERROR: Cannot post comment - Invalid post ID');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot post comment: This post does not support comments')),
+        );
+      }
+      return;
+    }
+    
+    final content = widget.controller.text.trim();
+    print('DEBUG: Comment content length: ${content.length}');
+    
+    // Validate input
+    if (content.isEmpty) {
+      print('ERROR: Comment content is empty');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a comment')),
+        );
+      }
+      return;
+    }
+    
+    if (content.length > 500) {
+      print('ERROR: Comment content too long - ${content.length} characters');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Comment must be 500 characters or less')),
+        );
+      }
+      return;
+    }
+
+    print('DEBUG: Setting _isSubmitting to true');
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      print('DEBUG: Calling _postService.createComment');
+      print('DEBUG: Parameters - postId: ${widget.postId}, content: ${content.substring(0, math.min(content.length, 50))}${content.length > 50 ? '...' : ''}');
+      
+      final response = await _postService.createComment(
+        postId: widget.postId,
+        content: content,
+      );
+      
+      print('DEBUG: Received response from createComment: $response');
+
+      if (response['success'] == true) {
+        print('DEBUG: Comment creation successful');
+        // Clear the input field
+        widget.controller.clear();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Comment posted successfully')),
+          );
+        }
+        
+        // TODO: Update the UI to show the new comment
+        // This would typically involve calling a callback to refresh the comments list
+      } else {
+        print('DEBUG: Comment creation failed - success flag is false');
+        final errorMessage = response['error'] ?? response['message'] ?? 'Failed to post comment';
+        print('DEBUG: Error message: $errorMessage');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $errorMessage')),
+          );
+        }
+      }
+    } catch (e) {
+      print('=== ERROR: Exception in _submitComment ===');
+      print('Exception: ${e.toString()}');
+      print('Exception type: ${e.runtimeType}');
+      
+      String errorMessage = 'Failed to post comment. Please try again.';
+      
+      // Provide more specific error messages
+      if (e.toString().contains('500')) {
+        errorMessage = 'Server error. Please try again later.';
+        print('ERROR 500: Internal server error from edge function');
+      } else if (e.toString().contains('401')) {
+        errorMessage = 'You must be logged in to post a comment.';
+        print('ERROR 401: Unauthorized access');
+      } else if (e.toString().contains('Network')) {
+        errorMessage = 'Network error. Please check your connection.';
+        print('ERROR: Network connectivity issue');
+      } else if (e.toString().contains('Post not found')) {
+        errorMessage = 'This post is no longer available.';
+        print('ERROR: Post not found');
+      } else {
+        errorMessage = e.toString();
+        print('ERROR: Other error type');
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $errorMessage')),
+        );
+      }
+    } finally {
+      print('DEBUG: Finally block - setting _isSubmitting to false');
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Disable comment submission for posts without valid IDs
+    final bool canComment = widget.postId.isNotEmpty;
+    
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1154,13 +1502,14 @@ class _CommentInputField extends StatelessWidget {
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: TextField(
-              controller: controller,
+              controller: widget.controller,
               maxLines: 3,
               minLines: 3,
-              decoration: const InputDecoration(
+              enabled: canComment, // Disable text field for invalid posts
+              decoration: InputDecoration(
                 border: InputBorder.none,
-                hintText: 'Share your thoughts...',
-                hintStyle: TextStyle(
+                hintText: canComment ? 'Share your thoughts...' : 'Comments not available for this post',
+                hintStyle: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
                   color: Color(0xFF90A1B9),
@@ -1185,7 +1534,7 @@ class _CommentInputField extends StatelessWidget {
               SizedBox(
                 width: 90,
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: canComment && !_isSubmitting ? _submitComment : null,
                   style: ElevatedButton.styleFrom(
                     elevation: 0,
                     backgroundColor: const Color(0xFF155DFC),
@@ -1194,15 +1543,25 @@ class _CommentInputField extends StatelessWidget {
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.send, size: 16, color: Colors.white),
-                      SizedBox(width: 8),
+                      if (_isSubmitting)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      else
+                        const Icon(Icons.send, size: 16, color: Colors.white),
+                      const SizedBox(width: 8),
                       Text(
-                        'Reply',
-                        style: TextStyle(
+                        _isSubmitting ? 'Sending' : 'Reply',
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                           color: Colors.white,
