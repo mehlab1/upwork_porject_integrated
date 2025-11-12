@@ -8,6 +8,8 @@ import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
 import '../../../services/post_service.dart';
 import '../../../widgets/error_dialog.dart';
+import '../../../utils/error_handler.dart';
+import '../../../utils/time_formatter.dart';
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 const _menuDeleteIconUrl = 'assets/feedPage/deleteIcon.svg';
@@ -228,13 +230,13 @@ class _PostCardState extends State<PostCard> {
           // Map the comment data to CommentData objects
           if (comment is Map<String, dynamic>) {
             return CommentData(
-              author: comment['author'] as String? ?? 'Anonymous',
-              timeAgo: comment['time_ago'] as String? ?? 'Just now',
+              author: comment['username'] as String? ?? 'Anonymous',
+              timeAgo: TimeFormatter.formatTimeAgo(comment['created_at'] as String? ?? DateTime.now().toIso8601String()),
               body: comment['content'] as String? ?? '',
               upvotes: (comment['upvote_count'] as num?)?.toInt() ?? 0,
               downvotes: (comment['downvote_count'] as num?)?.toInt() ?? 0,
-              avatarAsset: comment['avatar_url'] as String?,
-              initials: comment['initials'] as String?,
+              avatarAsset: comment['profile_picture_url'] as String?,
+              initials: _getInitials(comment['username'] as String?),
             );
           }
           print('DEBUG: Comment is not a Map, using default');
@@ -261,8 +263,18 @@ class _PostCardState extends State<PostCard> {
           setState(() {
             _isLoadingComments = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load comments: ${response['error'] ?? 'Unknown error'}')),
+          
+          String errorMessage = response['error'] as String? ?? 'Failed to load comments';
+          if (response.containsKey('details')) {
+            errorMessage += ': ${response['details']}';
+          }
+          
+          // Show human-readable error
+          ErrorHandler.showHumanReadableError(
+            context,
+            technicalError: errorMessage,
+            customTitle: 'Comments Error',
+            customSubtitle: 'Unable to load comments',
           );
         }
       }
@@ -274,8 +286,14 @@ class _PostCardState extends State<PostCard> {
         setState(() {
           _isLoadingComments = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading comments: ${e.toString()}')),
+        
+        // Show human-readable error
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: e.toString(),
+          customTitle: 'Comments Error',
+          customSubtitle: 'Unable to load comments',
+          onTryAgain: _loadComments, // Allow retry
         );
       }
     }
@@ -406,10 +424,14 @@ class _PostCardState extends State<PostCard> {
         });
       }
     } catch (e) {
-      // Show error message to user
+      // Show human-readable error
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to vote: ${e.toString()}')),
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: e.toString(),
+          customTitle: 'Voting Error',
+          customSubtitle: 'Unable to process vote',
+          onTryAgain: _handleUpvote, // Allow retry
         );
       }
     }
@@ -436,10 +458,14 @@ class _PostCardState extends State<PostCard> {
         });
       }
     } catch (e) {
-      // Show error message to user
+      // Show human-readable error
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to vote: ${e.toString()}')),
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: e.toString(),
+          customTitle: 'Voting Error',
+          customSubtitle: 'Unable to process vote',
+          onTryAgain: _handleDownvote, // Allow retry
         );
       }
     }
@@ -482,6 +508,161 @@ class _PostCardState extends State<PostCard> {
         barrierDismissible: false,
         builder: (_) => const ReportSuccessDialog(),
       );
+    }
+  }
+
+  /// Extract initials from username
+  String _getInitials(String? username) {
+    if (username == null || username.isEmpty) return '?';
+    
+    // Split by space and take first letter of first two words
+    final words = username.split(' ');
+    if (words.isEmpty) return '?';
+    
+    String initials = words[0][0].toUpperCase();
+    if (words.length > 1) {
+      initials += words[1][0].toUpperCase();
+    }
+    
+    return initials;
+  }
+
+  _PostCardPalette _getPostPalette(PostCardVariant variant) {
+    switch (variant) {
+      case PostCardVariant.top:
+        return _PostCardPalette(
+          borderColor: const Color(0x4DBEDBFF),
+          titleColor: const Color(0xFF0F172A),
+          accentColor: const Color(0xFF155DFC),
+          metaColor: const Color(0xFF94A3B8),
+          commentBackground: const Color(0x1A2B7FFF),
+          commentBorderColor: const Color(0xFF2B7FFF),
+          commentAccentColor: const Color(0xFF2B7FFF),
+          voteButtonBackground: const Color(0xFF2B7FFF),
+          voteBorderColor: Colors.transparent,
+          downvoteColor: const Color(0xFF1D4ED8),
+          avatarBorderColor: const Color(0xFF2B7FFF),
+          votePanelGradient: const [Color(0xFFF0F6FF), Color(0xFFE3ECFF)],
+          votePanelBorderColor: const Color(0xFF8EC5FF),
+          outerBorderColor: const Color(0xFF8EC5FF),
+          outerShadowPrimary: Colors.transparent,
+          outerShadowSecondary: Colors.transparent,
+          outerShadowTertiary: Colors.transparent,
+          showHeader: true,
+          headerGradient: const [
+            Color(0xFFEFF6FF),
+            Color(0xB8EEF2F8),
+            Color(0x00ECE8E8),
+          ],
+          headerBorderColor: Colors.transparent,
+          headerPillColor: const Color(0xFF2B7FFF),
+          headerPillShadows: const [
+            BoxShadow(
+              color: Color(0x332B7FFF),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+            BoxShadow(
+              color: Color(0x332B7FFF),
+              blurRadius: 6,
+              offset: Offset(0, 3),
+            ),
+          ],
+          headerLabel: '👑 Top Post',
+          headerIconAsset: 'assets/images/topIcon.svg',
+          locationBackground: const Color.fromRGBO(239, 246, 255, 1),
+          locationBorder: const Color.fromRGBO(165, 210, 255, 1),
+          locationForeground: const Color.fromRGBO(43, 127, 255, 1),
+          upvoteIconColor: Colors.white,
+          commentsSectionBackground: const Color.fromRGBO(239, 246, 255, 0.35),
+          commentBubbleBorderColor: const Color(0xFFBDD6FF),
+        );
+      case PostCardVariant.hot:
+        return _PostCardPalette(
+          borderColor: const Color(0xFFFFD0A6),
+          titleColor: const Color(0xFF331B09),
+          accentColor: const Color(0xFFFF7A00),
+          metaColor: const Color(0xFFB4692E),
+          commentBackground: const Color(0x1AFF6900),
+          commentBorderColor: const Color(0xFFFF6900),
+          commentAccentColor: const Color(0xFFFF6900),
+          voteButtonBackground: const Color(0xFFFF6900),
+          voteBorderColor: Colors.transparent,
+          downvoteColor: const Color(0xFFF97316),
+          avatarBorderColor: const Color(0xFFFF6900),
+          votePanelGradient: const [
+            Color.fromRGBO(255, 237, 212, 1),
+            Color.fromRGBO(255, 247, 237, 1),
+          ],
+          votePanelBorderColor: const Color(0xFFFFB86A),
+          outerBorderColor: const Color(0xFFFFB86A),
+          outerShadowPrimary: Colors.transparent,
+          outerShadowSecondary: Colors.transparent,
+          outerShadowTertiary: Colors.transparent,
+          showHeader: true,
+          headerGradient: const [
+            Color.fromRGBO(255, 247, 237, 1),
+            Color.fromRGBO(236, 232, 232, 0),
+          ],
+          headerBorderColor: Colors.transparent,
+          headerPillColor: const Color(0xFFFF6900),
+          headerPillShadows: const [
+            BoxShadow(
+              color: Color(0x33FF6900),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+            BoxShadow(
+              color: Color(0x33FF6900),
+              blurRadius: 6,
+              offset: Offset(0, 3),
+            ),
+          ],
+          headerLabel: '🔥 Hotest Post',
+          headerIconAsset: 'assets/images/hotIcon.svg',
+          locationBackground: const Color.fromRGBO(255, 247, 237, 1),
+          locationBorder: const Color.fromRGBO(255, 184, 106, 1),
+          locationForeground: const Color.fromRGBO(202, 53, 0, 1),
+          upvoteIconColor: Colors.white,
+          commentsSectionBackground: const Color.fromRGBO(255, 247, 237, 0.4),
+          commentBubbleBorderColor: const Color(0xFFFFB86A),
+        );
+      case PostCardVariant.newPost:
+        return _PostCardPalette(
+          borderColor: const Color(0xFFD1D6DE),
+          titleColor: const Color(0xFF0F172A),
+          accentColor: const Color.fromRGBO(15, 23, 43, 1),
+          metaColor: const Color(0xFF94A3B8),
+          commentBackground: const Color(0x1A45556C),
+          commentBorderColor: const Color(0xFF45556C),
+          commentAccentColor: const Color(0xFF45556C),
+          voteButtonBackground: Colors.transparent,
+          voteBorderColor: Colors.transparent,
+          downvoteColor: const Color(0xFF64748B),
+          avatarBorderColor: const Color(0xFF45556C),
+          votePanelGradient: const [
+            Color.fromRGBO(248, 250, 252, 1),
+            Color.fromRGBO(248, 250, 252, 1),
+          ],
+          votePanelBorderColor: const Color.fromRGBO(226, 232, 240, 1),
+          outerBorderColor: const Color(0xFFB3BAC5),
+          outerShadowPrimary: Colors.transparent,
+          outerShadowSecondary: Colors.transparent,
+          outerShadowTertiary: Colors.transparent,
+          showHeader: false,
+          headerGradient: const [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
+          headerBorderColor: Colors.transparent,
+          headerPillColor: Colors.transparent,
+          headerPillShadows: const [],
+          headerLabel: '',
+          headerIconAsset: '',
+          locationBackground: const Color.fromRGBO(248, 250, 252, 1),
+          locationBorder: const Color.fromRGBO(226, 232, 240, 1),
+          locationForeground: const Color(0xFF334155),
+          upvoteIconColor: const Color.fromRGBO(15, 23, 43, 1),
+          commentsSectionBackground: const Color.fromRGBO(248, 250, 252, 0.6),
+          commentBubbleBorderColor: const Color(0xFFE2E8F0),
+        );
     }
   }
 }
@@ -836,15 +1017,23 @@ Future<void> _showDeleteDialog(BuildContext context, String title, String? postI
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete post: ${e.toString()}')),
+          // Show human-readable error
+          ErrorHandler.showHumanReadableError(
+            context,
+            technicalError: e.toString(),
+            customTitle: 'Delete Post Error',
+            customSubtitle: 'Unable to delete post',
           );
         }
       }
     } else {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cannot delete this post')),
+        // Show human-readable error
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: 'Cannot delete this post',
+          customTitle: 'Delete Post Error',
+          customSubtitle: 'Invalid post',
         );
       }
     }
@@ -1369,8 +1558,12 @@ class _CommentInputFieldState extends State<_CommentInputField> {
     if (widget.postId.isEmpty) {
       print('ERROR: Cannot post comment - Invalid post ID');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cannot post comment: This post does not support comments')),
+        // Show human-readable error
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: 'Cannot post comment: This post does not support comments',
+          customTitle: 'Comment Error',
+          customSubtitle: 'Invalid post',
         );
       }
       return;
@@ -1383,8 +1576,12 @@ class _CommentInputFieldState extends State<_CommentInputField> {
     if (content.isEmpty) {
       print('ERROR: Comment content is empty');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a comment')),
+        // Show human-readable error
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: 'Please enter a comment',
+          customTitle: 'Comment Error',
+          customSubtitle: 'Empty comment',
         );
       }
       return;
@@ -1393,8 +1590,12 @@ class _CommentInputFieldState extends State<_CommentInputField> {
     if (content.length > 500) {
       print('ERROR: Comment content too long - ${content.length} characters');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Comment must be 500 characters or less')),
+        // Show human-readable error
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: 'Comment must be 500 characters or less',
+          customTitle: 'Comment Error',
+          customSubtitle: 'Comment too long',
         );
       }
       return;
@@ -1434,8 +1635,12 @@ class _CommentInputFieldState extends State<_CommentInputField> {
         final errorMessage = response['error'] ?? response['message'] ?? 'Failed to post comment';
         print('DEBUG: Error message: $errorMessage');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $errorMessage')),
+          // Show human-readable error
+          ErrorHandler.showHumanReadableError(
+            context,
+            technicalError: errorMessage,
+            customTitle: 'Comment Error',
+            customSubtitle: 'Unable to post comment',
           );
         }
       }
@@ -1444,29 +1649,14 @@ class _CommentInputFieldState extends State<_CommentInputField> {
       print('Exception: ${e.toString()}');
       print('Exception type: ${e.runtimeType}');
       
-      String errorMessage = 'Failed to post comment. Please try again.';
-      
-      // Provide more specific error messages
-      if (e.toString().contains('500')) {
-        errorMessage = 'Server error. Please try again later.';
-        print('ERROR 500: Internal server error from edge function');
-      } else if (e.toString().contains('401')) {
-        errorMessage = 'You must be logged in to post a comment.';
-        print('ERROR 401: Unauthorized access');
-      } else if (e.toString().contains('Network')) {
-        errorMessage = 'Network error. Please check your connection.';
-        print('ERROR: Network connectivity issue');
-      } else if (e.toString().contains('Post not found')) {
-        errorMessage = 'This post is no longer available.';
-        print('ERROR: Post not found');
-      } else {
-        errorMessage = e.toString();
-        print('ERROR: Other error type');
-      }
-      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $errorMessage')),
+        // Show human-readable error
+        ErrorHandler.showHumanReadableError(
+          context,
+          technicalError: e.toString(),
+          customTitle: 'Comment Error',
+          customSubtitle: 'Unable to post comment',
+          onTryAgain: _submitComment, // Allow retry
         );
       }
     } finally {

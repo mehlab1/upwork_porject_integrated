@@ -174,9 +174,32 @@ class ErrorDialog extends StatelessWidget {
   }
 }
 
+/// Helper function to show error dialog with dynamic content
+Future<void> showErrorDialog(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+  required String errorMessage,
+  VoidCallback? onCancel,
+  VoidCallback? onTryAgain,
+}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierColor: Colors.black.withOpacity(0.5),
+    builder: (context) => ErrorDialog(
+      title: title,
+      subtitle: subtitle,
+      message: errorMessage,
+      onCancel: onCancel,
+      onTryAgain: onTryAgain,
+    ),
+  );
+}
+
 /// Helper function to show error dialog with dynamic content from backend error
 /// Converts technical error messages to human-readable format
-Future<void> showErrorDialog(
+Future<void> showErrorDialogFromTechnical(
   BuildContext context, {
   required String errorMessage,
   String? title,
@@ -244,6 +267,18 @@ Future<void> showErrorDialog(
       dialogMessage = 'Your post content is empty or invalid. Please add some content before posting.';
     }
   }
+  // Comment Validation Errors
+  else if (errorLower.contains('comment cannot be empty') ||
+      errorLower.contains('comment must be') ||
+      errorLower.contains('500 characters')) {
+    dialogTitle = title ?? 'Invalid Comment';
+    dialogSubtitle = subtitle ?? 'Please check your comment';
+    if (errorLower.contains('500 characters')) {
+      dialogMessage = 'Your comment is too long. Please keep it under 500 characters.';
+    } else {
+      dialogMessage = 'Your comment is empty. Please add some content before posting.';
+    }
+  }
   // Category/Location Validation Errors
   else if (errorLower.contains('invalid category') ||
       errorLower.contains('category selected')) {
@@ -268,7 +303,8 @@ Future<void> showErrorDialog(
   else if (errorLower.contains('internal server error') ||
       errorLower.contains('server error') ||
       errorLower.contains('failed to create') ||
-      errorLower.contains('failed to validate')) {
+      errorLower.contains('failed to validate') ||
+      errorLower.contains('structure of query does not match function result type')) {
     dialogTitle = title ?? 'Server Error';
     dialogSubtitle = subtitle ?? 'Something went wrong';
     dialogMessage = 'We encountered an issue while processing your request. Please try again in a few moments.';
@@ -354,4 +390,3 @@ String _makeErrorMessageReadable(String errorMessage) {
 
   return readable;
 }
-

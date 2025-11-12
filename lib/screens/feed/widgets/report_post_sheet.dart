@@ -136,6 +136,8 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
         if (mounted) {
           await showErrorDialog(
             context,
+            title: 'Report Submission Failed',
+            subtitle: 'Unable to submit report',
             errorMessage: result['error'] ?? 'Failed to submit report',
           );
         }
@@ -145,6 +147,8 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
       if (mounted) {
         await showErrorDialog(
           context,
+          title: 'Report Error',
+          subtitle: 'Something went wrong',
           errorMessage: e.toString(),
         );
       }

@@ -67,7 +67,11 @@ class PostService {
 
       if (resp.statusCode >= 400) {
         final errorMessage = body['error'] ?? body['message'] ?? 'Failed to create post';
-        throw Exception(errorMessage);
+        final errorDetails = body['details'] as String? ?? '';
+        final fullErrorMessage = errorDetails.isNotEmpty 
+            ? '$errorMessage: $errorDetails' 
+            : errorMessage;
+        throw Exception(fullErrorMessage);
       }
 
       return body;
@@ -856,8 +860,13 @@ class PostService {
       if (resp.statusCode >= 400) {
         print('ERROR: HTTP ${resp.statusCode} received from server');
         final errorMessage = body['error'] ?? body['message'] ?? 'Failed to fetch comments';
+        final errorDetails = body['details'] as String? ?? '';
+        final fullErrorMessage = errorDetails.isNotEmpty 
+            ? '$errorMessage: $errorDetails' 
+            : errorMessage;
         print('ERROR: Server error message: "$errorMessage"');
-        throw Exception('HTTP ${resp.statusCode}: $errorMessage');
+        print('ERROR: Server error details: "$errorDetails"');
+        throw Exception('HTTP ${resp.statusCode}: $fullErrorMessage');
       }
 
       print('=== SUCCESS: Comments fetched successfully ===');
@@ -1078,7 +1087,11 @@ class PostService {
 
       if (resp.statusCode >= 400) {
         final errorMessage = body['error'] ?? body['message'] ?? 'Failed to delete post';
-        throw Exception(errorMessage);
+        final errorDetails = body['details'] as String? ?? '';
+        final fullErrorMessage = errorDetails.isNotEmpty 
+            ? '$errorMessage: $errorDetails' 
+            : errorMessage;
+        throw Exception(fullErrorMessage);
       }
 
       return body;
@@ -1105,4 +1118,3 @@ class PostService {
     }
   }
 }
-
