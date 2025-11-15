@@ -108,7 +108,11 @@ class AuthService {
       String baseUsername = profileData['username']?.toString() ?? 'user';
       while (true) {
         try {
-          await _supabaseClient.from('profiles').insert(profileData);
+          await _supabaseClient.from('profiles').upsert(
+            profileData,
+            onConflict: 'id',
+            ignoreDuplicates: false,
+          );
           break; // success
         } catch (e) {
           // Detect duplicate username unique constraint and retry with suffix

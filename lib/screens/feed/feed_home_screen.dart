@@ -2,20 +2,26 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:pal_app/widgets/pal_bottom_nav_bar.dart';
+import 'package:pal_app/widgets/pal_loading_widgets.dart';
+import 'package:pal_app/widgets/pal_refresh_indicator.dart';
+
+import '../../services/post_service.dart';
 import 'create_post_screen.dart';
 import 'widgets/post_card.dart';
-import '../../services/post_service.dart';
-import '../../utils/time_formatter.dart';
 
 class Variables {
   static const Color stateLayersErrorContainerOpacity16 = Color(0x29F9DEDC);
 }
 
 class FeedHomeScreen extends StatefulWidget {
-  const FeedHomeScreen({super.key, this.showWelcomeModal = false});
+  const FeedHomeScreen({super.key, this.showWelcomeModal = false, this.showFirstPostCard = false});
 
   final bool showWelcomeModal;
+  final bool showFirstPostCard;
 
   @override
   State<FeedHomeScreen> createState() => _FeedHomeScreenState();
@@ -37,25 +43,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   bool _isLoadingMore = false;
   int _visiblePostLimit = _pageSize;
   int _initialVisiblePostCapacity = _pageSize;
-  
-  // API integration state
-  final PostService _postService = PostService();
-  List<PostCardData> _apiPosts = [];
-  bool _isLoadingPosts = false;
-  Map<String, dynamic>? _pagination;
-  String? _errorMessage;
-  Map<String, String> _categoryMap = {}; // category name -> id
-  Map<String, String> _locationMap = {}; // location name -> id
-  bool _isLoadingHotTopic = false;
-  _TrendingOption? _currentHotTopic;
-  List<_TrendingOption> _trendingOptionsFromApi = [];
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _primary900 = Color(0xFF100B3C);
   static const Color _activeTabBackground = Color(0xFF0F172B);
   static const Color _darkBlue = Color(0xFF0A1864);
-  static const Color _grey50 = Color(0xFFF7FBFF);
   static const Color _blue100 = Color(0xFFDAE9F8);
   static const Color _slate200 = Color(0xFFE2E8F0);
   static const Color _hotTabColor = Color(0xFFFF8904);
@@ -107,7 +100,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           "You NEED to try the one at Yellow Chilli! Best I've ever had, hands down.",
       upvotes: 45,
       downvotes: 0,
-      initials: 'LB',
+      initials: 'LB', id: '',
     ),
     CommentData(
       author: '@naija_gourmet',
@@ -116,7 +109,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           "Party jollof is undefeated! There's something about that smoky flavor from the firewood.",
       upvotes: 38,
       downvotes: 0,
-      avatarAsset: 'assets/images/profile.svg',
+      avatarAsset: 'assets/images/profile.svg', id: '',
     ),
     CommentData(
       author: '@anonymous',
@@ -124,14 +117,32 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       body: 'checking',
       upvotes: 1,
       downvotes: 0,
-      initials: 'AN',
+      initials: 'AN', id: '',
     ),
   ];
 
   bool _shouldShowWelcomeModal = false;
+  bool _shouldShowFirstPostCard = false;
+  bool _isPageLoading = true;
+  bool _isInitialPostsLoading = true;
+  final PostService _postService = PostService();
+  late final List<PostCardData> _seedPosts = _buildSeedPosts().take(3).toList();
+  final List<PostCardData> _remotePosts = [];
+  bool _isFeedFetching = false;
+  bool _hasMoreRemotePosts = true;
+  int _remoteOffset = 0;
   
-  // Preserve hardcoded posts
-  late final List<PostCardData> _hardcodedPosts = _buildSeedPosts();
+  // Category and location mappings (name -> id)
+  Map<String, String> _categoryMap = {};
+  Map<String, String> _locationMap = {};
+
+  // Monthly Spotlight state
+  bool _isLoadingSpotlightStatus = false;
+  Map<String, dynamic>? _spotlightStatus;
+  List<PostCardData> _spotlightPosts = [];
+  bool _isLoadingSpotlightPosts = false;
+  bool _isShowingSpotlightPosts = false;
+
   static const PostCardData _pinnedAdminPost = PostCardData(
     variant: PostCardVariant.newPost,
     username: 'Pal Admin',
@@ -143,372 +154,237 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         "Stay vigilant when attending Detty December events. Keep your valuables secure, move with trusted pals, and share updates in the community if you notice anything unusual.",
     commentsCount: 6,
     votes: 128,
-    id: null,
     avatarAsset: 'assets/feedPage/profile.png',
     comments: null,
   );
 
-  // Combined posts: pinned admin + first 2 hardcoded + API posts
-  List<PostCardData> get _allPosts {
-    // First 2 hardcoded posts (preserve them)
-    final firstTwoHardcoded = _hardcodedPosts.take(2).toList();
-    // Combine: pinned admin + first 2 hardcoded + API posts
-    return [_pinnedAdminPost, ...firstTwoHardcoded, ..._apiPosts];
-  }
-  
+  List<PostCardData> get _allPosts => [..._seedPosts, ..._remotePosts];
+
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
 
   List<PostCardData> get _visiblePosts {
+    // If showing spotlight posts, return those instead
+    if (_isShowingSpotlightPosts) {
+      if (_spotlightPosts.isEmpty) return const <PostCardData>[];
+      final limit = math.min(_visiblePostLimit, _spotlightPosts.length);
+      return _spotlightPosts.take(limit).toList();
+    }
+    
+    // Otherwise, return regular filtered posts
     final posts = _filteredPosts;
     if (posts.isEmpty) return const <PostCardData>[];
-    
-    // Remove hardcoded posts from visible posts (they're displayed separately)
-    final apiPostsOnly = posts.where((post) => 
-      post != _pinnedAdminPost && 
-      !_hardcodedPosts.take(2).contains(post)
-    ).toList();
-    
-    final limit = math.min(_visiblePostLimit, apiPostsOnly.length);
-    return apiPostsOnly.take(limit).toList();
+    final limit = math.min(_visiblePostLimit, posts.length);
+    return posts.take(limit).toList();
   }
 
   List<PostCardData> _postsForFilter(String filter) {
-    final allPosts = _allPosts;
     switch (filter) {
       case 'Hot':
-        return allPosts
+        return _allPosts
             .where((post) => post.variant == PostCardVariant.hot)
             .toList();
       case 'Top':
-        return allPosts
+        return _allPosts
             .where((post) => post.variant == PostCardVariant.top)
             .toList();
       case 'New':
       default:
-        return allPosts;
+        return _allPosts;
     }
   }
 
-  // ============================================
-  // Data Mapping Functions
-  // ============================================
-
-  /// Maps API post response to PostCardData
-  PostCardData _mapApiPostToPostCardData(Map<String, dynamic> apiPost, String sortFilter) {
-    // Determine variant based on sort filter and post metadata
-    PostCardVariant variant;
-    if (sortFilter == 'Hot' || apiPost['is_trending'] == true) {
-      variant = PostCardVariant.hot;
-    } else if (sortFilter == 'Top' || apiPost['is_monthly_spotlight'] == true) {
-      variant = PostCardVariant.top;
-    } else {
-      variant = PostCardVariant.newPost;
-    }
-
-    // Extract username - try different possible field names
-    final username = apiPost['username'] as String? ?? 
-                    apiPost['user_username'] as String? ?? 
-                    '@user';
-
-    // Format time ago
-    final createdAt = apiPost['created_at'] as String? ?? 
-                     apiPost['created_at_iso'] as String?;
-    final timeAgo = createdAt != null 
-        ? TimeFormatter.formatTimeAgo(createdAt)
-        : 'recently';
-
-    // Extract location and category names
-    final location = apiPost['location_name'] as String? ?? 
-                    apiPost['location'] as String? ?? 
-                    '';
-    final category = apiPost['category_name'] as String? ?? 
-                    apiPost['category'] as String? ?? 
-                    '';
-
-    // Extract content and split into title (first sentence) and body
-    final content = apiPost['content'] as String? ?? '';
-    
-    // Split content into first sentence (title) and remaining (body)
-    final parts = _splitContentIntoTitleAndBody(content);
-    final title = parts['title'] ?? '';
-    final body = parts['body'] ?? '';
-
-    // Extract counts
-    final commentsCount = (apiPost['comment_count'] as num?)?.toInt() ?? 0;
-    final upvotes = (apiPost['upvote_count'] as num?)?.toInt() ?? 0;
-    final downvotes = (apiPost['downvote_count'] as num?)?.toInt() ?? 0;
-    final votes = upvotes - downvotes;
-
-    // Extract avatar
-    final avatarAsset = apiPost['profile_picture_url'] as String? ?? 
-                       apiPost['avatar_url'] as String? ?? 
-                       'assets/feedPage/profile.png';
-
-    return PostCardData(
-      variant: variant,
-      username: username,
-      timeAgo: timeAgo,
-      location: location,
-      category: category,
-      title: title,
-      body: body,
-      commentsCount: commentsCount,
-      votes: votes,
-      id: apiPost['id'] as String?,
-      avatarAsset: avatarAsset,
-      comments: null, // Comments loaded on demand
-    );
-  }
-
-  /// Splits content into title (first sentence) and body (remaining content)
-  Map<String, String> _splitContentIntoTitleAndBody(String content) {
-    if (content.isEmpty) {
-      return {'title': '', 'body': ''};
-    }
-
-    // Find the first sentence ending (period, exclamation mark, or question mark)
-    final sentenceEndings = RegExp(r'[.!?]');
-    final match = sentenceEndings.firstMatch(content);
-    
-    if (match != null) {
-      final firstSentenceEnd = match.end;
-      // Extract title without trailing punctuation and body without leading space
-      final title = content.substring(0, match.start).trim();
-      final body = content.substring(firstSentenceEnd).trim();
-      return {'title': title, 'body': body};
-    } else {
-      // If no sentence ending found, use first 100 characters as title
-      final title = content.length > 100 ? content.substring(0, 100).trim() : content.trim();
-      final body = content.length > 100 ? content.substring(100).trim() : '';
-      return {'title': title, 'body': body};
-    }
-  }
-
-  /// Maps API comment response to CommentData
-  CommentData _mapApiCommentToCommentData(Map<String, dynamic> apiComment) {
-    // Extract author
-    final author = apiComment['username'] as String? ?? 
-                  apiComment['user_username'] as String? ?? 
-                  '@user';
-
-    // Format time ago
-    final createdAt = apiComment['created_at'] as String? ?? 
-                     apiComment['created_at_iso'] as String?;
-    final timeAgo = createdAt != null 
-        ? TimeFormatter.formatTimeAgo(createdAt)
-        : 'recently';
-
-    // Extract content
-    final body = apiComment['content'] as String? ?? '';
-
-    // Extract votes
-    final upvotes = (apiComment['upvote_count'] as num?)?.toInt() ?? 0;
-    final downvotes = (apiComment['downvote_count'] as num?)?.toInt() ?? 0;
-
-    // Extract avatar
-    final avatarAsset = apiComment['profile_picture_url'] as String? ?? 
-                       apiComment['avatar_url'] as String?;
-
-    // Generate initials from username if no avatar
-    final initials = avatarAsset == null && author.isNotEmpty
-        ? author.replaceAll('@', '').substring(0, math.min(2, author.length)).toUpperCase()
-        : null;
-
-    return CommentData(
-      author: author,
-      timeAgo: timeAgo,
-      body: body,
-      upvotes: upvotes,
-      downvotes: downvotes,
-      avatarAsset: avatarAsset,
-      initials: initials,
-    );
-  }
-
-  /// Maps API hot topic response to _TrendingOption
-  _TrendingOption _mapApiHotTopicToTrendingOption(Map<String, dynamic> apiHotTopic) {
-    final title = apiHotTopic['title'] as String? ?? 'Trending Topic';
-    final description = apiHotTopic['description'] as String? ?? '';
-    final postCount = (apiHotTopic['post_count'] as num?)?.toInt() ?? 0;
-    final isActive = apiHotTopic['is_active'] as bool? ?? false;
-
-    // Use default icon and color for now
-    // Can be customized based on hot topic data if needed
-    return _TrendingOption(
-      tag: 'Monthly Spotlight',
-      label: title,
-      description: description,
-      iconAsset: 'assets/images/dettyIcon.svg',
-      iconColor: const Color.fromRGBO(79, 57, 246, 1),
-      postCount: postCount,
-      isActive: isActive,
-    );
-  }
-
-  // ============================================
-  // API Integration Methods
-  // ============================================
-
-  /// Loads initial data: categories, locations, hot topic, and feed
-  Future<void> _loadInitialData() async {
+  Future<void> _checkUserProfile({bool showFirstPostCard = false}) async {
+    // Check if user has any posts by querying Supabase directly
+    // This avoids using the get-profile function which has SQL errors
     try {
-      // Load categories and locations in parallel
-      final categoriesFuture = _postService.getCategories();
-      final locationsFuture = _postService.getLocations();
-      
-      // Load hot topic
-      _loadHotTopic();
-      
-      // Load categories and locations
-      _categoryMap = await categoriesFuture;
-      _locationMap = await locationsFuture;
-      
-      // Load feed posts
-      await _loadFeedPosts();
-    } catch (e) {
-      if (mounted) {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        // User not logged in, don't show welcome modal or first post card
         setState(() {
-          _errorMessage = 'Failed to load data: ${e.toString()}';
+          _shouldShowWelcomeModal = false;
+          _shouldShowFirstPostCard = false;
         });
+        return;
       }
+
+      // Check if we have a valid session token
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) {
+        // No valid session, don't show welcome modal or first post card
+        setState(() {
+          _shouldShowWelcomeModal = false;
+          _shouldShowFirstPostCard = false;
+        });
+        return;
+      }
+
+      // Query Supabase directly to check if user has any posts
+      // Note: posts.user_id references profiles.id, which should equal auth.users.id
+      // Only fetch the id field and limit to 1 for efficiency
+      final userId = user.id;
+      
+      // Execute query: SELECT id FROM posts WHERE user_id = userId AND status = 'active' LIMIT 1
+      final response = await Supabase.instance.client
+          .from('posts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .limit(1);
+
+      if (!mounted) return;
+
+      // Supabase returns a List<Map<String, dynamic>> or List<dynamic>
+      // Convert to List and check if it's empty
+      List<dynamic> postsList;
+      if (response is List) {
+        postsList = response;
+      } else {
+        // Handle unexpected response format
+        debugPrint('WARNING: Unexpected response type from posts query: ${response.runtimeType}');
+        postsList = [];
+      }
+
+      // If response list is empty, user has no posts
+      // If response has data, user has at least one post
+      final hasPosts = postsList.isNotEmpty;
+      
+      debugPrint('User post check: userId=$userId, hasPosts=$hasPosts, postsFound=${postsList.length}');
+
+      // If user has 0 posts, show welcome modal and first post card
+      // If user has posts, don't show them
+      setState(() {
+        _shouldShowWelcomeModal = !hasPosts;
+        _shouldShowFirstPostCard = !hasPosts;
+      });
+
+      // Show welcome modal if user has 0 posts (based on SQL query result)
+      // Use the SQL logic result directly, not widget.showWelcomeModal
+      if (_shouldShowWelcomeModal) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeModal());
+      }
+    } catch (e) {
+      // Error querying posts (network error, permission error, etc.)
+      // Log the error for debugging
+      debugPrint('ERROR: Failed to check user posts: $e');
+      debugPrint('Error type: ${e.runtimeType}');
+      
+      // Don't show welcome modal or first post card as a safe default
+      // This handles cases where:
+      // - Network errors
+      // - Permission errors (RLS policies blocking access)
+      // - Database errors
+      // - User doesn't have a profile record yet (posts.user_id references profiles.id)
+      // - Any other errors
+      if (!mounted) return;
+      setState(() {
+        _shouldShowWelcomeModal = false;
+        _shouldShowFirstPostCard = false;
+      });
+      // Silently handle the error - user can still use the app normally
     }
   }
 
-  /// Loads hot topic for Monthly Spotlight
-  Future<void> _loadHotTopic() async {
-    if (_isLoadingHotTopic) return;
-    
+  Future<void> _fetchSpotlightStatus() async {
+    try {
+      setState(() {
+        _isLoadingSpotlightStatus = true;
+      });
+
+      final response = await _postService.getMonthlySpotlightStatus();
+      if (!mounted) return;
+
+      setState(() {
+        _spotlightStatus = response;
+        _isLoadingSpotlightStatus = false;
+        
+        // Set selected trending to first available option after API data loads
+        final options = _trendingOptions;
+        if (options.isNotEmpty && _selectedTrending == null) {
+          _selectedTrending = options.first;
+        }
+      });
+    } catch (e) {
+      // Silently handle error - no spotlight options will be shown
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSpotlightStatus = false;
+        _spotlightStatus = null;
+        _selectedTrending = null;
+      });
+    }
+  }
+
+  Future<void> _fetchCategoryAndLocationMappings() async {
+    try {
+      final categories = await _postService.getCategories();
+      final locations = await _postService.getLocations();
+      if (!mounted) return;
+      setState(() {
+        _categoryMap = categories;
+        _locationMap = locations;
+      });
+    } catch (e) {
+      // Silently handle error - filters will work with names if IDs not available
+      print('Failed to fetch category/location mappings: $e');
+    }
+  }
+
+  Future<void> _fetchSpotlightPosts() async {
+    if (_isLoadingSpotlightPosts) return;
+
     setState(() {
-      _isLoadingHotTopic = true;
+      _isLoadingSpotlightPosts = true;
+      _isShowingSpotlightPosts = true;
     });
 
     try {
-      final response = await _postService.getHotTopic(includePosts: false);
-      
-      if (response['success'] == true && response['hot_topic'] != null) {
-        final hotTopic = _mapApiHotTopicToTrendingOption(response['hot_topic'] as Map<String, dynamic>);
-        
-        if (mounted) {
-          setState(() {
-            _currentHotTopic = hotTopic;
-            _trendingOptionsFromApi = [hotTopic];
-            _selectedTrending = hotTopic;
-            _isLoadingHotTopic = false;
-          });
-        }
-      } else {
-        // Fallback to hardcoded trending options if API fails
-        if (mounted) {
-          setState(() {
-            _isLoadingHotTopic = false;
-          });
-        }
-      }
-    } catch (e) {
-      // Fallback to hardcoded trending options on error
-      if (mounted) {
-        setState(() {
-          _isLoadingHotTopic = false;
-        });
-      }
-    }
-  }
-
-  /// Loads feed posts from API
-  Future<void> _loadFeedPosts({bool loadMore = false}) async {
-    if (_isLoadingPosts && !loadMore) return;
-    if (_isLoadingMore && loadMore) return;
-
-    if (mounted) {
-      setState(() {
-        if (loadMore) {
-          _isLoadingMore = true;
-        } else {
-          _isLoadingPosts = true;
-          _errorMessage = null;
-        }
-      });
-    }
-
-    try {
-      // Map filter to sort parameter
-      String sort;
-      String timeFilter = 'all'; // Default time filter
-      switch (_selectedFilter) {
-        case 'Hot':
-          sort = 'hot';
-          break;
-        case 'Top':
-          sort = 'top';
-          // For top posts, we might want to add UI for time filter selection
-          // For now, using 'all' as default
-          break;
-        case 'New':
-        default:
-          sort = 'latest';
-          break;
-      }
-
-      // Get category and location IDs
-      String? categoryId;
-      if (_selectedCategory != null && _selectedCategory != _categoryOptions.first) {
-        categoryId = _categoryMap[_selectedCategory];
-      }
-
-      String? locationId;
-      if (_selectedLocation != null && _selectedLocation != _locationOptions.first) {
-        locationId = _locationMap[_selectedLocation];
-      }
-
-      // Calculate offset
-      final offset = loadMore ? (_apiPosts.length) : 0;
-
-      // Call API
-      final response = await _postService.getFeed(
-        sort: sort,
-        limit: _pageSize,
-        offset: offset,
-        categoryId: categoryId,
-        locationId: locationId,
-        timeFilter: timeFilter, // Add timeFilter parameter
+      print('DEBUG: _fetchSpotlightPosts called. Preparing request with limit=50 offset=0');
+      final response = await _postService.getMonthlySpotlightPosts(
+        limit: 50, // Fetch more posts for spotlight
+        offset: 0,
       );
 
-      if (response['success'] == true) {
-        final posts = response['posts'] as List<dynamic>? ?? [];
-        final pagination = response['pagination'] as Map<String, dynamic>?;
+      print('DEBUG: Received spotlight posts response. Keys: ${response.keys.toList()}');
+      final respPostsList = (response['posts'] as List?) ?? const [];
+      print('DEBUG: Number of posts returned from spotlight function: ${respPostsList.length}');
 
-        // Map posts to PostCardData
-        final mappedPosts = posts
-            .map((post) => _mapApiPostToPostCardData(
-                  post as Map<String, dynamic>,
-                  _selectedFilter,
-                ))
-            .toList();
-
-        if (mounted) {
-          setState(() {
-            if (loadMore) {
-              _apiPosts.addAll(mappedPosts);
-            } else {
-              _apiPosts = mappedPosts;
+      final posts = respPostsList;
+      final variant = PostCardVariant.newPost; // Use newPost variant for spotlight posts
+      
+      final mappedPosts = posts
+          .map((post) {
+            if (post is Map<String, dynamic>) {
+              return _mapPostToCardData(post, variant);
             }
-            _pagination = pagination;
-            _isLoadingPosts = false;
-            _isLoadingMore = false;
-            _errorMessage = null;
-          });
-        }
-      } else {
-        throw Exception(response['error'] ?? response['message'] ?? 'Failed to load posts');
-      }
+            if (post is Map) {
+              return _mapPostToCardData(
+                Map<String, dynamic>.from(post as Map),
+                variant,
+              );
+            }
+            return null;
+          })
+          .whereType<PostCardData>()
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _spotlightPosts = mappedPosts;
+        _isLoadingSpotlightPosts = false;
+        // Update visible limit for spotlight posts
+        _visiblePostLimit = math.min(_initialVisiblePostCapacity, mappedPosts.length);
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingPosts = false;
-          _isLoadingMore = false;
-          _errorMessage = 'Failed to load posts: ${e.toString()}';
-        });
-      }
+      print('DEBUG: Exception in _fetchSpotlightPosts: ${e.runtimeType} ${e.toString()}');
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message.isEmpty ? 'Failed to load spotlight posts.' : message)),
+      );
+      setState(() {
+        _isLoadingSpotlightPosts = false;
+        _spotlightPosts = [];
+      });
     }
   }
 
@@ -516,29 +392,45 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
-    // Initialize with hardcoded options, will be updated when API loads
-    _selectedTrending = _trendingOptions.first;
-    // During development we always surface the welcome modal so the team can iterate on the UI.
-    _shouldShowWelcomeModal = true;
-    if (_shouldShowWelcomeModal) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeModal());
-    }
+    // Don't set selectedTrending here - wait for API data
+    
+    // Check user profile to determine if welcome modal and first post card should be shown
+    _checkUserProfile(showFirstPostCard: widget.showFirstPostCard);
+    
+    // Fetch monthly spotlight status
+    _fetchSpotlightStatus();
+    
+    // Fetch category and location mappings
+    _fetchCategoryAndLocationMappings();
+    
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _initializeVisibleLimit(),
     );
-    // Load initial data from API
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _loadInitialData(),
-    );
+    Future.microtask(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      if (!mounted) return;
+      setState(() {
+        _isPageLoading = false;
+      });
+    });
+    Future.microtask(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      setState(() {
+        _isInitialPostsLoading = false;
+      });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchFeed(reset: true);
+    });
   }
 
   @override
   void didUpdateWidget(covariant FeedHomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.showWelcomeModal &&
-        !oldWidget.showWelcomeModal &&
-        !_shouldShowWelcomeModal) {
-      _shouldShowWelcomeModal = true;
+    // Show welcome modal if SQL logic determined user has 0 posts
+    // This handles cases where the widget is updated after the SQL query completes
+    if (_shouldShowWelcomeModal) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeModal());
     }
   }
@@ -552,7 +444,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: const Color(0xFFF9FAFB), // neutral-50
       body: SafeArea(
         bottom: false,
@@ -702,100 +594,46 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
             // Filters and content
             Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 15,
-                  vertical: 12,
-                ),
-                child: Column(
-                  children: [
-                    // Filter buttons (Hot, New, Top)
-                    Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: _slate200, width: 1),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildFilterButton(
-                            'Hot',
-                            Icons.local_fire_department,
-                          ),
-                          _buildFilterButton('New', Icons.new_releases),
-                          _buildFilterButton('Top', Icons.trending_up),
-                        ],
-                      ),
+              child: PalRefreshIndicator(
+                onRefresh: _refreshFeed,
+                child: Container(
+                  color: const Color(0xFFF7FBFF),
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
                     ),
-
-                    const SizedBox(height: 12),
-
-                    // Location Filter dropdown
-                    _buildLocationFilter(),
-
-                    const SizedBox(height: 12),
-
-                    // Category dropdown
-                    _buildCategoryDropdown(),
-
-                    const SizedBox(height: 12),
-
-                    // Monthly Spotlight card
-                    _buildMonthlySpotlight(),
-
-                    const SizedBox(height: 26),
-
-                    // Create Your First Post card
-                    _buildFirstPostCard(),
-
-                    const SizedBox(height: 24),
-
-                    PostCard(data: _pinnedAdminPost, isPinnedAdmin: true, postService: _postService),
-                    const SizedBox(height: 24),
-                    
-                    // First 2 hardcoded posts (preserve them)
-                    for (final post in _hardcodedPosts.take(2)) PostCard(data: post, postService: _postService),
-                    const SizedBox(height: 24),
-
-                    // API posts
-                    for (final post in _visiblePosts) PostCard(data: post, postService: _postService),
-                    if (_isLoadingMore)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2.5),
-                          ),
-                        ),
-                      ),
-                    if (!_isLoadingMore &&
-                        _visiblePosts.length < _filteredPosts.length)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 12, bottom: 32),
-                        child: Center(
-                          child: Text(
-                            'Scroll for more posts',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                              fontFamily: 'Inter',
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+                        _buildWelcomeHeader(context),
+                        const SizedBox(height: 18),
+                        _buildFilterPills(),
+                        _buildCards(context),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavBar(),
+      bottomNavigationBar: PalBottomNavigationBar(
+        active: PalNavDestination.home,
+        onHomeTap: _scrollToTop,
+        onNotificationsTap: () {
+          Navigator.of(context).pushNamed('/notifications');
+        },
+        onSettingsTap: () {
+          Navigator.pushNamed(context, '/settings');
+        },
+        showNotificationDot: true,
+      ),
+    );
+    return Stack(
+      children: [scaffold, if (_isPageLoading) const PalLoadingOverlay()],
     );
   }
 
@@ -855,20 +693,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   void _loadMorePosts() {
-    // Check if we have more posts from API
-    final hasMore = _pagination?['has_more'] == true;
-    
-    if (_isLoadingMore) return;
-    
-    // If API has more posts, load them
-    if (hasMore) {
-      _loadFeedPosts(loadMore: true);
+    final totalPosts = _filteredPosts.length;
+    if (_isLoadingMore) {
       return;
     }
-    
-    // Otherwise, use existing pagination logic for visible posts
-    final totalPosts = _filteredPosts.length;
     if (_visiblePostLimit >= totalPosts) {
+      if (_hasMoreRemotePosts && !_isFeedFetching) {
+        _fetchFeed();
+      }
       return;
     }
 
@@ -902,6 +734,406 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     );
   }
 
+  Future<void> _refreshFeed() async {
+    setState(() {
+      _isInitialPostsLoading = true;
+      
+      // Reset all filters on pull to refresh
+      _selectedFilter = 'New';
+      _selectedLocation = null;
+      _selectedCategory = null;
+      _selectedTrending = null;
+      _isShowingSpotlightPosts = false;
+      _spotlightPosts = [];
+      _isLoadingSpotlightPosts = false;
+      _isLocationDropdownOpen = false;
+      _isCategoryDropdownOpen = false;
+      _isTrendingDropdownOpen = false;
+      
+      // Reset feed state
+      _remotePosts.clear();
+      _remoteOffset = 0;
+      _hasMoreRemotePosts = true;
+      _isLoadingMore = false;
+    });
+    
+    _resetVisibleLimitForFilter(_selectedFilter);
+    
+    // Fetch fresh data from backend
+    await _fetchFeed(reset: true);
+    
+    // Refresh spotlight status to get latest options
+    await _fetchSpotlightStatus();
+    
+    // Delay for smooth UI transition (matching provided code pattern)
+    // Note: _fetchFeed may also set _isInitialPostsLoading to false, but we ensure
+    // it's set after the delay to match the provided UI behavior
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    setState(() {
+      _isInitialPostsLoading = false;
+    });
+  }
+
+  Future<void> _fetchFeed({bool reset = false}) async {
+    if (_isFeedFetching) return;
+    if (!_hasMoreRemotePosts && !reset && _selectedFilter != 'Hot' && _selectedFilter != 'Top') return;
+
+    // Check if location or category filters are selected
+    // Location: "All Areas" (first option) means no filter, so check if not first option
+    final hasLocationFilter = _selectedLocation != null && _selectedLocation != _locationOptions.first;
+    // Category: null means no filter, any selected value (including first option) is a valid filter
+    final hasCategoryFilter = _selectedCategory != null;
+    final hasFilters = hasLocationFilter || hasCategoryFilter;
+
+    // Special handling for Hot filter - uses get-hottest-post edge function
+    // BUT if location/category filters are selected, use get-feed instead
+    if (_selectedFilter == 'Hot' && !hasFilters) {
+      setState(() {
+        _isFeedFetching = true;
+        if (reset) {
+          _remotePosts.clear();
+          _remoteOffset = 0;
+          _hasMoreRemotePosts = false; // Hot filter returns single post, no pagination
+        }
+      });
+
+      try {
+        final response = await _postService.getHottestPost(
+          timeframe: 'today',
+        );
+
+        final hottestPost = response['hottest_post'] as Map<String, dynamic>?;
+        final variant = PostCardVariant.hot;
+        
+        List<PostCardData> mappedPosts = [];
+        if (hottestPost != null) {
+          final mappedPost = _mapPostToCardData(hottestPost, variant);
+          if (mappedPost != null) {
+            mappedPosts = [mappedPost];
+          }
+        }
+
+        if (!mounted) return;
+        setState(() {
+          if (reset) {
+            _remotePosts.clear();
+            _remotePosts.addAll(mappedPosts);
+            _hasMoreRemotePosts = false; // Single post, no more to load
+          } else {
+            // For Hot filter, replace existing posts on reset
+            _remotePosts.clear();
+            _remotePosts.addAll(mappedPosts);
+            _hasMoreRemotePosts = false;
+          }
+          final filteredLength = _postsForFilter(_selectedFilter).length;
+          if (reset) {
+            _visiblePostLimit =
+                math.min(_initialVisiblePostCapacity, filteredLength);
+          } else {
+            _visiblePostLimit =
+                math.min(filteredLength, _visiblePostLimit + mappedPosts.length);
+          }
+        });
+      } catch (e) {
+        if (!mounted) return;
+        final message = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message.isEmpty ? 'Failed to load hottest post.' : message)),
+        );
+      } finally {
+        if (!mounted) return;
+        setState(() {
+          _isFeedFetching = false;
+          _isInitialPostsLoading = false;
+        });
+      }
+      return;
+    }
+
+    // Special handling for Top filter - uses get-top-post edge function
+    // BUT if location/category filters are selected, use get-feed instead
+    if (_selectedFilter == 'Top' && !hasFilters) {
+      setState(() {
+        _isFeedFetching = true;
+        if (reset) {
+          _remotePosts.clear();
+          _remoteOffset = 0;
+          _hasMoreRemotePosts = false; // Top filter returns single post, no pagination
+        }
+      });
+
+      try {
+        final response = await _postService.getTopPost(
+          period: 'all_time',
+        );
+
+        final topPost = response['top_post'] as Map<String, dynamic>?;
+        final variant = PostCardVariant.top;
+        
+        List<PostCardData> mappedPosts = [];
+        if (topPost != null) {
+          final mappedPost = _mapPostToCardData(topPost, variant);
+          if (mappedPost != null) {
+            mappedPosts = [mappedPost];
+          }
+        }
+
+        if (!mounted) return;
+        setState(() {
+          if (reset) {
+            _remotePosts.clear();
+            _remotePosts.addAll(mappedPosts);
+            _hasMoreRemotePosts = false; // Single post, no more to load
+          } else {
+            // For Top filter, replace existing posts on reset
+            _remotePosts.clear();
+            _remotePosts.addAll(mappedPosts);
+            _hasMoreRemotePosts = false;
+          }
+          final filteredLength = _postsForFilter(_selectedFilter).length;
+          if (reset) {
+            _visiblePostLimit =
+                math.min(_initialVisiblePostCapacity, filteredLength);
+          } else {
+            _visiblePostLimit =
+                math.min(filteredLength, _visiblePostLimit + mappedPosts.length);
+          }
+        });
+      } catch (e) {
+        if (!mounted) return;
+        final message = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message.isEmpty ? 'Failed to load top post.' : message)),
+        );
+      } finally {
+        if (!mounted) return;
+        setState(() {
+          _isFeedFetching = false;
+          _isInitialPostsLoading = false;
+        });
+      }
+      return;
+    }
+
+    // Use get-feed for all filters when location/category filters are selected
+    // OR for New filter (always uses get-feed)
+    // OR for Hot/Top when filters are selected
+    final sortParam = _sortParamForFilter(_selectedFilter);
+    final nextOffset = reset ? 0 : _remoteOffset;
+
+    setState(() {
+      _isFeedFetching = true;
+      if (reset) {
+        _remotePosts.clear();
+        _remoteOffset = 0;
+        _hasMoreRemotePosts = true;
+      }
+    });
+
+    try {
+      // Convert category and location names to IDs
+      String? categoryId;
+      String? locationId;
+      
+      // Only filter by category if a specific category is selected (not the first/default)
+      if (hasCategoryFilter) {
+        categoryId = _categoryMap[_selectedCategory];
+        // If categoryId is null, the mapping might not be loaded yet - log for debugging
+        if (categoryId == null) {
+          debugPrint('WARNING: Category filter selected but ID not found in mapping: $_selectedCategory');
+        }
+      }
+      
+      // Only filter by location if a specific location is selected (not "All Areas")
+      if (hasLocationFilter) {
+        locationId = _locationMap[_selectedLocation];
+        // If locationId is null, the mapping might not be loaded yet - log for debugging
+        if (locationId == null) {
+          debugPrint('WARNING: Location filter selected but ID not found in mapping: $_selectedLocation');
+        }
+      }
+      
+      debugPrint('Fetching feed with filters: sort=$sortParam, categoryId=$categoryId, locationId=$locationId');
+      
+      final response = await _postService.getFeed(
+        sort: sortParam,
+        limit: _pageSize,
+        offset: nextOffset,
+        categoryId: categoryId,
+        locationId: locationId,
+      );
+
+      final posts = (response['posts'] as List?) ?? const [];
+      final variant = _variantForFilter(_selectedFilter);
+      final mappedPosts = posts
+          .map((post) {
+            if (post is Map<String, dynamic>) {
+              return _mapPostToCardData(post, variant);
+            }
+            if (post is Map) {
+              return _mapPostToCardData(
+                Map<String, dynamic>.from(post as Map),
+                variant,
+              );
+            }
+            return null;
+          })
+          .whereType<PostCardData>()
+          .toList();
+
+      final pagination = response['pagination'] as Map<String, dynamic>?;
+      final hasMore = pagination?['has_more'] as bool? ?? false;
+      final updatedOffset = pagination?['next_offset'] as int? ??
+          (nextOffset + posts.length);
+
+      if (!mounted) return;
+      setState(() {
+        _remotePosts.addAll(mappedPosts);
+        _remoteOffset = updatedOffset;
+        _hasMoreRemotePosts = hasMore;
+        final filteredLength = _postsForFilter(_selectedFilter).length;
+        if (reset) {
+          _visiblePostLimit =
+              math.min(_initialVisiblePostCapacity, filteredLength);
+        } else {
+          _visiblePostLimit =
+              math.min(filteredLength, _visiblePostLimit + mappedPosts.length);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message.isEmpty ? 'Failed to load feed.' : message)),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isFeedFetching = false;
+        _isInitialPostsLoading = false;
+      });
+    }
+  }
+
+  String _sortParamForFilter(String filter) {
+    switch (filter) {
+      case 'Top':
+        return 'top';
+      case 'Hot':
+        return 'hot';
+      case 'New':
+      default:
+        return 'latest';
+    }
+  }
+
+  PostCardVariant _variantForFilter(String filter) {
+    switch (filter) {
+      case 'Top':
+        return PostCardVariant.top;
+      case 'Hot':
+        return PostCardVariant.hot;
+      case 'New':
+      default:
+        return PostCardVariant.newPost;
+    }
+  }
+
+  PostCardData? _mapPostToCardData(
+    Map<String, dynamic> post,
+    PostCardVariant variant,
+  ) {
+    final rawTitle = (post['title'] ?? '').toString().trim();
+    final rawBody = (post['body'] ?? '').toString().trim();
+    final content = (post['content'] ?? '').toString().trim();
+    if (rawTitle.isEmpty && rawBody.isEmpty && content.isEmpty) {
+      return null;
+    }
+
+    String title = rawTitle;
+    String body = rawBody;
+    if (title.isEmpty) {
+      final segments = content.split('\n\n');
+      if (segments.isNotEmpty) {
+        title = segments.first.trim();
+        if (body.isEmpty && segments.length > 1) {
+          body = segments.sublist(1).join('\n\n').trim();
+        }
+      }
+    }
+    if (body.isEmpty) {
+      body = content.isNotEmpty ? content : title;
+    }
+    if (title.isEmpty) {
+      title = 'Community Post';
+    }
+
+    final profile = post['profiles'] as Map<String, dynamic>?;
+    final categoryMap = post['categories'] as Map<String, dynamic>?;
+    final locationMap = post['locations'] as Map<String, dynamic>?;
+
+    final username = (post['username'] ??
+            profile?['username'] ??
+            '@pal_user')
+        .toString();
+    final category =
+        (post['category_name'] ?? categoryMap?['name'] ?? '').toString();
+    final location =
+        (post['location_name'] ?? locationMap?['name'] ?? '').toString();
+
+    final createdAt =
+        DateTime.tryParse(post['created_at']?.toString() ?? '');
+
+    final commentsCount = _parseInt(
+      post['comments_count'] ?? post['comment_count'] ?? post['replies_count'],
+    );
+    final votes = _parseInt(
+      post['votes'] ??
+          post['upvote_count'] ??
+          post['engagement_score'] ??
+          post['net_score'],
+    );
+
+    return PostCardData(
+      id: post['id']?.toString(),
+      variant: variant,
+      username: username.isEmpty ? '@pal_user' : username,
+      timeAgo: _formatTimeAgo(createdAt),
+      location: location,
+      category: category,
+      title: title,
+      body: body,
+      commentsCount: commentsCount,
+      votes: votes,
+      avatarAsset: 'assets/feedPage/profile.png',
+    );
+  }
+
+  int _parseInt(Object? value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  String _formatTimeAgo(DateTime? dateTime) {
+    if (dateTime == null) return 'just now';
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    if (difference.inMinutes < 1) return 'just now';
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    }
+    if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    }
+    if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    }
+    return DateFormat('MMM d').format(dateTime);
+  }
+
   List<PostCardData> _buildSeedPosts() {
     final hotComments = _hotComments;
     return [
@@ -916,7 +1148,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Looking for a cozy, semi-outdoor space around VI that can host about 30 people. Prefer somewhere with good WiFi and accessible parking.',
         commentsCount: hotComments.length,
         votes: 186,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
         comments: hotComments,
       ),
@@ -931,7 +1162,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             "Yellow Chilli? Ofada Boy? Share your undefeated jollof spots so we can plan a weekend tasting crawl.",
         commentsCount: 54,
         votes: 124,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
         comments: const <CommentData>[],
       ),
@@ -946,7 +1176,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Need recommendations for coworking spots on the mainland that stay powered through late nights. Bonus points for ergonomic chairs.',
         commentsCount: 12,
         votes: 8,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -960,7 +1189,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Trying to stay consistent with morning runs. Anyone up for a Lekki-Ikate loop twice a week?',
         commentsCount: 6,
         votes: 21,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -974,7 +1202,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Share your favourite vendors for statement pieces. Looking for something extra for New Year’s Eve.',
         commentsCount: 33,
         votes: 98,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -988,7 +1215,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Curious about the mentorship quality and if they really provide access to investors as promised in the deck.',
         commentsCount: 18,
         votes: 142,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -1002,7 +1228,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Planning a Sunday outing with two toddlers. Need spots with playgrounds or activity corners.',
         commentsCount: 4,
         votes: 5,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -1016,7 +1241,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Looking for somewhere quiet past 9pm to get work done. Preferably with outdoor seating.',
         commentsCount: 17,
         votes: 77,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -1030,7 +1254,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Heard there’s a rooftop jazz session somewhere around Onikan. Anyone got the plug?',
         commentsCount: 29,
         votes: 201,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
       PostCardData(
@@ -1044,7 +1267,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             'Trying to map out 20km loops with minimal traffic. Any cyclist groups open to new members?',
         commentsCount: 9,
         votes: 12,
-        id: null,
         avatarAsset: 'assets/feedPage/profile.png',
       ),
     ];
@@ -1112,10 +1334,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             setState(() {
               _selectedFilter = label;
               _isLoadingMore = false;
+              _remotePosts.clear();
+              _remoteOffset = 0;
+              _hasMoreRemotePosts = true;
+              _isShowingSpotlightPosts = false; // Reset spotlight posts when switching filters
               _resetVisibleLimitForFilter(label);
             });
-            // Reload feed with new filter
-            _loadFeedPosts();
+            _fetchFeed(reset: true);
             _scrollToTop();
           },
           borderRadius: BorderRadius.circular(10),
@@ -1254,11 +1479,17 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             showHeader: false,
             onSelected: (value) {
               setState(() {
-                _selectedLocation = value;
+                // If "All Areas" is selected, set to null to clear filter
+                // Otherwise, set the selected location
+                _selectedLocation = (value == _locationOptions.first) ? null : value;
                 _isLocationDropdownOpen = false;
+                // Reset feed state and fetch with new filter
+                _remotePosts.clear();
+                _remoteOffset = 0;
+                _hasMoreRemotePosts = true;
+                _isLoadingMore = false;
               });
-              // Reload feed with new location filter
-              _loadFeedPosts();
+              _fetchFeed(reset: true);
             },
           ),
       ],
@@ -1376,11 +1607,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             showHeader: false,
             onSelected: (value) {
               setState(() {
+                // Set the selected category (all category options are valid filters)
                 _selectedCategory = value;
                 _isCategoryDropdownOpen = false;
+                // Reset feed state and fetch with new filter
+                _remotePosts.clear();
+                _remoteOffset = 0;
+                _hasMoreRemotePosts = true;
+                _isLoadingMore = false;
               });
-              // Reload feed with new category filter
-              _loadFeedPosts();
+              _fetchFeed(reset: true);
             },
           ),
       ],
@@ -1388,12 +1624,40 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Widget _buildMonthlySpotlight() {
-    // Use API data if available, otherwise fallback to hardcoded
-    final availableOptions = _trendingOptionsFromApi.isNotEmpty 
-        ? _trendingOptionsFromApi 
-        : _trendingOptions;
-    final trending = _selectedTrending ?? availableOptions.first;
-    final postCountValue = trending.postCount ?? 0;
+    // Only show spotlight if we have options from API
+    final options = _trendingOptions;
+    if (options.isEmpty || _selectedTrending == null) {
+      return const SizedBox.shrink();
+    }
+    
+    final trending = _selectedTrending!;
+    
+    // Use API data for Monthly Spotlight
+    String topicTitle = trending.label;
+    String topicDescription = trending.description;
+    int postCountValue = trending.postCount ?? 0;
+    bool isActive = trending.isActive;
+    
+    // If this is Monthly Spotlight and we have API data, use it
+    if (trending.tag == 'Monthly Spotlight' && _spotlightStatus != null) {
+      final isAvailable = _spotlightStatus!['is_available'] as bool? ?? false;
+      final hotTopicTitle = _spotlightStatus!['hot_topic_title'] as String?;
+      final stats = _spotlightStatus!['stats'] as Map<String, dynamic>?;
+      
+      if (hotTopicTitle != null && hotTopicTitle.isNotEmpty) {
+        topicTitle = hotTopicTitle;
+      }
+      
+      if (stats != null) {
+        final totalPosts = stats['total_posts'] as int?;
+        if (totalPosts != null) {
+          postCountValue = totalPosts;
+        }
+      }
+      
+      isActive = isAvailable;
+    }
+    
     final tagLabel = (trending.tag ?? 'Trending Topic').toUpperCase();
     final postsLabel = '$postCountValue post${postCountValue == 1 ? '' : 's'}';
 
@@ -1487,7 +1751,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        trending.label,
+                        topicTitle,
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -1498,7 +1762,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        trending.description,
+                        topicDescription,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -1510,7 +1774,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                     ],
                   ),
                 ),
-                if (trending.isActive)
+                if (isActive)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -1542,12 +1806,19 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             ),
           ),
         ),
-        if (_isTrendingDropdownOpen) _buildTrendingDropdownPanel(trending),
+        if (_isTrendingDropdownOpen && _selectedTrending != null) _buildTrendingDropdownPanel(_selectedTrending!),
       ],
     );
   }
 
   Widget _buildTrendingDropdownPanel(_TrendingOption currentSelection) {
+    final options = _trendingOptions;
+    
+    // Don't show dropdown if no options available
+    if (options.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1578,25 +1849,24 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           ),
         ],
       ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        itemCount: (_trendingOptionsFromApi.isNotEmpty ? _trendingOptionsFromApi : _trendingOptions).length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final availableOptions = _trendingOptionsFromApi.isNotEmpty 
-              ? _trendingOptionsFromApi 
-              : _trendingOptions;
-          final option = availableOptions[index];
-          final isSelected = option.label == currentSelection.label;
-          return _TrendingDropdownTile(
-            option: option,
-            isSelected: isSelected,
-            onTap: () => _handleTrendingSelect(option),
-          );
-        },
-      ),
+      child: options.isEmpty
+          ? const SizedBox.shrink()
+          : ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              itemCount: options.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final option = options[index];
+                final isSelected = option.label == currentSelection.label;
+                return _TrendingDropdownTile(
+                  option: option,
+                  isSelected: isSelected,
+                  onTap: () => _handleTrendingSelect(option),
+                );
+              },
+            ),
     );
   }
 
@@ -1605,37 +1875,41 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       _selectedTrending = option;
       _isTrendingDropdownOpen = false;
     });
+    
+    // Monthly Spotlight is the only option, fetch spotlight posts from edge function
+    _fetchSpotlightPosts();
+    
+    // Scroll to top when spotlight is selected
+    _scrollToTop();
   }
 
-  static const List<_TrendingOption> _trendingOptions = [
-    _TrendingOption(
-      tag: 'Monthly Spotlight',
-      label: 'Detty December',
-      description: 'Share parties, owambe, concerts & nightlife vibes',
-      iconAsset: 'assets/images/dettyIcon.svg',
-      iconColor: Color.fromRGBO(79, 57, 246, 1),
-      postCount: 1,
-      isActive: true,
-    ),
-    _TrendingOption(
-      tag: 'Community Pick',
-      label: 'Weekend Brunch',
-      description: 'Discover brunch spots & bottomless mimosa deals',
-      iconAsset: 'assets/images/dettyIcon.svg',
-      iconColor: Color(0xFF2B7FFF),
-      postCount: 4,
-      isActive: false,
-    ),
-    _TrendingOption(
-      tag: 'City Guides',
-      label: 'Island Nightlife',
-      description: 'Best clubs, lounges & late-night chill spots',
-      iconAsset: 'assets/images/dettyIcon.svg',
-      iconColor: Color(0xFFFF6900),
-      postCount: 3,
-      isActive: false,
-    ),
-  ];
+  // Get available spotlight options from API only
+  List<_TrendingOption> get _trendingOptions {
+    final List<_TrendingOption> options = [];
+    
+    // Only add Monthly Spotlight if available from API (only one option ever)
+    if (_spotlightStatus != null) {
+      final isAvailable = _spotlightStatus!['is_available'] as bool? ?? false;
+      if (isAvailable) {
+        final hotTopicTitle = _spotlightStatus!['hot_topic_title'] as String? ?? 'Monthly Spotlight';
+        final stats = _spotlightStatus!['stats'] as Map<String, dynamic>?;
+        final postCount = stats?['total_posts'] as int? ?? 0;
+        
+        // Add Monthly Spotlight option (only one option ever, so no duplicates possible)
+        options.add(_TrendingOption(
+          tag: 'Monthly Spotlight',
+          label: hotTopicTitle,
+          description: 'Share posts related to the monthly spotlight topic',
+          iconAsset: 'assets/images/dettyIcon.svg',
+          iconColor: const Color.fromRGBO(79, 57, 246, 1),
+          postCount: postCount,
+          isActive: true,
+        ));
+      }
+    }
+    
+    return options;
+  }
 
   Widget _buildFirstPostCard() {
     return Container(
@@ -1737,86 +2011,152 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     );
   }
 
-  Widget _buildBottomNavBar() {
-    return Container(
-      height: 84,
-      decoration: BoxDecoration(color: _grey50),
-      child: Stack(
+  Widget _buildWelcomeHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Positioned(
-            bottom: 11,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                width: 360,
-                height: 62,
-                decoration: BoxDecoration(
-                  color: _grey50,
-                  border: Border.all(
-                    color: Colors.black.withOpacity(0.2),
-                    width: 0.4,
-                  ),
-                  borderRadius: BorderRadius.circular(38),
-                ),
-                child: Row(
-                  children: [
-                    // Feed button (active)
-                    Container(
-                      width: 119,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        color: _primaryColor,
-                        borderRadius: BorderRadius.circular(38),
-                      ),
-                      child: Icon(Icons.home, color: Colors.white, size: 25),
-                    ),
-                    // Notifications button
-                    Expanded(
-                      child: Center(
-                        child: Stack(
-                          children: [
-                            Icon(
-                              Icons.notifications_outlined,
-                              size: 25,
-                              color: _primary900,
-                            ),
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 1,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Settings button
-                    Container(
-                      width: 50,
-                      height: 50,
-                      margin: const EdgeInsets.only(right: 16),
-                      child: Icon(
-                        Icons.settings_outlined,
-                        size: 24,
-                        color: _primary900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+            clipBehavior: Clip.antiAlias,
+            child: Image.asset(
+              'assets/feedPage/profile.png',
+              fit: BoxFit.cover,
             ),
           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Welcome back, Pal',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Catch up with your Lagos community',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xFF64748B),
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterPills() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            _buildFilterButton('Hot', Icons.local_fire_department_outlined),
+            const SizedBox(width: 12),
+            _buildFilterButton('New', Icons.bolt_outlined),
+            const SizedBox(width: 12),
+            _buildFilterButton('Top', Icons.trending_up_outlined),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCards(BuildContext context) {
+    final postsToShow = _visiblePosts;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildLocationFilter(),
+          const SizedBox(height: 16),
+          _buildCategoryDropdown(),
+          const SizedBox(height: 24),
+          _buildMonthlySpotlight(),
+          const SizedBox(height: 24),
+          if (_isInitialPostsLoading)
+            ...List.generate(
+              3,
+              (index) => const Padding(
+                padding: EdgeInsets.only(bottom: 16),
+                child: LoadingPostSkeleton(),
+              ),
+            )
+          else ...[
+            if (_shouldShowFirstPostCard) ...[
+              _buildFirstPostCard(),
+              const SizedBox(height: 24),
+            ],
+            // Only show admin post for "New" filter and when not showing spotlight posts
+            if (_selectedFilter == 'New' && !_isShowingSpotlightPosts) ...[
+              PostCard(data: _pinnedAdminPost, isPinnedAdmin: true),
+              const SizedBox(height: 24),
+            ],
+            // Show loading indicator when fetching spotlight posts
+            if (_isLoadingSpotlightPosts)
+              ...List.generate(
+                3,
+                (index) => const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: LoadingPostSkeleton(),
+                ),
+              )
+            else
+              ...postsToShow
+                .map(
+                  (post) => Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: PostCard(data: post),
+                  ),
+                )
+                .toList(),
+            if (_isLoadingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                ),
+              ),
+            if (!_isLoadingMore && postsToShow.length < _filteredPosts.length)
+              const Padding(
+                padding: EdgeInsets.only(top: 12, bottom: 32),
+                child: Center(
+                  child: Text(
+                    'Scroll for more posts',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF64748B),
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );

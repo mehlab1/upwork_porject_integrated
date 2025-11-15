@@ -433,6 +433,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       Navigator.of(context).pushNamedAndRemoveUntil(
         '/login',
         (route) => false,
+        arguments: {'showWelcomeModal': true, 'showFirstPostCard': true},
       );
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -461,6 +462,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/login',
           (route) => false,
+          arguments: {'showWelcomeModal': true, 'showFirstPostCard': true},
         );
       }
     } catch (e) {

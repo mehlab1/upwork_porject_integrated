@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:pal_app/services/post_service.dart';
-import 'package:pal_app/widgets/error_dialog.dart';
 
 const _headerIconAsset = 'assets/feedPage/reportIcon.svg';
-const _selectedIndicatorAsset = 'assets/images/checkIcon.svg';
-const _infoIconAsset = 'assets/images/infoIcon.svg';
 
 const _cardBorderColor = Color(0xFFFFC9C9);
 const _selectedOptionBackground = Color.fromRGBO(254, 242, 242, 0.5);
@@ -29,10 +25,12 @@ const _successInfoBackground = Color(0xFFF8FAFC);
 const _successInfoBorder = Color(0xFFE2E8F0);
 const _successInfoText = Color(0xFF314158);
 
-class ReportPostSheet extends StatefulWidget {
-  const ReportPostSheet({super.key, this.postId});
+enum ReportSubject { post, comment }
 
-  final String? postId;
+class ReportPostSheet extends StatefulWidget {
+  const ReportPostSheet({super.key, this.subject = ReportSubject.post});
+
+  final ReportSubject? subject;
 
   @override
   State<ReportPostSheet> createState() => _ReportPostSheetState();
@@ -40,7 +38,6 @@ class ReportPostSheet extends StatefulWidget {
 
 class _ReportPostSheetState extends State<ReportPostSheet> {
   final TextEditingController _detailsController = TextEditingController();
-  final PostService _postService = PostService();
   final _reportOptions = const [
     _ReportOption(
       title: 'Spam or misleading',
@@ -65,7 +62,6 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
   ];
 
   late String _selectedReason = _reportOptions.first.title;
-  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -73,96 +69,9 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
     super.dispose();
   }
 
-  // Map UI reasons to backend reasons
-  String _mapReasonToBackend(String uiReason) {
-    switch (uiReason) {
-      case 'Spam or misleading':
-        return 'spam';
-      case 'Harassment or hate speech':
-        return 'harassment'; // Could also be 'hate_speech'
-      case 'Inappropriate content':
-        return 'inappropriate_content';
-      case 'False information':
-        return 'misinformation';
-      case 'Other':
-        return 'other';
-      default:
-        return 'other';
-    }
-  }
-
-  Future<void> _submitReport() async {
-    // If postId is null, this is likely for comment reporting which we're not implementing yet
-    if (widget.postId == null) {
-      Navigator.of(context).pop(
-        ReportResult(
-          reason: _selectedReason,
-          details: _detailsController.text.trim(),
-          success: true,
-        ),
-      );
-      return;
-    }
-
-    if (_isSubmitting) return;
-    
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    try {
-      final mappedReason = _mapReasonToBackend(_selectedReason);
-      final description = _detailsController.text.trim();
-
-      final result = await _postService.reportPost(
-        postId: widget.postId!,
-        reason: mappedReason,
-        description: description.isNotEmpty ? description : null,
-      );
-
-      if (result['success'] == true) {
-        // Show success dialog
-        if (mounted) {
-          Navigator.of(context).pop(
-            ReportResult(
-              reason: _selectedReason,
-              details: description,
-              success: true,
-            ),
-          );
-        }
-      } else {
-        // Show error using ErrorDialog
-        if (mounted) {
-          await showErrorDialog(
-            context,
-            title: 'Report Submission Failed',
-            subtitle: 'Unable to submit report',
-            errorMessage: result['error'] ?? 'Failed to submit report',
-          );
-        }
-      }
-    } catch (e) {
-      // Show error dialog
-      if (mounted) {
-        await showErrorDialog(
-          context,
-          title: 'Report Error',
-          subtitle: 'Something went wrong',
-          errorMessage: e.toString(),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final reportSubject = widget.subject ?? ReportSubject.post;
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
 
@@ -182,11 +91,11 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _ReportHeaderSection(),
+                    _ReportHeaderSection(subject: reportSubject),
                     const SizedBox(height: 20),
-                    const Padding(
-                      padding: EdgeInsets.only(left: 30),
-                      child: _ReportOptionsSectionTitle(),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 30),
+                      child: _ReportOptionsSectionTitle(subject: reportSubject),
                     ),
                     const SizedBox(height: 8),
                     Container(
@@ -222,8 +131,14 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
                     const SizedBox(height: 24),
                     _ReportFooter(
                       onCancel: () => Navigator.of(context).pop(),
-                      onSubmit: _submitReport,
-                      isSubmitting: _isSubmitting,
+                      onSubmit: () {
+                        Navigator.of(context).pop(
+                          ReportResult(
+                            reason: _selectedReason,
+                            details: _detailsController.text.trim(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -237,11 +152,10 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
 }
 
 class ReportResult {
-  const ReportResult({required this.reason, required this.details, this.success = false});
+  const ReportResult({required this.reason, required this.details});
 
   final String reason;
   final String details;
-  final bool success;
 }
 
 class _ReportCard extends StatelessWidget {
@@ -270,8 +184,14 @@ class _ReportCard extends StatelessWidget {
 }
 
 class _ReportHeader extends StatelessWidget {
+  const _ReportHeader({required this.subject});
+
+  final ReportSubject subject;
+
   @override
   Widget build(BuildContext context) {
+    final bool isComment = subject == ReportSubject.comment;
+    final String title = isComment ? 'Report Comment' : 'Report Post';
     return Row(
       children: [
         Container(
@@ -305,14 +225,14 @@ class _ReportHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 16),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Report Post',
-                style: TextStyle(
+                title,
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: _titleColor,
@@ -320,10 +240,10 @@ class _ReportHeader extends StatelessWidget {
                   letterSpacing: -0.45,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 'Help us understand the issue',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
                   color: _subtitleColor,
@@ -418,18 +338,12 @@ class _ReportSelectionIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isSelected) {
-      // Use local asset instead of network URL to avoid connection refused errors
-      return SvgPicture.asset(
-        _selectedIndicatorAsset,
+      return Container(
         width: 12,
         height: 12,
-        placeholderBuilder: (_) => Container(
-          width: 12,
-          height: 12,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.black,
-          ),
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.black,
         ),
       );
     }
@@ -505,12 +419,7 @@ class _ReportInfoCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Use Flutter's built-in info icon to avoid network requests
-          const Icon(
-            Icons.info,
-            color: _infoHeadingColor,
-            size: 20,
-          ),
+          const Icon(Icons.info, color: _infoHeadingColor, size: 20),
           const SizedBox(width: 12),
           const Expanded(
             child: Column(
@@ -699,7 +608,6 @@ class _ReportActionButton extends StatelessWidget {
     required this.backgroundColor,
     required this.borderColor,
     required this.onPressed,
-    this.isSubmitting = false,
   });
 
   final String label;
@@ -707,7 +615,6 @@ class _ReportActionButton extends StatelessWidget {
   final Color backgroundColor;
   final Color borderColor;
   final VoidCallback onPressed;
-  final bool isSubmitting;
 
   @override
   Widget build(BuildContext context) {
@@ -725,26 +632,17 @@ class _ReportActionButton extends StatelessWidget {
           ),
           foregroundColor: textColor,
         ),
-        onPressed: isSubmitting ? null : onPressed,
-        child: isSubmitting
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 2,
-                ),
-              )
-            : Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
-                  fontFamily: 'Inter',
-                  letterSpacing: -0.1504,
-                ),
-              ),
+        onPressed: onPressed,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+            fontFamily: 'Inter',
+            letterSpacing: -0.1504,
+          ),
+        ),
       ),
     );
   }
@@ -758,7 +656,9 @@ class _ReportOption {
 }
 
 class _ReportHeaderSection extends StatelessWidget {
-  const _ReportHeaderSection();
+  const _ReportHeaderSection({required this.subject});
+
+  final ReportSubject subject;
 
   @override
   Widget build(BuildContext context) {
@@ -778,19 +678,25 @@ class _ReportHeaderSection extends StatelessWidget {
         border: Border.all(color: const Color(0x80FFE2E2), width: 2),
       ),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-      child: _ReportHeader(),
+      child: _ReportHeader(subject: subject),
     );
   }
 }
 
 class _ReportOptionsSectionTitle extends StatelessWidget {
-  const _ReportOptionsSectionTitle();
+  const _ReportOptionsSectionTitle({required this.subject});
+
+  final ReportSubject subject;
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
-      'Why are you reporting this post?',
-      style: TextStyle(
+    final bool isComment = subject == ReportSubject.comment;
+    final String title = isComment
+        ? 'Why are you reporting this comment?'
+        : 'Why are you reporting this post?';
+    return Text(
+      title,
+      style: const TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         color: _titleColor,
@@ -820,11 +726,10 @@ class _ReportDetailsSectionTitle extends StatelessWidget {
 }
 
 class _ReportFooter extends StatelessWidget {
-  const _ReportFooter({required this.onCancel, required this.onSubmit, this.isSubmitting = false});
+  const _ReportFooter({required this.onCancel, required this.onSubmit});
 
   final VoidCallback onCancel;
   final VoidCallback onSubmit;
-  final bool isSubmitting;
 
   @override
   Widget build(BuildContext context) {
@@ -853,7 +758,6 @@ class _ReportFooter extends StatelessWidget {
               backgroundColor: _submitColor,
               borderColor: Colors.transparent,
               onPressed: onSubmit,
-              isSubmitting: isSubmitting,
             ),
           ),
         ],

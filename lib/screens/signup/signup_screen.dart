@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
 import '../otp/otp_verification_screen.dart';
+import 'interest_selection_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -286,7 +287,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               const SizedBox(height: 52),
 
               // Form fields container - width 342px, centered
-              Container(
+              SizedBox(
                 width: 342,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,17 +765,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 width: 338,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: _isLoading ? _primaryColor.withOpacity(0.7) : _primaryColor,
+                  color:
+                      _isLoading ? _primaryColor.withOpacity(0.7) : _primaryColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: _isLoading ? null : () async {
-                      if (_validateSignUp()) {
-                        await _handleSignUp();
-                      }
-                    },
+                    onTap: _isLoading
+                        ? null
+                        : () async {
+                            if (_validateSignUp()) {
+                              await _handleSignUp();
+                            }
+                          },
                     borderRadius: BorderRadius.circular(20),
                     child: Center(
                       child: _isLoading
@@ -783,9 +787,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : Text(
@@ -1124,7 +1127,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return emailRegex.hasMatch(email);
   }
 
-  /// Handles the signup process with Supabase backend
   Future<void> _handleSignUp() async {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
@@ -1135,7 +1137,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() {
       _isLoading = true;
-      // Clear previous errors
       _firstNameError = null;
       _lastNameError = null;
       _usernameError = null;
@@ -1145,11 +1146,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      // Calculate birthday (must be at least 13 years ago, use 14 to be safe)
-      final birthday = DateTime.now().subtract(const Duration(days: 365 * 14));
-      final birthdayString = birthday.toIso8601String().substring(0, 10); // YYYY-MM-DD
+      final birthday =
+          DateTime.now().subtract(const Duration(days: 365 * 14));
+      final birthdayString = birthday.toIso8601String().substring(0, 10);
 
-      // Map gender to schema format
       String? genderValue;
       if (gender == 'male') {
         genderValue = 'male';
@@ -1161,7 +1161,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         genderValue = 'prefer_not_to_say';
       }
 
-      // Prepare user data for profile creation
       final userData = {
         'username': username,
         'gender': genderValue,
@@ -1172,7 +1171,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'account_status': 'active',
       };
 
-      // Sign up with Supabase
       final response = await _authService.signUp(
         email: email,
         password: password,
@@ -1181,7 +1179,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (!mounted) return;
 
-      // Check if signup was successful
       if (response.user == null) {
         setState(() {
           _isLoading = false;
@@ -1190,29 +1187,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
 
-      // Send OTP to the user's email
       try {
         await _authService.sendOtp(
           email: email,
           userId: response.user!.id,
         );
-      } catch (otpError) {
-        // If OTP sending fails, still allow user to proceed to OTP screen
-        // They can request a new OTP there
-        // Failed to send OTP during signup
-      }
+      } catch (_) {}
 
       if (!mounted) return;
 
-      // Navigate to OTP verification screen
+      setState(() {
+        _isLoading = false;
+      });
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => OtpVerificationScreen(
-            email: email,
-            isPasswordReset: false, // This is for signup
-            // No onSuccess callback - OTP screen handles navigation itself
-          ),
+          builder: (context) => InterestSelectionScreen(email: email),
         ),
       );
     } on AuthException catch (e) {
@@ -1220,13 +1211,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() {
         _isLoading = false;
       });
-
       final errorMessage = e.message.toLowerCase();
-      if (errorMessage.contains('email') || errorMessage.contains('already registered')) {
+      if (errorMessage.contains('email') ||
+          errorMessage.contains('already registered')) {
         setState(() {
           _emailError = 'This email is already registered';
         });
-      } else if (errorMessage.contains('username') || errorMessage.contains('duplicate')) {
+      } else if (errorMessage.contains('username') ||
+          errorMessage.contains('duplicate')) {
         setState(() {
           _usernameError = 'This username is already taken';
         });

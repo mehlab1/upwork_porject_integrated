@@ -218,4 +218,3 @@ class DeleteCommentDialog extends StatelessWidget {
     );
   }
 }
-

@@ -5,6 +5,10 @@ import 'screens/home/home_screen.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/signup/signup_screen.dart';
 import 'screens/otp/otp_verification_screen.dart';
+import 'screens/notifications/notifications_screen.dart';
+import 'screens/settings/settings_screen.dart';
+import 'screens/settings/your_posts_screen.dart';
+import 'screens/settings/community_guidelines_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +41,8 @@ class PalApp extends StatelessWidget {
               ModalRoute.of(context)?.settings.arguments
                   as Map<String, dynamic>?;
           final showWelcomeModal = args?['showWelcomeModal'] == true;
-          return HomeScreen(showWelcomeModal: showWelcomeModal);
+          final showFirstPostCard = args?['showFirstPostCard'] == true;
+          return HomeScreen(showWelcomeModal: showWelcomeModal, showFirstPostCard: showFirstPostCard);
         },
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignUpScreen(),
@@ -46,6 +51,11 @@ class PalApp extends StatelessWidget {
               ModalRoute.of(context)!.settings.arguments as String? ?? '';
           return OtpVerificationScreen(email: email);
         },
+        '/notifications': (context) => const NotificationsScreen(),
+        '/settings': (context) => const SettingsScreen(),
+        YourPostsScreen.routeName: (context) => const YourPostsScreen(),
+        CommunityGuidelinesScreen.routeName: (context) =>
+            const CommunityGuidelinesScreen(),
       },
     );
   }

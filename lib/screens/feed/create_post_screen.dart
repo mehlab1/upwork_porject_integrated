@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../services/post_service.dart';
-import '../../widgets/error_dialog.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -13,12 +13,13 @@ class CreatePostScreen extends StatefulWidget {
 class _CreatePostScreenState extends State<CreatePostScreen> {
   String _activeCategory = 'Gist';
   bool _spotlightEnabled = true;
-  bool _isSubmitting = false;
-  Map<String, String> _categoryMap = {};
-  Map<String, String> _locationMap = {};
   String? _selectedLocation;
-  bool _isLocationDropdownOpen = false;
-  final PostService _postService = PostService();
+  bool _isLocationInlineOpen = false;
+  bool _isSubmitting = false;
+  
+  // Monthly Spotlight state
+  bool _isLoadingSpotlightStatus = false;
+  Map<String, dynamic>? _spotlightStatus;
 
   static const Map<String, Color> _categoryColors = {
     'Gist': Color(0xFFAD46FF),
@@ -26,48 +27,121 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     'Discussion': Color(0xFFFE9A00),
   };
 
+  static const List<String> _locationOptions = [
+    'Victoria Island (VI)',
+    'Ikoyi',
+    'Lekki',
+    'Lekki Phase 1',
+    'Ajah',
+    'Yaba',
+    'Surulere',
+    'Ikeja',
+    'Maryland',
+    'Gbagada',
+  ];
+
+  // Fallback hardcoded ids for locations and categories. These are used when
+  // the edge functions that fetch categories/locations fail (backend issue).
+  // The UI will continue to show the same labels but the app will send the
+  // mapped id to the create-post edge function so posts are created with a
+  // location/category id. Replace these ids with real ones if you have them.
+  static const Map<String, String> _fallbackLocationIdLookup = {
+    'Victoria Island (VI)': '1549afea-3d2d-4a84-ab4c-e781816578bc',
+    'Ikoyi': 'd2bab849-c561-4bc1-9a38-9b41acc713d2',
+    'Lekki': 'bb6c49e4-0ee1-4fca-83fc-703fc24588de',
+    'Lekki Phase 1': '7b634ec2-a209-4e5b-99d7-a4e3fda6bafa',
+    'Ajah': 'f530b1ec-765c-4108-bf3d-f1ee5160cb1d',
+    'Yaba': 'd854e619-8816-4114-b3b6-cc4667a4c93f',
+    'Surulere': 'bc3bd59c-dc8d-40da-b857-8f4aaf5edd9a',
+    'Ikeja': 'db730bb8-fe61-4259-818f-2ef073010a7d',
+    'Maryland': 'b4f2e110-7f8d-4046-8c48-13b0c3c3571e',
+    'Gbagada': '9171d84c-fc1b-4c18-9757-618bffb65ed3',
+  };
+
+  static const Map<String, String> _fallbackCategoryIdLookup = {
+    'Gist': '920895cb-cb64-47fa-bae4-3d600b174b27',
+    'Ask': '4610edf9-33a8-4173-94ed-5da6bfc1869c',
+    'Discussion': '923b71e2-e2d8-4ac5-a112-f4c4e2270983',
+  };
+
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
   final FocusNode _titleFocusNode = FocusNode();
+  final FocusNode _bodyFocusNode = FocusNode();
+  final PostService _postService = PostService();
+  Map<String, String> _categoryIdLookup = {};
+  Map<String, String> _locationIdLookup = {};
 
   @override
   void initState() {
     super.initState();
-    _loadCategories();
-    _loadLocations();
+    _titleController.addListener(_onFormFieldChanged);
+    _bodyController.addListener(_onFormFieldChanged);
+    _checkSpotlightStatus();
+    Future(() async {
+      try {
+        final fetchedCategories = await _postService.getCategories();
+        final fetchedLocations = await _postService.getLocations();
+        if (!mounted) return;
+        setState(() {
+          final usedCategories = fetchedCategories.isNotEmpty ? fetchedCategories : _fallbackCategoryIdLookup;
+          final usedLocations = fetchedLocations.isNotEmpty ? fetchedLocations : _fallbackLocationIdLookup;
+          _categoryIdLookup = usedCategories;
+          _locationIdLookup = usedLocations;
+        });
+        // Log when backend returned empty lists so we can detect fallback usage locally
+        if (fetchedCategories.isEmpty || fetchedLocations.isEmpty) {
+          // ignore: avoid_print
+          print('DEBUG: Using fallback mappings for categories or locations (empty backend result)');
+        }
+      } catch (_) {
+        if (!mounted) return;
+        // On error, fall back to hardcoded mappings so the UI remains usable.
+        setState(() {
+          _categoryIdLookup = _fallbackCategoryIdLookup;
+          _locationIdLookup = _fallbackLocationIdLookup;
+        });
+        // ignore: avoid_print
+        print('DEBUG: Failed to fetch categories/locations - using fallback mappings');
+      }
+    });
   }
 
-  Future<void> _loadCategories() async {
+  Future<void> _checkSpotlightStatus() async {
     try {
-      final categories = await _postService.getCategories();
-      if (mounted) {
-        setState(() {
-          _categoryMap = categories;
-        });
-      }
-    } catch (e) {
-      // Silently fail - categories will be empty if not found
-    }
-  }
+      setState(() {
+        _isLoadingSpotlightStatus = true;
+      });
 
-  Future<void> _loadLocations() async {
-    try {
-      final locations = await _postService.getLocations();
-      if (mounted) {
-        setState(() {
-          _locationMap = locations;
-        });
-      }
+      final response = await _postService.getMonthlySpotlightStatus();
+      if (!mounted) return;
+
+      setState(() {
+        _spotlightStatus = response;
+        _isLoadingSpotlightStatus = false;
+        // Set spotlight enabled based on availability
+        final isAvailable = response['is_available'] as bool? ?? false;
+        _spotlightEnabled = isAvailable;
+      });
     } catch (e) {
-      // Silently fail - locations will be empty if not found
+      // Silently handle error - fallback to default
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSpotlightStatus = false;
+        _spotlightStatus = null;
+        _spotlightEnabled = false; // Disable if status fetch fails
+      });
     }
   }
 
   @override
   void dispose() {
+    _titleController.removeListener(_onFormFieldChanged);
+    _bodyController.removeListener(_onFormFieldChanged);
     _titleController.dispose();
     _bodyController.dispose();
     _titleFocusNode.dispose();
+    _bodyFocusNode.dispose();
     super.dispose();
   }
 
@@ -77,6 +151,143 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   static const _textSecondary = Color(0xFF475569);
   static const _muted = Color(0xFF94A3B8);
   static const _outline = Color(0xFFE2E8F0);
+
+  bool get _isTitleFilled => _titleController.text.trim().length >= 2;
+  bool get _isBodyFilled => _bodyController.text.trim().length >= 2;
+  bool get _isTitleOverLimit => _titleController.text.length > 75;
+  bool get _isBodyOverLimit => _bodyController.text.length > 500;
+  bool get _isLocationSelected => _selectedLocation != null;
+  bool get _isOverLimit => _isTitleOverLimit || _isBodyOverLimit;
+  bool get _canPost =>
+      !_isOverLimit && _isTitleFilled && _isBodyFilled && _isLocationSelected;
+
+  void _onFormFieldChanged() {
+    setState(() {});
+  }
+
+  String _formStatusMessage() {
+    if (_isTitleOverLimit) {
+      return 'Title exceeds 75 characters';
+    }
+    if (_isBodyOverLimit) {
+      return 'Content exceeds 500 characters';
+    }
+    if (!_isTitleFilled) {
+      return 'Add a title to get started';
+    }
+    if (!_isBodyFilled) {
+      return 'Share some details';
+    }
+    if (!_isLocationSelected) {
+      return 'Select your neighborhood';
+    }
+    return 'Please follow community guidelines';
+  }
+
+  String? _statusIconAsset() {
+    if (_isTitleOverLimit || _isBodyOverLimit) {
+      return 'assets/images/askIcon.svg';
+    }
+    if (!_isTitleFilled) {
+      return 'assets/feedPage/pencilIcon.svg';
+    }
+    if (!_isBodyFilled) {
+      return 'assets/postCreation/shareDetails.svg';
+    }
+    if (!_isLocationSelected) {
+      return 'assets/images/locationIcon.svg';
+    }
+    return null;
+  }
+
+  Color _statusIconColor() {
+    if (_isTitleOverLimit || _isBodyOverLimit) {
+      return const Color(0xFFE7000B);
+    }
+    if (!_isTitleFilled || !_isBodyFilled) {
+      return _muted;
+    }
+    if (!_isLocationSelected) {
+      return _textPrimary;
+    }
+    return _muted;
+  }
+
+  Color _statusTextColor() {
+    if (_isTitleOverLimit || _isBodyOverLimit) {
+      return const Color(0xFFE7000B);
+    }
+    if (_canPost) {
+      return const Color(0xFF62748E);
+    }
+    if (!_isLocationSelected && _isTitleFilled && _isBodyFilled) {
+      return _textPrimary;
+    }
+    return _muted;
+  }
+
+  Widget _buildStatusPrompt() {
+    final iconAsset = _statusIconAsset();
+    final message = _formStatusMessage();
+    final isActionable = _canPost && !_isOverLimit;
+
+    return TextButton(
+      onPressed: () {
+        if (_isTitleOverLimit || _isBodyOverLimit) {
+          _bodyFocusNode.requestFocus();
+          return;
+        }
+        if (!_isTitleFilled) {
+          _titleFocusNode.requestFocus();
+          return;
+        }
+        if (!_isBodyFilled) {
+          _bodyFocusNode.requestFocus();
+          return;
+        }
+        if (!_isLocationSelected) {
+          _showLocationPicker();
+          return;
+        }
+        _showGuidelinesDialog();
+      },
+      style: TextButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        alignment: Alignment.centerLeft,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (iconAsset != null) ...[
+            SvgPicture.asset(
+              iconAsset,
+              width: 16,
+              height: 16,
+              colorFilter: ColorFilter.mode(
+                _statusIconColor(),
+                BlendMode.srcIn,
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
+              color: _statusTextColor(),
+              fontFamily: 'Inter',
+              decoration: isActionable
+                  ? TextDecoration.underline
+                  : TextDecoration.none,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -255,18 +466,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildComposer() {
-    final isOverLimit = _bodyController.text.length > 1000;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
           controller: _titleController,
           focusNode: _titleFocusNode,
+          maxLength: 75,
+          maxLengthEnforcement: MaxLengthEnforcement.enforced,
           style: const TextStyle(
             fontSize: 16,
             height: 24.75 / 18,
             fontWeight: FontWeight.w400,
-            color: Color(0xFF90A1B9),
+            color: Color(0xFF0F172B),
             fontFamily: 'Inter',
           ),
           decoration: const InputDecoration(
@@ -279,22 +491,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               fontFamily: 'Inter',
             ),
             border: InputBorder.none,
+            counterText: '',
           ),
         ),
         Container(width: 298, height: 0.99268, color: _outline),
         const SizedBox(height: 12),
         TextField(
           controller: _bodyController,
+          focusNode: _bodyFocusNode,
           keyboardType: TextInputType.multiline,
           minLines: 5,
           maxLines: null,
+          maxLength: 500,
+          maxLengthEnforcement: MaxLengthEnforcement.enforced,
           onChanged: (_) => setState(() {}),
           style: TextStyle(
             fontSize: 14,
             height: 20 / 14,
-            color: isOverLimit
+            color: _isBodyOverLimit
                 ? const Color(0xFFE7000B)
-                : const Color(0xFF90A1B9),
+                : const Color(0xFF0F172B),
             fontWeight: FontWeight.w400,
             fontFamily: 'Inter',
           ),
@@ -309,6 +525,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               fontFamily: 'Inter',
             ),
             border: InputBorder.none,
+            counterText: '',
           ),
         ),
         Container(width: 298, height: 0.99268, color: _outline),
@@ -317,180 +534,135 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildLocationCard() {
-    final locationOptions = _locationMap.keys.toList();
-    final selectedLocation = _selectedLocation ?? (locationOptions.isNotEmpty ? locationOptions.first : 'Select location');
-    
+    final bool hasLocation = _isLocationSelected;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: _outline, width: 1.513),
+            color: hasLocation
+                ? const Color(0x99EEF2FF)
+                : const Color(0x66EEF2FF),
             borderRadius: BorderRadius.vertical(
               top: const Radius.circular(14),
-              bottom: Radius.circular(_isLocationDropdownOpen ? 0 : 14),
+              bottom: Radius.circular(_isLocationInlineOpen ? 0 : 14),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0x140F172A),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            border: Border.all(color: const Color(0xFFE0E7FF), width: 0.756),
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: () {
                 setState(() {
-                  _isLocationDropdownOpen = !_isLocationDropdownOpen;
+                  _isLocationInlineOpen = !_isLocationInlineOpen;
                 });
               },
               borderRadius: BorderRadius.vertical(
                 top: const Radius.circular(14),
-                bottom: Radius.circular(_isLocationDropdownOpen ? 0 : 14),
+                bottom: Radius.circular(_isLocationInlineOpen ? 0 : 14),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDAE9F8),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: _textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        selectedLocation,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _textPrimary,
-                          fontFamily: 'Inter',
-                          letterSpacing: -0.1504,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Icon(
-                      _isLocationDropdownOpen
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      size: 16,
-                      color: _textPrimary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (_isLocationDropdownOpen && locationOptions.isNotEmpty)
-          _buildLocationDropdown(locationOptions, selectedLocation),
-      ],
-    );
-  }
-
-  Widget _buildLocationDropdown(List<String> options, String selectedValue) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
-        border: Border(
-          top: BorderSide.none,
-          left: BorderSide(color: _outline, width: 1.513),
-          right: BorderSide(color: _outline, width: 1.513),
-          bottom: BorderSide(color: _outline, width: 1.513),
-        ),
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-        itemCount: options.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 4),
-        itemBuilder: (context, index) {
-          final option = options[index];
-          final isSelected = option == selectedValue;
-          return Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                setState(() {
-                  _selectedLocation = option;
-                  _isLocationDropdownOpen = false;
-                });
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFFF8FAFC) : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 12,
                 ),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: Text(
-                        option,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: _textPrimary,
-                          fontFamily: 'Inter',
+                    Container(
+                      width: 31.99036,
+                      height: 31.99036,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          width: 0.75633,
+                          color: const Color(0xFFE2E8F0),
                         ),
                       ),
+                      padding: const EdgeInsets.only(right: 0.01182),
+                      child: SvgPicture.asset(
+                        'assets/images/locationIcon.svg',
+                        fit: BoxFit.scaleDown,
+                        colorFilter: ColorFilter.mode(
+                          hasLocation ? _textPrimary : Colors.black,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            hasLocation ? _selectedLocation! : 'Add location',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _textPrimary,
+                              fontFamily: 'Inter',
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            hasLocation
+                                ? 'Tap to change your neighborhood'
+                                : 'Select your neighborhood',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _textSecondary,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      _isLocationInlineOpen
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      size: 20,
+                      color: _textSecondary,
                     ),
                   ],
                 ),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        if (_isLocationInlineOpen)
+          _InlineDropdown(
+            options: _locationOptions
+                .map((label) => _DropdownOption(label))
+                .toList(),
+            selectedValue: _selectedLocation ?? 'Select your neighborhood',
+            onSelected: (value) {
+              setState(() {
+                _selectedLocation = value;
+                _isLocationInlineOpen = false;
+              });
+            },
+            optionTextColor: const Color(0xFF314158),
+            highlightColor: const Color(0xFFF8FAFC),
+            borderColor: const Color(0xFFE0E7FF),
+          ),
+      ],
     );
   }
 
   Widget _buildCharacterLimitIndicator() {
-    final characterCount = _bodyController.text.length;
-    final isOverLimit = characterCount > 1000;
-    final locationText = _selectedLocation != null ? 'Location added' : 'Location not added';
+    final hasLocation = _isLocationSelected;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          locationText,
+          hasLocation ? 'Location added' : 'Location required',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w400,
-            color: _selectedLocation != null ? _textSecondary : _muted,
-            fontFamily: 'Inter',
-          ),
-        ),
-        Text(
-          '$characterCount/1000 characters',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: isOverLimit ? const Color(0xFFE7000B) : _muted,
+            color: hasLocation ? _textSecondary : const Color(0xFFE7000B),
             fontFamily: 'Inter',
           ),
         ),
@@ -499,6 +671,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildSpotlightCard() {
+    // Check if spotlight is available
+    final isAvailable = _spotlightStatus?['is_available'] as bool? ?? false;
+    
+    // Hide card if spotlight is not available
+    if (!isAvailable) {
+      return const SizedBox.shrink();
+    }
+    
+    // Use dynamic title from API or fallback to hardcoded
+    final topicTitle = _spotlightStatus?['hot_topic_title'] as String? ?? 'Detty December';
+    
     return Container(
       decoration: BoxDecoration(
         color: const Color(0x66EEF2FF),
@@ -526,18 +709,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  'Detty December',
-                  style: TextStyle(
+                  topicTitle,
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: _textPrimary,
                     fontFamily: 'Inter',
                   ),
                 ),
-                SizedBox(height: 2),
-                Text(
+                const SizedBox(height: 2),
+                const Text(
                   'Toggle for Festive spotlight',
                   style: TextStyle(
                     fontSize: 12,
@@ -579,7 +762,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: Colors.white,
                   ),
                   child: SvgPicture.asset(
-                    'assets/feedPage/newPosticon.svg',
+                    'assets/images/newPost.svg',
                     width: 10,
                     height: 10,
                     fit: BoxFit.scaleDown,
@@ -598,7 +781,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildFooterActions() {
-    final isOverLimit = _bodyController.text.length > 1000;
     return Container(
       width: 360,
       height: 64,
@@ -615,44 +797,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          TextButton.icon(
-            onPressed: () {
-              _titleFocusNode.requestFocus();
-            },
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            icon: SvgPicture.asset(
-              isOverLimit
-                  ? 'assets/images/askIcon.svg'
-                  : 'assets/feedPage/pencilIcon.svg',
-              width: 16,
-              height: 16,
-              colorFilter: ColorFilter.mode(
-                isOverLimit ? const Color(0xFFE7000B) : _muted,
-                BlendMode.srcIn,
-              ),
-            ),
-            label: Text(
-              isOverLimit
-                  ? 'Content exceeds character limit'
-                  : 'Add a title to get started',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
-                color: isOverLimit ? const Color(0xFFE7000B) : _muted,
-                fontFamily: 'Inter',
-              ),
-            ),
-          ),
+          _buildStatusPrompt(),
           ElevatedButton(
-            onPressed: (isOverLimit || _isSubmitting)
-                ? null
-                : () {
+            onPressed: (_canPost && !_isSubmitting)
+                ? () {
                     _handleSubmit();
-                  },
+                  }
+                : null,
             style: ButtonStyle(
               backgroundColor: WidgetStateProperty.resolveWith((states) {
                 final selectedColor = _categoryColors[_activeCategory]!;
@@ -679,141 +830,215 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
             ),
-            child: _isSubmitting
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Text(
-                    'Post',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
+            child: const Text(
+              'Post',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Inter',
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _handleSubmit() async {
-    // Validate content
+  void _handleSubmit() async {
+    if (_isSubmitting || !_canPost) {
+      return;
+    }
     final title = _titleController.text.trim();
     final body = _bodyController.text.trim();
-    
-    // Combine title and body into content
-    String content = '';
-    if (title.isNotEmpty && body.isNotEmpty) {
-      content = '$title\n\n$body';
-    } else if (title.isNotEmpty) {
-      content = title;
-    } else if (body.isNotEmpty) {
-      content = body;
-    } else {
-      // Show error if both are empty
-      if (!mounted) return;
+    final combinedContent =
+        body.isEmpty ? title : '$title\n\n$body'.trim();
+    if (combinedContent.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter some content for your post'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
+        const SnackBar(content: Text('Please enter post details.')),
       );
       return;
     }
-
-    // Validate content length
-    if (content.length > 1000) {
-      if (!mounted) return;
+    if (combinedContent.length > 1000) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Content must be 1000 characters or less'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
+        const SnackBar(content: Text('Post exceeds 1000 characters.')),
       );
       return;
     }
-
+    final categoryId = _categoryIdLookup[_activeCategory];
+    final selectedLocationName = _selectedLocation;
+    final locationId = selectedLocationName != null
+        ? _locationIdLookup[selectedLocationName]
+        : null;
+    if (locationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Selected location is unavailable right now.')),
+      );
+      return;
+    }
     setState(() {
       _isSubmitting = true;
     });
-
     try {
-      // Get category_id from the category map
-      String? categoryId;
-      if (_categoryMap.containsKey(_activeCategory)) {
-        categoryId = _categoryMap[_activeCategory];
-      }
-
-      // Get location_id from the location map
-      String? locationId;
-      if (_selectedLocation != null && _locationMap.containsKey(_selectedLocation)) {
-        locationId = _locationMap[_selectedLocation];
-      }
-
-      // Call the post service
       final response = await _postService.createPost(
-        content: content,
+        content: combinedContent,
         categoryId: categoryId,
         locationId: locationId,
-        imageUrl: null, // Image upload not implemented yet
         enableMonthlySpotlight: _spotlightEnabled,
       );
-
-      if (!mounted) return;
-
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _isSubmitting = false;
       });
-
-      // Show success message
-      final message = response['message'] ?? 'Post created successfully';
-      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
+          content: Text(
+            response['message'] ?? 'Post created successfully',
+          ),
         ),
       );
-
-      // Close the dialog
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (e) {
-      if (!mounted) return;
-      
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _isSubmitting = false;
       });
-
-      // Show error dialog
-      final errorMessage = e.toString().replaceFirst('Exception: ', '');
-      
-      await showErrorDialog(
-        context,
-        errorMessage: errorMessage,
-        title: 'Post Creation Failed',
-        subtitle: 'Unable to create your post',
-        onCancel: () => Navigator.of(context).pop(),
-        onTryAgain: () {
-          Navigator.of(context).pop(); // Close error dialog
-          _handleSubmit(); // Retry post creation
-        },
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
       );
     }
+  }
+
+  Future<void> _showLocationPicker() async {}
+
+  void _showGuidelinesDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Community Guidelines'),
+          content: const Text(
+            'Be respectful and ensure your post aligns with our community standards. Avoid spam, harassment, or misinformation.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Color _darken(Color color, [double amount = 0.1]) {
     final hsl = HSLColor.fromColor(color);
     final lightness = (hsl.lightness - amount).clamp(0.0, 1.0);
     return hsl.withLightness(lightness).toColor();
+  }
+}
+
+class _DropdownOption {
+  const _DropdownOption(this.label);
+
+  final String label;
+}
+
+class _InlineDropdown extends StatelessWidget {
+  const _InlineDropdown({
+    required this.options,
+    required this.selectedValue,
+    required this.onSelected,
+    required this.optionTextColor,
+    required this.highlightColor,
+    required this.borderColor,
+  });
+
+  final List<_DropdownOption> options;
+  final String selectedValue;
+  final ValueChanged<String> onSelected;
+  final Color optionTextColor;
+  final Color highlightColor;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(14),
+          bottomRight: Radius.circular(14),
+        ),
+        border: Border(
+          top: BorderSide.none,
+          left: BorderSide(color: borderColor, width: 1.513),
+          right: BorderSide(color: borderColor, width: 1.513),
+          bottom: BorderSide(color: borderColor, width: 1.513),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+            itemCount: options.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 4),
+            itemBuilder: (context, index) {
+              final option = options[index];
+              final isSelected = option.label == selectedValue;
+              return Material(
+                color: isSelected ? highlightColor : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: () => onSelected(option.label),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            option.label,
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 20 / 14,
+                              fontWeight: FontWeight.w500,
+                              color: optionTextColor,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ),
+                        if (option.label == selectedValue)
+                          const Icon(
+                            Icons.check,
+                            size: 16,
+                            color: Color(0xFF22C55E),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 
