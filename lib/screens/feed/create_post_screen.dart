@@ -844,11 +844,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
+  /// Helper function to ensure header/title ends with a period
+  String _ensureTitleEndsWithPeriod(String title) {
+    if (title.isEmpty) return title;
+    final trimmed = title.trim();
+    if (trimmed.endsWith('.')) {
+      return trimmed;
+    }
+    return '$trimmed.';
+  }
+
   void _handleSubmit() async {
     if (_isSubmitting || !_canPost) {
       return;
     }
-    final title = _titleController.text.trim();
+    final rawTitle = _titleController.text.trim();
+    final title = _ensureTitleEndsWithPeriod(rawTitle);
     final body = _bodyController.text.trim();
     final combinedContent =
         body.isEmpty ? title : '$title\n\n$body'.trim();

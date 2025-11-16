@@ -125,13 +125,17 @@ class PostService {
     } catch (e) {
       final raw = e.toString().replaceFirst('Exception: ', '');
       final lower = raw.toLowerCase();
+      // Check for various error patterns that indicate permission/ownership issues
       if (lower.contains('bad request') ||
           lower.contains('not authorized') ||
+          lower.contains('unauthorized') ||
           lower.contains('forbidden') ||
           lower.contains('permission') ||
           lower.contains('cannot delete') ||
           lower.contains('not owner') ||
-          lower.contains('only owner')) {
+          lower.contains('only owner') ||
+          lower.contains('access denied') ||
+          lower.contains('not allowed')) {
         throw Exception("You cannot delete another user's post.");
       }
       rethrow;

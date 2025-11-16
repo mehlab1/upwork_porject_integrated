@@ -112,6 +112,7 @@ class _LoginScreenState extends State<LoginScreen>
                               padding: const EdgeInsets.only(left: 2),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
                                     width: 338,
@@ -170,30 +171,38 @@ class _LoginScreenState extends State<LoginScreen>
                                       ],
                                     ),
                                   ),
-                                  if (_emailError != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 20,
-                                        top: 4,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.error_outline,
-                                            size: 14,
-                                            color: Colors.red,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            _emailError!,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.red,
+                                  // Reserve space for error message to prevent layout shift
+                                  SizedBox(
+                                    height: _emailError != null ? 20 : 0,
+                                    child: _emailError != null
+                                        ? Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 20,
+                                              top: 4,
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.error_outline,
+                                                  size: 14,
+                                                  color: Colors.red,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Flexible(
+                                                  child: Text(
+                                                    _emailError!,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.red,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        : const SizedBox.shrink(),
+                                  ),
                                 ],
                               ),
                             ),
@@ -205,6 +214,7 @@ class _LoginScreenState extends State<LoginScreen>
                               padding: const EdgeInsets.only(left: 2),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
                                     width: 338,
@@ -279,30 +289,38 @@ class _LoginScreenState extends State<LoginScreen>
                                       ],
                                     ),
                                   ),
-                                  if (_passwordError != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 20,
-                                        top: 4,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.error_outline,
-                                            size: 14,
-                                            color: Colors.red,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            _passwordError!,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.red,
+                                  // Reserve space for error message to prevent layout shift
+                                  SizedBox(
+                                    height: _passwordError != null ? 20 : 0,
+                                    child: _passwordError != null
+                                        ? Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 20,
+                                              top: 4,
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.error_outline,
+                                                  size: 14,
+                                                  color: Colors.red,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Flexible(
+                                                  child: Text(
+                                                    _passwordError!,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.red,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        : const SizedBox.shrink(),
+                                  ),
                                 ],
                               ),
                             ),

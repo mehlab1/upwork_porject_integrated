@@ -5,9 +5,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:pal_app/widgets/pal_bottom_nav_bar.dart';
-import 'package:pal_app/widgets/pal_loading_widgets.dart';
-import 'package:pal_app/widgets/pal_refresh_indicator.dart';
+import 'package:pal/widgets/pal_bottom_nav_bar.dart';
+import 'package:pal/widgets/pal_loading_widgets.dart';
+import 'package:pal/widgets/pal_refresh_indicator.dart';
 
 import '../../services/post_service.dart';
 import 'create_post_screen.dart';
@@ -161,6 +161,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   List<PostCardData> get _allPosts => [..._seedPosts, ..._remotePosts];
 
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
+
 
   List<PostCardData> get _visiblePosts {
     // If showing spotlight posts, return those instead
@@ -1649,10 +1650,21 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       }
       
       if (stats != null) {
-        final totalPosts = stats['total_posts'] as int?;
-        if (totalPosts != null) {
-          postCountValue = totalPosts;
+        // Try to get spotlight posts count - check multiple possible field names
+        // This should be the count of posts where is_monthly_spotlight = true
+        final spotlightPostsRaw = stats['spotlight_posts'] ?? 
+                                 stats['monthly_spotlight_posts'] ?? 
+                                 stats['total_posts'];
+        if (spotlightPostsRaw != null) {
+          // Use existing _parseInt helper to handle int, string, or other numeric types
+          postCountValue = _parseInt(spotlightPostsRaw);
         }
+      }
+      
+      // Fallback: Use actual count from fetched spotlight posts if available
+      // This ensures we show the real count of posts with is_monthly_spotlight = true
+      if (_spotlightPosts.isNotEmpty && postCountValue == 0) {
+        postCountValue = _spotlightPosts.length;
       }
       
       isActive = isAvailable;
@@ -1893,7 +1905,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       if (isAvailable) {
         final hotTopicTitle = _spotlightStatus!['hot_topic_title'] as String? ?? 'Monthly Spotlight';
         final stats = _spotlightStatus!['stats'] as Map<String, dynamic>?;
-        final postCount = stats?['total_posts'] as int? ?? 0;
+        // Use existing _parseInt helper to handle int, string, or other numeric types
+        // Try to get spotlight posts count - check multiple possible field names
+        final postCount = stats != null 
+            ? _parseInt(stats['spotlight_posts'] ?? 
+                       stats['monthly_spotlight_posts'] ?? 
+                       stats['total_posts'] ?? 
+                       0)
+            : 0;
         
         // Add Monthly Spotlight option (only one option ever, so no duplicates possible)
         options.add(_TrendingOption(
@@ -2127,7 +2146,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 .map(
                   (post) => Padding(
                     padding: const EdgeInsets.only(bottom: 20),
-                    child: PostCard(data: post),
+                    child: PostCard(
+                      data: post,
+                    ),
                   ),
                 )
                 .toList(),

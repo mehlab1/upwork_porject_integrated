@@ -30,6 +30,11 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
 
   Future<void> _handleRefresh() async {
     if (_isRefreshing) return;
+    // Only refresh if we've actually pulled down enough
+    if (_pullExtent < _triggerDistance) {
+      setState(() => _pullExtent = 0);
+      return;
+    }
     setState(() => _isRefreshing = true);
     try {
       await widget.onRefresh();
@@ -46,8 +51,12 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
   bool _handleNotification(ScrollNotification notification) {
     if (_isRefreshing) return false;
 
+    // Only allow pull-to-refresh when at the very top (pixels <= 0)
+    final isAtTop = notification.metrics.pixels <= 0;
+    
     if (notification is ScrollUpdateNotification) {
-      if (notification.metrics.pixels < 0) {
+      // Only respond to pull down when at the top
+      if (isAtTop && notification.metrics.pixels < 0) {
         final next = (-notification.metrics.pixels).clamp(
           0.0,
           _triggerDistance,
@@ -55,11 +64,16 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
         if ((next - _pullExtent).abs() > 0.5) {
           setState(() => _pullExtent = next);
         }
-      } else if (_pullExtent != 0) {
+      } else if (!isAtTop && _pullExtent != 0) {
+        // Reset if scrolled away from top
+        setState(() => _pullExtent = 0);
+      } else if (isAtTop && notification.metrics.pixels >= 0 && _pullExtent != 0) {
+        // Reset if at top but not pulling down
         setState(() => _pullExtent = 0);
       }
     } else if (notification is OverscrollNotification) {
-      if (notification.metrics.pixels <= 0 && notification.overscroll < 0) {
+      // Only allow overscroll when at the top and pulling down (negative overscroll)
+      if (isAtTop && notification.overscroll < 0) {
         final next = (_pullExtent + notification.overscroll.abs()).clamp(
           0.0,
           _triggerDistance,
@@ -67,9 +81,15 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
         if ((next - _pullExtent).abs() > 0.5) {
           setState(() => _pullExtent = next);
         }
+      } else if (!isAtTop && _pullExtent != 0) {
+        // Reset if not at top
+        setState(() => _pullExtent = 0);
       }
     } else if (notification is ScrollEndNotification) {
-      if (_pullExtent != 0) {
+      // Trigger refresh if pulled enough, otherwise reset
+      if (_pullExtent >= _triggerDistance && isAtTop) {
+        _handleRefresh();
+      } else if (_pullExtent != 0) {
         setState(() => _pullExtent = 0);
       }
     }
@@ -98,6 +118,8 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
             backgroundColor: Colors.transparent,
             strokeWidth: 0,
             displacement: 64,
+            // Only trigger when at the top
+            triggerMode: RefreshIndicatorTriggerMode.onEdge,
             child: widget.child,
           ),
         ),

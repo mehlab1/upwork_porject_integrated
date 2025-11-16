@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import 'package:pal_app/widgets/pal_bottom_nav_bar.dart';
-import 'package:pal_app/widgets/pal_loading_widgets.dart';
-import 'package:pal_app/widgets/pal_refresh_indicator.dart';
+import 'package:pal/widgets/pal_bottom_nav_bar.dart';
+import 'package:pal/widgets/pal_loading_widgets.dart';
+import 'package:pal/widgets/pal_refresh_indicator.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});

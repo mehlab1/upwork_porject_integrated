@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pal_app/screens/feed/widgets/post_card.dart';
+import 'package:pal/screens/feed/widgets/post_card.dart';
 
 const _pageBackground = Color(0xFFF7FBFF);
 const _headerTitleColor = Color(0xFF0F172B);

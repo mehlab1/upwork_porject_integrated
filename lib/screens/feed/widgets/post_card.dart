@@ -263,6 +263,8 @@ class _PostCardState extends State<PostCard> {
   int _userVote = 0; // 1 = upvoted, -1 = downvoted, 0 = neutral
 
   List<CommentData> _comments = const [];
+  
+  int? _actualCommentCount; // Store the actual comment count from API
 
   int? _activeReplyIndex;
 
@@ -298,7 +300,17 @@ class _PostCardState extends State<PostCard> {
 
     _comments = _cloneComments(widget.data.comments ?? const []);
 
+    // Initialize comment count from feed data, but we'll verify it when comments are loaded
+    // Don't trust feed count as it might include deleted comments
+    _actualCommentCount = null; // Start with null, will be set when comments are loaded
+
     _loadCurrentUsername();
+    
+    // Load comments in background to get accurate count (only if feed shows comments exist)
+    if (data.commentsCount > 0 && data.id != null) {
+      // Load comments in background to get accurate count of active comments
+      Future.microtask(() => _loadComments());
+    }
 
   }
 
@@ -390,6 +402,107 @@ class _PostCardState extends State<PostCard> {
 
     _overlayEntry = null;
 
+  }
+
+  /// Load comments from the API when comments section is expanded
+  Future<void> _loadComments() async {
+    if (data.id == null) return;
+    
+    try {
+      final response = await _postService.getComments(postId: data.id!);
+      
+      if (!mounted) return;
+      
+      final commentsList = response['comments'] as List<dynamic>? ?? [];
+      final mappedComments = commentsList
+          .map((comment) => _mapCommentFromResponse(comment))
+          .whereType<CommentData>()
+          .toList();
+      
+      // Calculate actual comment count (including replies)
+      final actualCount = _totalCommentCount(mappedComments);
+      
+      setState(() {
+        _comments = mappedComments;
+        // Update the actual comment count from loaded comments
+        _actualCommentCount = actualCount;
+      });
+    } catch (e) {
+      debugPrint('Failed to load comments: $e');
+      // Don't show error to user - just log it
+    }
+  }
+
+  /// Map comment from API response to CommentData
+  CommentData? _mapCommentFromResponse(dynamic commentData) {
+    if (commentData is! Map<String, dynamic>) return null;
+    
+    final id = commentData['id']?.toString() ?? '';
+    if (id.isEmpty) return null;
+    
+    final profile = commentData['profiles'] as Map<String, dynamic>?;
+    final username = (commentData['username'] ?? 
+                     profile?['username'] ?? 
+                     '@user').toString();
+    final author = username.startsWith('@') ? username : '@$username';
+    
+    final createdAt = commentData['created_at'] != null
+        ? DateTime.tryParse(commentData['created_at'].toString())
+        : null;
+    
+    final content = commentData['content']?.toString() ?? '';
+    final upvotes = _parseInt(commentData['upvote_count'] ?? 0);
+    final downvotes = _parseInt(commentData['downvote_count'] ?? 0);
+    final status = commentData['status']?.toString() ?? 'active';
+    
+    // Get replies if present
+    final repliesData = commentData['replies'] as List<dynamic>? ?? [];
+    final replies = repliesData
+        .map((reply) => _mapCommentFromResponse(reply))
+        .whereType<CommentData>()
+        .toList();
+    
+    // Get initials from username
+    final sanitized = username.replaceAll(RegExp(r'[^A-Za-z]'), '');
+    final initial = sanitized.isNotEmpty
+        ? sanitized.substring(0, 1).toUpperCase()
+        : 'U';
+    
+    return CommentData(
+      id: id,
+      author: author,
+      timeAgo: _formatTimeAgo(createdAt),
+      body: content,
+      upvotes: upvotes,
+      downvotes: downvotes,
+      initials: initial,
+      replies: replies,
+      status: status,
+    );
+  }
+
+  int _parseInt(Object? value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  String _formatTimeAgo(DateTime? dateTime) {
+    if (dateTime == null) return 'just now';
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    if (difference.inMinutes < 1) return 'just now';
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    }
+    if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    }
+    if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    }
+    return '${difference.inDays ~/ 7}w ago';
   }
 
   void _handleCommentError(Object error, StackTrace stackTrace, {String? customMessage}) {
@@ -537,6 +650,8 @@ class _PostCardState extends State<PostCard> {
     setState(() {
 
       _comments = updated;
+      // Update comment count optimistically
+      _actualCommentCount = _totalCommentCount(updated);
 
     });
 
@@ -619,6 +734,10 @@ class _PostCardState extends State<PostCard> {
             );
 
             _comments = updatedComments;
+            // Update comment count after adding a comment
+            _actualCommentCount = _totalCommentCount(updatedComments);
+            // Reload comments to ensure sync with backend and get updated count
+            _loadComments();
 
           }
 
@@ -711,50 +830,6 @@ class _PostCardState extends State<PostCard> {
       }
 
     }
-
-  }
-
-  int _parseInt(Object? value) {
-
-    if (value == null) return 0;
-
-    if (value is int) return value;
-
-    if (value is double) return value.round();
-
-    return int.tryParse(value.toString()) ?? 0;
-
-  }
-
-  String _formatTimeAgo(DateTime? dateTime) {
-
-    if (dateTime == null) return 'just now';
-
-    final now = DateTime.now();
-
-    final difference = now.difference(dateTime);
-
-    if (difference.inMinutes < 1) return 'just now';
-
-    if (difference.inMinutes < 60) {
-
-      return '${difference.inMinutes}m ago';
-
-    }
-
-    if (difference.inHours < 24) {
-
-      return '${difference.inHours}h ago';
-
-    }
-
-    if (difference.inDays < 7) {
-
-      return '${difference.inDays}d ago';
-
-    }
-
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
 
   }
 
@@ -931,6 +1006,8 @@ class _PostCardState extends State<PostCard> {
               updatedComments[parentIndex] = updatedParent.copyWith(replies: updatedParentReplies);
 
               _comments = updatedComments;
+              // Update comment count after adding a reply
+              _actualCommentCount = _totalCommentCount(updatedComments);
 
             }
 
@@ -1319,20 +1396,22 @@ class _PostCardState extends State<PostCard> {
                           moreButtonKey: isAdminPinned ? null : _menuKey,
 
                           onToggleComments: () {
-
                             setState(() {
-
                               _showComments = !_showComments;
-
                             });
-
+                            // Load comments from API when expanding comments section
+                            // Also reload if we don't have an accurate count yet
+                            if (_showComments && (_comments.isEmpty || _actualCommentCount == null) && data.id != null) {
+                              _loadComments();
+                            }
                           },
 
                           commentsExpanded: _showComments,
 
                           showMoreButton: !isAdminPinned,
 
-                          commentCount: _totalCommentCount(_currentComments),
+                          commentCount: _actualCommentCount ?? 
+                              (_currentComments.isNotEmpty ? _totalCommentCount(_currentComments) : data.commentsCount),
 
                         ),
 
@@ -1641,8 +1720,16 @@ class _PostCardState extends State<PostCard> {
           _removeCommentRecursive(updated, comment.id);
 
           _comments = updated;
-
+          
+          // Update comment count after deletion
+          _actualCommentCount = _totalCommentCount(updated);
+          
         });
+
+        // Reload comments from API to ensure count is accurate
+        if (data.id != null) {
+          _loadComments();
+        }
 
         if (context.mounted) {
 
@@ -1810,47 +1897,58 @@ class _PostCardState extends State<PostCard> {
       builder: (_) => DeletePostDialog(postTitle: title),
     );
 
-    if (result?.confirmed == true && context.mounted) {
-      try {
-        await _postService.deletePost(postId: data.id!);
-        if (context.mounted) {
+    if (result?.confirmed != true) return;
+
+    // Simple: call edge function and show message based on response
+    try {
+      final response = await _postService.deletePost(postId: data.id!);
+      
+      // Check response from edge function
+      if (response['success'] == true) {
+        // Show success message
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Post deleted successfully.')),
           );
-          // Note: Parent widget should handle removing the post from feed
-          // For now, we show success message. Parent can refresh feed.
-          Navigator.of(context).pop(true); // Return true to indicate deletion
         }
-      } catch (e) {
-        if (context.mounted) {
-          final errorStr = e.toString().replaceFirst('Exception: ', '');
-          final errorStrLower = errorStr.toLowerCase();
-
-          String errorMessage;
-
-          // Check for permission/ownership errors
-          if (errorStrLower.contains('cannot delete another user\'s post') ||
-              errorStrLower.contains('cannot delete') ||
-              errorStrLower.contains('not owner') ||
-              errorStrLower.contains('only owner') ||
-              errorStrLower.contains('permission denied') ||
-              errorStrLower.contains('forbidden')) {
-            errorMessage = 'You can only delete your own posts.';
-          } else if (errorStrLower.contains('post not found')) {
-            errorMessage = 'This post no longer exists.';
-          } else if (errorStrLower.contains('unauthorized')) {
-            errorMessage = 'You must be logged in to delete posts.';
-          } else {
-            // Use the original error message if it's user-friendly, otherwise show generic message
-            errorMessage = errorStr.isNotEmpty ? errorStr : 'Failed to delete post. Please try again.';
-          }
-
+      } else {
+        // Show error from response
+        final message = response['message']?.toString() ?? 'Failed to delete post.';
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-            ),
+            SnackBar(content: Text(message)),
           );
         }
+      }
+    } catch (e) {
+      // Handle exception
+      final errorStr = e.toString().replaceFirst('Exception: ', '');
+      final errorStrLower = errorStr.toLowerCase();
+
+      String errorMessage;
+
+      if (errorStrLower.contains('cannot delete another user\'s post') ||
+          errorStrLower.contains('you cannot delete another user\'s post')) {
+        errorMessage = 'You cannot delete another user\'s post.';
+      } else if (errorStrLower.contains('cannot delete') ||
+          errorStrLower.contains('not owner') ||
+          errorStrLower.contains('only owner') ||
+          errorStrLower.contains('permission denied') ||
+          errorStrLower.contains('forbidden') ||
+          errorStrLower.contains('not authorized')) {
+        errorMessage = 'You can only delete your own posts.';
+      } else if (errorStrLower.contains('post not found')) {
+        errorMessage = 'This post no longer exists.';
+      } else if (errorStrLower.contains('unauthorized')) {
+        errorMessage = 'You must be logged in to delete posts.';
+      } else {
+        errorMessage = errorStr.isNotEmpty ? errorStr : 'Failed to delete post. Please try again.';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
       }
     }
   }
