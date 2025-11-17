@@ -55,13 +55,7 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => OtpVerificationScreen(
-          email: widget.email,
-          isPasswordReset: false,
-          onSuccess: (otpCode) {
-            // OTP verified in the screen itself
-          },
-        ),
+        builder: (context) => OtpVerificationScreen(email: widget.email),
       ),
     );
   }
@@ -89,67 +83,99 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Your Interests (Choose 2-3)',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: _headingColor,
-                  fontFamily: 'Inter',
+              const SizedBox(height: 54),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'Your Interests (Choose 2-3)',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: _headingColor,
+                    fontFamily: 'Inter',
+                  ),
+                  textAlign: TextAlign.left,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              Text(
-                "Select topics you'd like to see",
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: _subheadingColor,
-                  fontFamily: 'Inter',
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  "Select topics you'd like to see",
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: _subheadingColor,
+                    fontFamily: 'Inter',
+                  ),
+                  textAlign: TextAlign.left,
                 ),
-                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 36),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 16,
-                runSpacing: 16,
-                children: _interests.map((label) {
-                  final isSelected = _selected.contains(label);
-                  return GestureDetector(
-                    onTap: () => _toggleInterest(label),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 98.414,
-                      height: 55.017,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isSelected ? _primaryBlue : Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _primaryBlue, width: 1.522),
-                      ),
-                      child: Center(
-                        child: Text(
-                          label,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: isSelected
-                                ? _selectedTextColor
-                                : _primaryBlue,
-                            fontFamily: 'Inter',
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final double available = constraints.maxWidth;
+                    const double gap = 16;
+                    const int columns = 3; // force 3 per row
+                    double tileWidth =
+                        (available - gap * (columns - 1)) / columns;
+                    final double tileHeight = 55.0;
+                    return Wrap(
+                      alignment: WrapAlignment.start,
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: _interests.map((label) {
+                        final isSelected = _selected.contains(label);
+                        return GestureDetector(
+                          onTap: () => _toggleInterest(label),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            width: tileWidth,
+                            height: tileHeight,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFFEFF6FF)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _primaryBlue,
+                                width: 1.522,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x40000000),
+                                  blurRadius: 8,
+                                  spreadRadius: 0,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Text(
+                                label,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: isSelected
+                                      ? _primaryBlue
+                                      : const Color(0xFF6F7786),
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 24),
               Text(

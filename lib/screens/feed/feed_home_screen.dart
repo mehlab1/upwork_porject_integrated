@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
+import 'package:pal/widgets/pal_push_notification.dart';
 
 import '../../services/post_service.dart';
 import 'create_post_screen.dart';
@@ -413,6 +414,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       setState(() {
         _isPageLoading = false;
       });
+      // Show a demo push notification once the page finishes initial load (testing only)
+      // You can remove this after integrating with real notifications.
+      PalPushNotification.show(
+        context,
+        title: 'New message',
+        message: 'Your post received new comments in Lagos community.',
+      );
     });
     Future.microtask(() async {
       await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -607,9 +615,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 24),
-                        _buildWelcomeHeader(context),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 16),
                         _buildFilterPills(),
                         _buildCards(context),
                       ],
@@ -1818,7 +1824,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             ),
           ),
         ),
-        if (_isTrendingDropdownOpen && _selectedTrending != null) _buildTrendingDropdownPanel(_selectedTrending!),
       ],
     );
   }
@@ -2113,6 +2118,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           _buildCategoryDropdown(),
           const SizedBox(height: 24),
           _buildMonthlySpotlight(),
+          if (_isTrendingDropdownOpen && _selectedTrending != null) ...[
+            const SizedBox(height: 8),
+            _buildTrendingDropdownPanel(_selectedTrending!),
+          ],
           const SizedBox(height: 24),
           if (_isInitialPostsLoading)
             ...List.generate(
@@ -2123,11 +2132,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               ),
             )
           else ...[
+            // Show first post card conditionally (backend logic preserved)
             if (_shouldShowFirstPostCard) ...[
               _buildFirstPostCard(),
               const SizedBox(height: 24),
             ],
-            // Only show admin post for "New" filter and when not showing spotlight posts
+            // Only show admin post for "New" filter and when not showing spotlight posts (backend logic preserved)
             if (_selectedFilter == 'New' && !_isShowingSpotlightPosts) ...[
               PostCard(data: _pinnedAdminPost, isPinnedAdmin: true),
               const SizedBox(height: 24),

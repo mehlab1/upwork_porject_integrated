@@ -1,10 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
-import '../otp/otp_verification_screen.dart';
 import 'interest_selection_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -15,11 +11,6 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  // ============================================================================
-  // STATE MANAGEMENT & VARIABLES
-  // ============================================================================
-  
-  // Text Controllers for form inputs
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
@@ -30,17 +21,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
       TextEditingController();
   final TextEditingController _dobController = TextEditingController();
 
-  // Form state variables
   String? _selectedGender;
   String? _selectedAccountType;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeToTerms = false;
-  bool _isStateDropdownOpen = false; // Dropdown open state for State field
 
-  // Error messages
   String? _termsError;
   String? _dobError;
+
+  // Dropdown open state for State field
+  bool _isStateDropdownOpen = false;
+
+  // Password strength (0-4 segments)
+  int _passwordStrength = 0;
+
+  // Validation errors
   String? _firstNameError;
   String? _lastNameError;
   String? _usernameError;
@@ -51,23 +47,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _genderError;
   String? _accountTypeError;
 
-  // UI state
-  int _passwordStrength = 0; // Password strength (0-4 segments)
-  bool _isLoading = false;
-  
-  // Username checking state
-  bool _isCheckingUsername = false;
-  bool? _isUsernameAvailable;
-  Timer? _usernameCheckTimer;
-
-  // ============================================================================
-  // BACKEND LOGIC - Service Instances
-  // ============================================================================
-  final AuthService _authService = AuthService();
-
-  // ============================================================================
-  // UI CONSTANTS - Colors from Figma
-  // ============================================================================
+  // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _primary900 = Color(0xFF100B3C);
   static const Color _grey400 = Color(0xFF8A8D9E);
@@ -75,9 +55,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   static const Color _blue500 = Color(0xFF45556C);
   static const Color _greenSuccess = Color(0xFF00A63E);
 
-  // ============================================================================
-  // UI CONSTANTS - Nigeria States List
-  // ============================================================================
+  // States list (hardcoded per design)
   static const List<String> _nigeriaStates = [
     'Abia',
     'Abuja (FCT)',
@@ -118,116 +96,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
     'Zamfara',
   ];
 
-  // ============================================================================
-  // BACKEND LOGIC - Username Availability Check
-  // ============================================================================
-  
-  /// Checks username availability using Supabase edge function
-  /// Uses debouncing to avoid excessive API calls
-  Future<void> _checkUsernameAvailability(String username) async {
-    // Cancel previous timer
-    _usernameCheckTimer?.cancel();
-    
-    // Reset state
-    setState(() {
-      _isCheckingUsername = false;
-      _isUsernameAvailable = null;
-      _usernameError = null;
-    });
-    
-    // Validate format first
-    if (username.isEmpty) {
-      setState(() {
-        _isUsernameAvailable = null;
-      });
-      return;
-    }
-    
-    if (_hasSpaces(username)) {
-      setState(() {
-        _usernameError = 'no spaces allowed';
-        _isUsernameAvailable = false;
-      });
-      return;
-    }
-    
-    if (!_isValidUsername(username)) {
-      setState(() {
-        _usernameError = 'Use Alphanumeric or underscore only';
-        _isUsernameAvailable = false;
-      });
-      return;
-    }
-    
-    // Debounce: wait 500ms before checking
-    _usernameCheckTimer = Timer(const Duration(milliseconds: 500), () async {
-      if (!mounted) return;
-      
-      setState(() {
-        _isCheckingUsername = true;
-        _usernameError = null;
-      });
-      
-      try {
-        final result = await _authService.checkUsernameAvailability(
-          username: username,
-        );
-        
-        if (!mounted) return;
-        
-        final available = result['available'] as bool? ?? false;
-        final message = result['message'] as String?;
-        
-        setState(() {
-          _isCheckingUsername = false;
-          _isUsernameAvailable = available;
-          
-          if (!available) {
-            _usernameError = message ?? 'This username is already taken';
-          } else {
-            _usernameError = null;
-          }
-        });
-      } catch (e) {
-        if (!mounted) return;
-        setState(() {
-          _isCheckingUsername = false;
-          _isUsernameAvailable = null;
-          // Don't set error on network failure - let user try again
-        });
-      }
-    });
-  }
-
-  // ============================================================================
-  // VALIDATION HELPERS
-  // ============================================================================
-  
-  /// Validates name format (3+ characters, letters and spaces only)
   bool _isValidName(String value) {
     if (value.trim().length < 3) return false;
     final nameRegex = RegExp(r'^[A-Za-z ]+');
     return nameRegex.hasMatch(value.trim());
   }
 
-  /// Checks if value contains special characters (non-letter, non-space)
   bool _hasSpecialCharacters(String value) {
     return RegExp(r'[^A-Za-z ]').hasMatch(value);
   }
 
-  /// Validates username format (3-20 characters, alphanumeric and underscore only)
   bool _isValidUsername(String value) {
     final usernameRegex = RegExp(r'^[A-Za-z0-9_]{3,20}$');
     return usernameRegex.hasMatch(value);
   }
 
-  /// Checks if value contains spaces
   bool _hasSpaces(String value) {
     return RegExp(r'\s').hasMatch(value);
   }
 
-  /// Calculates age from date of birth string (YYYY-MM-DD format)
   int? _calculateAgeFromDob(String dobText) {
+    // Expecting YYYY-MM-DD
     try {
       final parts = dobText.split('-');
       if (parts.length != 3) return null;
@@ -247,12 +136,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // ============================================================================
-  // LIFECYCLE METHODS
-  // ============================================================================
   @override
   void dispose() {
-    _usernameCheckTimer?.cancel();
     _firstNameController.dispose();
     _lastNameController.dispose();
     _usernameController.dispose();
@@ -264,11 +149,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  // ============================================================================
-  // UI COMPONENTS - Widget Builders
-  // ============================================================================
-  
-  /// Builds a reusable input field with icon, error handling, and validation
   Widget _buildInputField({
     required String hintText,
     required IconData icon,
@@ -361,7 +241,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Calculates password strength based on length and character types (returns 0-4)
+  // Calculate password strength (0-4)
   int _calculatePasswordStrength(String password) {
     if (password.isEmpty) return 0;
 
@@ -376,7 +256,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return strength > 4 ? 4 : strength;
   }
 
-  /// Builds password strength indicator with color coding (red/orange/green)
+  // Build password strength indicator
   Widget _buildPasswordStrengthIndicator() {
     if (_passwordController.text.isEmpty) {
       return const SizedBox.shrink();
@@ -420,8 +300,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  // Removed password rules helper: rules are no longer displayed inline.
 
-  /// Helper widget to build a green tick icon for validation success
+  // Helper to build a green tick icon
   Widget _buildGreenTick() {
     return Container(
       width: 20,
@@ -435,9 +316,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // ============================================================================
-  // UI COMPONENTS - Main Build Method
-  // ============================================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -448,7 +326,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             children: [
               const SizedBox(height: 64),
 
-              // ========== UI: Header Section ==========
               // Back button
               Align(
                 alignment: Alignment.centerLeft,
@@ -478,7 +355,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 52),
 
-              // ========== UI: Form Fields Section ==========
               // Form fields container - width 342px, centered
               SizedBox(
                 width: 342,
@@ -547,34 +423,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         setState(() {
                           if (_hasSpaces(value)) {
                             _usernameError = 'no spaces allowed';
-                            _isUsernameAvailable = false;
                           } else if (!_isValidUsername(value)) {
                             _usernameError =
                                 'Use Alphanumeric or underscore only';
-                            _isUsernameAvailable = false;
                           } else {
-                            // Clear error and check availability
                             _usernameError = null;
-                            _checkUsernameAvailability(value);
                           }
                         });
                       },
-                      suffixIcon: _isCheckingUsername
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  _primaryColor,
-                                ),
-                              ),
-                            )
-                          : (_isValidUsername(_usernameController.text) &&
-                                  !_hasSpaces(_usernameController.text) &&
-                                  _isUsernameAvailable == true)
-                              ? _buildGreenTick()
-                              : null,
+                      suffixIcon:
+                          _isValidUsername(_usernameController.text) &&
+                              !_hasSpaces(_usernameController.text)
+                          ? _buildGreenTick()
+                          : null,
                     ),
 
                     const SizedBox(height: 10),
@@ -1123,7 +984,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 50),
 
-              // ========== UI: Terms & Conditions Section ==========
               // Terms and conditions checkbox
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 33),
@@ -1220,47 +1080,40 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 30),
 
-              // ========== UI: Action Buttons Section ==========
-              // Sign up button - triggers validation and backend signup
+              // Sign up button
               Container(
                 width: 338,
                 height: 56,
                 decoration: BoxDecoration(
-                  color:
-                      _isLoading ? _primaryColor.withOpacity(0.7) : _primaryColor,
+                  color: _primaryColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: _isLoading
-                        ? null
-                        : () async {
-                            if (_validateSignUp()) {
-                              await _handleSignUp();
-                            }
-                          },
+                    onTap: () {
+                      if (_validateSignUp()) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => InterestSelectionScreen(
+                              email: _emailController.text.trim(),
+                            ),
+                          ),
+                        );
+                      }
+                    },
                     borderRadius: BorderRadius.circular(20),
                     child: Center(
-                      child: _isLoading
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              'Sign up',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500, // Poppins Medium
-                                color: Colors.white,
-                                fontFamily: 'Poppins',
-                              ),
-                            ),
+                      child: Text(
+                        'Sign up',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500, // Poppins Medium
+                          color: Colors.white,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1329,8 +1182,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 30),
 
-              // ========== UI: Footer Section ==========
-              // Footer text with link to login screen
+              // Footer text
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(
@@ -1375,7 +1227,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Builds a gender selection option widget (radio button style)
   Widget _buildGenderOption(String gender) {
     final bool isSelected = _selectedGender == gender;
     return GestureDetector(
@@ -1425,12 +1276,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // ============================================================================
-  // VALIDATION LOGIC
-  // ============================================================================
-  
-  /// Validates all form fields and sets error messages
-  /// Returns true if all validations pass, false otherwise
   bool _validateSignUp() {
     bool isValid = true;
     final firstName = _firstNameController.text.trim();
@@ -1486,33 +1331,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _usernameError = 'Username is required';
       });
       isValid = false;
-    } else if (_hasSpaces(username)) {
-      setState(() {
-        _usernameError = 'no spaces allowed';
-      });
-      isValid = false;
     } else if (!_isValidUsername(username)) {
       setState(() {
         _usernameError = 'Use Alphanumeric or underscore only';
       });
-      isValid = false;
-    } else if (_isCheckingUsername) {
-      setState(() {
-        _usernameError = 'Please wait while we check username availability';
-      });
-      isValid = false;
-    } else if (_isUsernameAvailable == false) {
-      setState(() {
-        _usernameError = _usernameError ?? 'This username is already taken';
-      });
-      isValid = false;
-    } else if (_isUsernameAvailable == null) {
-      // Username format is valid but availability hasn't been checked yet
-      // Trigger check and wait
-      setState(() {
-        _usernameError = 'Please wait while we check username availability';
-      });
-      _checkUsernameAvailability(username);
       isValid = false;
     } else {
       setState(() {
@@ -1652,138 +1474,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return isValid;
   }
 
-  /// Validates email format using regex pattern
   bool _isValidEmail(String email) {
     final emailRegex = RegExp(
       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
     );
     return emailRegex.hasMatch(email);
   }
-
-  // ============================================================================
-  // BACKEND LOGIC - API Calls & Data Handling
-  // ============================================================================
-  
-  /// Handles the sign-up process:
-  /// 1. Prepares user data
-  /// 2. Calls AuthService to create account
-  /// 3. Sends OTP for email verification
-  /// 4. Navigates to InterestSelectionScreen on success
-  /// 5. Handles errors and displays appropriate messages
-  Future<void> _handleSignUp() async {
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
-    final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-    final gender = _selectedGender?.toLowerCase();
-
-    setState(() {
-      _isLoading = true;
-      _firstNameError = null;
-      _lastNameError = null;
-      _usernameError = null;
-      _emailError = null;
-      _passwordError = null;
-      _genderError = null;
-    });
-
-    try {
-      // Prepare user data for backend
-      final dobText = _dobController.text.trim();
-      final birthdayString = dobText; // Use DOB from controller (YYYY-MM-DD format)
-
-      String? genderValue;
-      if (gender == 'male') {
-        genderValue = 'male';
-      } else if (gender == 'female') {
-        genderValue = 'female';
-      } else if (gender == 'other') {
-        genderValue = 'other';
-      } else {
-        genderValue = 'prefer_not_to_say';
-      }
-
-      final userData = {
-        'username': username,
-        'gender': genderValue,
-        'birthday': birthdayString,
-        'terms_accepted': _agreeToTerms,
-        'privacy_accepted': _agreeToTerms,
-        'role': 'user',
-        'account_status': 'active',
-      };
-
-      // ========== BACKEND API CALL: Create User Account ==========
-      final response = await _authService.signUp(
-        email: email,
-        password: password,
-        userData: userData,
-      );
-
-      if (!mounted) return;
-
-      if (response.user == null) {
-        setState(() {
-          _isLoading = false;
-          _emailError = 'Failed to create account. Please try again.';
-        });
-        return;
-      }
-
-      // ========== BACKEND API CALL: Send OTP for Email Verification ==========
-      try {
-        await _authService.sendOtp(
-          email: email,
-          userId: response.user!.id,
-        );
-      } catch (_) {}
-
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      // Navigate to interest selection screen on successful signup
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => InterestSelectionScreen(email: email),
-        ),
-      );
-    } on AuthException catch (e) {
-      // ========== BACKEND ERROR HANDLING ==========
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-      final errorMessage = e.message.toLowerCase();
-      if (errorMessage.contains('email') ||
-          errorMessage.contains('already registered')) {
-        setState(() {
-          _emailError = 'This email is already registered';
-        });
-      } else if (errorMessage.contains('username') ||
-          errorMessage.contains('duplicate')) {
-        setState(() {
-          _usernameError = 'This username is already taken';
-        });
-      } else if (errorMessage.contains('password')) {
-        setState(() {
-          _passwordError = e.message;
-        });
-      } else {
-        setState(() {
-          _emailError = e.message;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _emailError = 'An unexpected error occurred. Please try again.';
-      });
-    }
-  }
 }
+
+// _PasswordHint removed; not used since password rules text is hidden.

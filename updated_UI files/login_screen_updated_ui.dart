@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/auth_service.dart';
-import '../../services/post_service.dart';
 import '../signup/signup_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
 
@@ -12,15 +9,14 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with TickerProviderStateMixin {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _rememberMe = false;
   bool _obscurePassword = true;
   String? _emailError;
   String? _passwordError;
-  bool _isLoading = false;
-  final AuthService _authService = AuthService();
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -344,44 +340,32 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: 338,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: _isLoading
-                              ? _primaryColor.withOpacity(0.7)
-                              : _primaryColor,
+                          color: _primaryColor,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: _isLoading
-                                ? null
-                                : () async {
-                                    if (_validateLogin()) {
-                                      if (!mounted) return;
-                                      await _handleLogin();
-                                    }
-                                  },
+                            onTap: () async {
+                              if (_validateLogin()) {
+                                if (!mounted) return;
+                                Navigator.of(context).pushNamedAndRemoveUntil(
+                                  '/home',
+                                  (route) => false,
+                                );
+                              }
+                            },
                             borderRadius: BorderRadius.circular(20),
                             child: Center(
-                              child: _isLoading
-                                  ? SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                                Colors.white),
-                                      ),
-                                    )
-                                  : Text(
-                                      'Sign In',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500, // Poppins Medium
-                                        color: Colors.white,
-                                        fontFamily: 'Poppins',
-                                      ),
-                                    ),
+                              child: Text(
+                                'Sign In',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500, // Poppins Medium
+                                  color: Colors.white,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -555,78 +539,5 @@ class _LoginScreenState extends State<LoginScreen> {
       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
     );
     return emailRegex.hasMatch(email);
-  }
-
-  Future<void> _handleLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-
-    setState(() {
-      _isLoading = true;
-      _emailError = null;
-      _passwordError = null;
-    });
-
-    try {
-      await _authService.signIn(email: email, password: password);
-
-      if (!mounted) return;
-
-      // After successful sign-in, fetch profile to decide whether to
-      // show the welcome modal / first-post card. This ensures all
-      // logged-in users that have 0 posts see the onboarding UI.
-      bool shouldShowWelcome = false;
-      try {
-        final postService = PostService();
-        final profileResp = await postService.getProfile();
-        final profile = profileResp['profile'] as Map<String, dynamic>?;
-        int postCount = 0;
-        if (profile != null) {
-          final pc = profile['post_count'];
-          if (pc is int) {
-            postCount = pc;
-          } else {
-            postCount = int.tryParse(pc?.toString() ?? '') ?? 0;
-          }
-        }
-        shouldShowWelcome = postCount == 0;
-      } catch (e) {
-        // On error, default to not showing the modal. Preserve safe behaviour.
-        shouldShowWelcome = false;
-      }
-
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/home',
-        (route) => false,
-        arguments: {'showWelcomeModal': shouldShowWelcome, 'showFirstPostCard': shouldShowWelcome},
-      );
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
-
-      final message = e.message.toLowerCase();
-      if (message.contains('email') || message.contains('otp')) {
-        setState(() {
-          _emailError = e.message;
-        });
-      } else if (message.contains('password') ||
-          message.contains('invalid login credentials')) {
-        setState(() {
-          _passwordError = 'Invalid email or password';
-        });
-      } else {
-        setState(() {
-          _emailError = e.message;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _emailError = 'An unexpected error occurred. Please try again.';
-      });
-    }
   }
 }

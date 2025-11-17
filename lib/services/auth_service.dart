@@ -73,17 +73,23 @@ class AuthService {
     try {
       // Use the class-level Supabase client
 
-      // Calculate a safe "old enough" date so the birthday always satisfies the
-      // DB constraint (birthday <= CURRENT_DATE - '13 years'::interval).
-      // Use 14 years in days to be robust across leap years and timezones.
-      final DateTime oldEnoughDate =
-          DateTime.now().subtract(const Duration(days: 365 * 14));
+      // Use the actual DOB from userData (already in YYYY-MM-DD format)
+      // If not provided, fall back to a safe default
+      String birthdayString;
+      if (userData['birthday'] != null && userData['birthday'].toString().isNotEmpty) {
+        birthdayString = userData['birthday'].toString();
+      } else {
+        // Fallback: Calculate a safe "old enough" date if DOB not provided
+        final DateTime oldEnoughDate =
+            DateTime.now().subtract(const Duration(days: 365 * 14));
+        birthdayString = oldEnoughDate.toIso8601String().substring(0, 10);
+      }
 
       final profileData = {
         // Required fields
         'id': userId,
         'username': userData['username'],
-        'birthday': oldEnoughDate.toIso8601String().substring(0, 10), // YYYY-MM-DD
+        'birthday': birthdayString, // Use actual DOB from userData
         'terms_accepted': userData['terms_accepted'] ?? false,
         'privacy_accepted': userData['privacy_accepted'] ?? false,
 
@@ -369,6 +375,43 @@ class AuthService {
       throw AuthException(e.message);
     } catch (e) {
       throw AuthException('An unexpected error occurred');
+    }
+  }
+
+  /// Check username availability using check-username edge function
+  /// Returns a map with 'available' (bool) and 'message' (String) fields
+  Future<Map<String, dynamic>> checkUsernameAvailability({
+    required String username,
+  }) async {
+    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/check-username?action=check');
+
+    try {
+      // Use anon key for edge function calls
+      final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+      final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
+      
+      final resp = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+          'Authorization': 'Bearer ${sessionToken ?? anonKey}',
+        },
+        body: jsonEncode({
+          'username': username.trim(),
+        }),
+      );
+
+      final body = jsonDecode(resp.body ?? '{}');
+
+      if (resp.statusCode >= 400) {
+        final message = body['message'] ?? body['error'] ?? 'Failed to check username availability';
+        throw Exception(message);
+      }
+
+      return Map<String, dynamic>.from(body);
+    } catch (e) {
+      rethrow;
     }
   }
 }
