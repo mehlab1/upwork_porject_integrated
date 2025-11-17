@@ -41,8 +41,7 @@ workflows:
           # Creates/updates signing assets for the bundle id and App Store distribution
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create \
-            --team-id "$APPLE_DEVELOPER_TEAM_ID"
+            --create
       - name: Install signing certificates
         script: |
           keychain add-certificates
