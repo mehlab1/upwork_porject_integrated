@@ -12,13 +12,15 @@ workflows:
         BUNDLE_ID: com.kobi.pal
         # Optional: override build name/number from pubspec if needed
         BUILD_NAME: 1.0.0
-      # App Store Connect API key + certificate private key must be added as
-      # secure variables in Codemagic (Application > Environment variables).
-      # Use exact names below.
-      # APP_STORE_CONNECT_ISSUER_ID: Encrypted(...)
-      # APP_STORE_CONNECT_KEY_IDENTIFIER: Encrypted(...)
-      # APP_STORE_CONNECT_PRIVATE_KEY: Encrypted(...)
-      # CERTIFICATE_PRIVATE_KEY: Encrypted(...)
+        # Apple Developer Team ID
+        APPLE_DEVELOPER_TEAM_ID: BHBU67SZ4P
+      # IMPORTANT: Add these as ENCRYPTED environment variables in Codemagic UI
+      # (Application > Environment variables > Add variable > Mark as "Secure")
+      # Required variables with your values:
+      # APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
+      # APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
+      # APP_STORE_CONNECT_PRIVATE_KEY: (paste the full .p8 file content including BEGIN/END lines)
+      # CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -35,7 +37,8 @@ workflows:
           # Creates/updates signing assets for the bundle id and App Store distribution
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --team-id "$APPLE_DEVELOPER_TEAM_ID"
       - name: Install signing certificates
         script: |
           keychain add-certificates
@@ -73,7 +76,12 @@ workflows:
         #   - Internal Testers
       email:
         recipients:
-          - your-email@example.com
+          # TODO: Replace 'your-email@example.com' with your actual email address
+          # You can add multiple recipients by adding more lines:
+          # - email1@example.com
+          # - email2@example.com
+          # Or use an environment variable: set EMAIL_RECIPIENT in Codemagic UI and use $EMAIL_RECIPIENT here
+          - m.mehlab17@gmail.com
         notify:
           success: true
           failure: true
@@ -90,6 +98,15 @@ workflows:
       vars:
         BUNDLE_ID: com.kobi.pal
         BUILD_NAME: 1.0.0
+        # Apple Developer Team ID
+        APPLE_DEVELOPER_TEAM_ID: BHBU67SZ4P
+      # IMPORTANT: Add these as ENCRYPTED environment variables in Codemagic UI
+      # (Application > Environment variables > Add variable > Mark as "Secure")
+      # Required variables with your values:
+      # APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
+      # APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
+      # APP_STORE_CONNECT_PRIVATE_KEY: (paste the full .p8 file content including BEGIN/END lines)
+      # CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -105,7 +122,8 @@ workflows:
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --team-id "$APPLE_DEVELOPER_TEAM_ID"
       - name: Install signing certificates
         script: |
           keychain add-certificates
@@ -132,6 +150,11 @@ workflows:
     publishing:
       email:
         recipients:
+          # TODO: Replace 'your-email@example.com' with your actual email address
+          # You can add multiple recipients by adding more lines:
+          # - email1@example.com
+          # - email2@example.com
+          # Or use an environment variable: set EMAIL_RECIPIENT in Codemagic UI and use $EMAIL_RECIPIENT here
           - your-email@example.com
         notify:
           success: true
