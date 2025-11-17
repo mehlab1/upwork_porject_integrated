@@ -59,27 +59,22 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   static const Color _selectionHighlight = Color(0xFFF8FAFC);
   static const Color _optionTextColor = Color(0xFF0F172B);
 
-  static const List<String> _locationOptions = [
-    'All Areas',
-    'Victoria Island (VI)',
-    'Ikoyi',
-    'Lekki',
-    'Lekki Phase 1',
-    'Ajah',
-    'Yaba',
-    'Surulere',
-    'Ikeja',
-    'Mainland',
-    'Festac',
-    'Isolo',
-    'Oshodi',
-    'Maryland',
-    'Gbagada',
-    'Apapa',
-    'Other',
-  ];
+  // Location and category options will be populated from API
+  // "All Areas" is always the first option to clear location filter
+  List<String> get _locationOptions {
+    final List<String> options = ['All Areas'];
+    // Add locations from API, sorted alphabetically
+    final locationNames = _locationMap.keys.toList()..sort();
+    options.addAll(locationNames);
+    return options;
+  }
 
-  static const List<String> _categoryOptions = ['Gist', 'Ask', 'Discussion'];
+  // Category options from API
+  List<String> get _categoryOptions {
+    // Add categories from API, sorted alphabetically
+    final categoryNames = _categoryMap.keys.toList()..sort();
+    return categoryNames;
+  }
 
   static const Map<String, String> _categoryOptionIcons = {
     'All Categories': 'assets/feedPage/categoryFilter.svg',
@@ -766,6 +761,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     
     _resetVisibleLimitForFilter(_selectedFilter);
     
+    // Refresh category and location mappings to ensure dropdowns are up to date
+    await _fetchCategoryAndLocationMappings();
+    
     // Fetch fresh data from backend
     await _fetchFeed(reset: true);
     
@@ -782,15 +780,32 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     });
   }
 
+  /// Fetches feed posts with optional category and location filtering
+  /// 
+  /// Filtering Logic:
+  /// - Categories and locations are loaded from API endpoints:
+  ///   - get-categories: https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-categories
+  ///   - get-locations: https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-locations
+  /// - When a category or location is selected from dropdown, the name is mapped to its ID
+  /// - The category_id and location_id are passed to get-feed function:
+  ///   - https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-feed
+  /// - The get-feed function filters posts using:
+  ///   - get_posts_by_category if category_id is provided
+  ///   - get_posts_by_location if location_id is provided
+  ///   - Default sorting functions (get_posts_hot, get_posts_latest, get_posts_top) otherwise
   Future<void> _fetchFeed({bool reset = false}) async {
     if (_isFeedFetching) return;
     if (!_hasMoreRemotePosts && !reset && _selectedFilter != 'Hot' && _selectedFilter != 'Top') return;
 
     // Check if location or category filters are selected
     // Location: "All Areas" (first option) means no filter, so check if not first option
-    final hasLocationFilter = _selectedLocation != null && _selectedLocation != _locationOptions.first;
-    // Category: null means no filter, any selected value (including first option) is a valid filter
-    final hasCategoryFilter = _selectedCategory != null;
+    final locationOptions = _locationOptions;
+    final hasLocationFilter = _selectedLocation != null && 
+        _selectedLocation != locationOptions.first && 
+        _locationMap.containsKey(_selectedLocation);
+    // Category: any selected value is a valid filter if it exists in the map
+    final hasCategoryFilter = _selectedCategory != null && 
+        _categoryMap.containsKey(_selectedCategory);
     final hasFilters = hasLocationFilter || hasCategoryFilter;
 
     // Special handling for Hot filter - uses get-hottest-post edge function
@@ -939,12 +954,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     });
 
     try {
-      // Convert category and location names to IDs
+      // Convert category and location names to IDs for the get-feed API call
+      // The get-feed function accepts category_id and location_id as query parameters
+      // and will filter posts accordingly using get_posts_by_category or get_posts_by_location
       String? categoryId;
       String? locationId;
       
-      // Only filter by category if a specific category is selected (not the first/default)
-      if (hasCategoryFilter) {
+      // Only filter by category if a specific category is selected and exists in the map
+      if (hasCategoryFilter && _selectedCategory != null) {
         categoryId = _categoryMap[_selectedCategory];
         // If categoryId is null, the mapping might not be loaded yet - log for debugging
         if (categoryId == null) {
@@ -952,8 +969,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         }
       }
       
-      // Only filter by location if a specific location is selected (not "All Areas")
-      if (hasLocationFilter) {
+      // Only filter by location if a specific location is selected (not "All Areas") and exists in the map
+      if (hasLocationFilter && _selectedLocation != null) {
         locationId = _locationMap[_selectedLocation];
         // If locationId is null, the mapping might not be loaded yet - log for debugging
         if (locationId == null) {
@@ -963,6 +980,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       
       debugPrint('Fetching feed with filters: sort=$sortParam, categoryId=$categoryId, locationId=$locationId');
       
+      // Call get-feed function with category_id and location_id parameters
+      // The backend will use get_posts_by_category if category_id is provided,
+      // or get_posts_by_location if location_id is provided,
+      // otherwise it will use the default sorting functions
       final response = await _postService.getFeed(
         sort: sortParam,
         limit: _pageSize,
@@ -1381,7 +1402,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Widget _buildLocationFilter() {
-    final selectedLocation = _selectedLocation ?? _locationOptions.first;
+    // Get current location options from API (includes "All Areas" as first option)
+    final locationOptions = _locationOptions;
+    final selectedLocation = _selectedLocation ?? locationOptions.first;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1476,7 +1500,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               size: 16,
               color: _primary900,
             ),
-            options: _locationOptions
+            options: locationOptions
                 .map((label) => _DropdownOption(label))
                 .toList(),
             selectedValue: selectedLocation,
@@ -1488,7 +1512,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               setState(() {
                 // If "All Areas" is selected, set to null to clear filter
                 // Otherwise, set the selected location
-                _selectedLocation = (value == _locationOptions.first) ? null : value;
+                _selectedLocation = (value == locationOptions.first) ? null : value;
                 _isLocationDropdownOpen = false;
                 // Reset feed state and fetch with new filter
                 _remotePosts.clear();
@@ -1496,6 +1520,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 _hasMoreRemotePosts = true;
                 _isLoadingMore = false;
               });
+              // Fetch feed with location filter applied
               _fetchFeed(reset: true);
             },
           ),
@@ -1504,8 +1529,55 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Widget _buildCategoryDropdown() {
-    final selectedCategory = _selectedCategory ?? _categoryOptions.first;
-    final categoryOptions = _categoryOptions
+    // Get current category options from API
+    final categoryOptionsList = _categoryOptions;
+    
+    // If no categories loaded yet, show placeholder
+    if (categoryOptionsList.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: _slate200, width: 1.513),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: _blue100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.grid_view_rounded,
+                  size: 16,
+                  color: _optionTextColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Loading categories...',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _optionTextColor,
+                  fontFamily: 'Inter',
+                  letterSpacing: -0.1504,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    final selectedCategory = _selectedCategory ?? categoryOptionsList.first;
+    final categoryOptions = categoryOptionsList
         .map(
           (label) => _DropdownOption(
             label,
@@ -1623,6 +1695,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 _hasMoreRemotePosts = true;
                 _isLoadingMore = false;
               });
+              // Fetch feed with category filter applied
               _fetchFeed(reset: true);
             },
           ),

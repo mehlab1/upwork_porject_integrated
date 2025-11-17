@@ -175,32 +175,96 @@ class PostService {
   }
 
   Future<Map<String, String>> getCategories() async {
-    final res = await _callFunction('get-categories', body: {});
-    // Normalize to Map<name, id> for the UI
-    final Map<String, String> map = {};
-    final list = res['categories'] as List<dynamic>? ?? res['data'] as List<dynamic>? ?? [];
-    for (final item in list) {
-      if (item is Map<String, dynamic>) {
-        final name = (item['name'] ?? item['label'] ?? '').toString();
-        final id = (item['id'] ?? item['category_id'] ?? '').toString();
-        if (name.isNotEmpty && id.isNotEmpty) map[name] = id;
+    try {
+      final res = await _callFunction('get-categories', body: {});
+      // Normalize to Map<name, id> for the UI
+      final Map<String, String> map = {};
+      
+      // Try multiple possible response structures
+      final list = res['categories'] as List<dynamic>? ?? 
+                   res['data'] as List<dynamic>? ?? 
+                   (res['success'] == true ? (res['categories'] as List<dynamic>?) : null) ??
+                   [];
+      
+      print('DEBUG getCategories: Response keys: ${res.keys.toList()}');
+      print('DEBUG getCategories: Found ${list.length} categories');
+      
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          // Try multiple field name variations
+          final name = (item['name'] ?? 
+                       item['label'] ?? 
+                       item['category_name'] ?? 
+                       '').toString().trim();
+          final id = (item['id'] ?? 
+                     item['category_id'] ?? 
+                     item['categoryId'] ?? 
+                     '').toString().trim();
+          if (name.isNotEmpty && id.isNotEmpty) {
+            map[name] = id;
+            print('DEBUG getCategories: Mapped "$name" -> "$id"');
+          } else {
+            print('DEBUG getCategories: Skipping item with missing name/id: $item');
+          }
+        }
       }
+      
+      if (map.isEmpty) {
+        print('WARNING: getCategories returned empty map. Full response: $res');
+      }
+      
+      return map;
+    } catch (e) {
+      print('ERROR: getCategories failed: $e');
+      // Return empty map instead of throwing to prevent cascading failures
+      return {};
     }
-    return map;
   }
 
   Future<Map<String, String>> getLocations() async {
-    final res = await _callFunction('get-locations', body: {});
-    final Map<String, String> map = {};
-    final list = res['locations'] as List<dynamic>? ?? res['data'] as List<dynamic>? ?? [];
-    for (final item in list) {
-      if (item is Map<String, dynamic>) {
-        final name = (item['name'] ?? item['label'] ?? '').toString();
-        final id = (item['id'] ?? item['location_id'] ?? '').toString();
-        if (name.isNotEmpty && id.isNotEmpty) map[name] = id;
+    try {
+      final res = await _callFunction('get-locations', body: {});
+      final Map<String, String> map = {};
+      
+      // Try multiple possible response structures
+      final list = res['locations'] as List<dynamic>? ?? 
+                   res['data'] as List<dynamic>? ?? 
+                   (res['success'] == true ? (res['locations'] as List<dynamic>?) : null) ??
+                   [];
+      
+      print('DEBUG getLocations: Response keys: ${res.keys.toList()}');
+      print('DEBUG getLocations: Found ${list.length} locations');
+      
+      for (final item in list) {
+        if (item is Map<String, dynamic>) {
+          // Try multiple field name variations
+          final name = (item['name'] ?? 
+                       item['label'] ?? 
+                       item['location_name'] ?? 
+                       '').toString().trim();
+          final id = (item['id'] ?? 
+                     item['location_id'] ?? 
+                     item['locationId'] ?? 
+                     '').toString().trim();
+          if (name.isNotEmpty && id.isNotEmpty) {
+            map[name] = id;
+            print('DEBUG getLocations: Mapped "$name" -> "$id"');
+          } else {
+            print('DEBUG getLocations: Skipping item with missing name/id: $item');
+          }
+        }
       }
+      
+      if (map.isEmpty) {
+        print('WARNING: getLocations returned empty map. Full response: $res');
+      }
+      
+      return map;
+    } catch (e) {
+      print('ERROR: getLocations failed: $e');
+      // Return empty map instead of throwing to prevent cascading failures
+      return {};
     }
-    return map;
   }
 
   Future<Map<String, dynamic>> createPost({required String content, String? categoryId, String? locationId, bool enableMonthlySpotlight = false}) async {

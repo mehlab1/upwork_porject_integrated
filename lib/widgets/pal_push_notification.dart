@@ -30,12 +30,20 @@ class PalPushNotification extends StatefulWidget {
   }) async {
     final overlay = Overlay.of(context);
 
-    late OverlayEntry barrierEntry;
-    late OverlayEntry contentEntry;
+    OverlayEntry? barrierEntry;
+    OverlayEntry? contentEntry;
+    bool isClosed = false;
 
     void closeAll() {
-      contentEntry.remove();
-      barrierEntry.remove();
+      if (isClosed) return; // Prevent double-removal
+      isClosed = true;
+      try {
+        contentEntry?.remove();
+        barrierEntry?.remove();
+      } catch (e) {
+        // Entry might already be removed, ignore
+        debugPrint('PalPushNotification: Error removing overlay entries: $e');
+      }
     }
 
     barrierEntry = OverlayEntry(
@@ -57,18 +65,30 @@ class PalPushNotification extends StatefulWidget {
           duration: duration,
           onRequestClose: closeAll,
           onExpandedChanged: (expanded) {
-            if (expanded) {
+            if (expanded && barrierEntry != null && !isClosed) {
               // Show tap-outside barrier
-              overlay.insert(barrierEntry, below: contentEntry);
-            } else {
-              barrierEntry.remove();
+              try {
+                overlay.insert(barrierEntry!, below: contentEntry!);
+              } catch (e) {
+                debugPrint('PalPushNotification: Error inserting barrier: $e');
+              }
+            } else if (barrierEntry != null && !isClosed) {
+              try {
+                barrierEntry!.remove();
+              } catch (e) {
+                debugPrint('PalPushNotification: Error removing barrier: $e');
+              }
             }
           },
         ),
       ),
     );
 
-    overlay.insert(contentEntry);
+    try {
+      overlay.insert(contentEntry!);
+    } catch (e) {
+      debugPrint('PalPushNotification: Error inserting content: $e');
+    }
   }
 
   @override

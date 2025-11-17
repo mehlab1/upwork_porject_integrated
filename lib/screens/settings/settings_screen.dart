@@ -3,10 +3,10 @@ import 'package:flutter_svg/flutter_svg.dart' as svg;
 
 import 'your_posts_screen.dart';
 import 'community_guidelines_screen.dart';
-import 'package:pal_app/widgets/pal_bottom_nav_bar.dart';
-import 'package:pal_app/screens/login/login_screen.dart';
-import 'package:pal_app/widgets/pal_loading_widgets.dart';
-import 'package:pal_app/widgets/pal_refresh_indicator.dart';
+import 'package:pal/widgets/pal_bottom_nav_bar.dart';
+import 'package:pal/screens/login/login_screen.dart';
+import 'package:pal/widgets/pal_loading_widgets.dart';
+import 'package:pal/widgets/pal_refresh_indicator.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
