@@ -24,7 +24,7 @@ workflows:
           RR7djgxADlFOEkypYRMid2nIb3oHuN1H5ZZcFgJE20MULJOKsdz7q4Tl5UPVm28p
           IGbe1gFC
           -----END PRIVATE KEY-----
-        CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
+        CM_CERTIFICATE_PASSWORD: o9wP!2z@48A3rt
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -38,12 +38,19 @@ workflows:
           keychain initialize
       - name: Fetch iOS signing files from App Store Connect
         script: |
+          # Export App Store Connect credentials explicitly
+          export APP_STORE_CONNECT_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID"
+          export APP_STORE_CONNECT_KEY_IDENTIFIER="$APP_STORE_CONNECT_KEY_IDENTIFIER"
+          export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
           # Creates/updates signing assets for the bundle id and App Store distribution
+          # Note: CERTIFICATE_PRIVATE_KEY is only used by keychain commands, not fetch-signing-files
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
       - name: Install signing certificates
         script: |
+          # Set CERTIFICATE_PRIVATE_KEY for keychain commands
+          export CERTIFICATE_PRIVATE_KEY="$CM_CERTIFICATE_PASSWORD"
           keychain add-certificates
           xcode-project use-profiles
       - name: Flutter clean and get
@@ -112,7 +119,7 @@ workflows:
           RR7djgxADlFOEkypYRMid2nIb3oHuN1H5ZZcFgJE20MULJOKsdz7q4Tl5UPVm28p
           IGbe1gFC
           -----END PRIVATE KEY-----
-        CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
+        CM_CERTIFICATE_PASSWORD: o9wP!2z@48A3rt
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -126,11 +133,19 @@ workflows:
           keychain initialize
       - name: Fetch iOS signing files from App Store Connect
         script: |
+          # Export App Store Connect credentials explicitly
+          export APP_STORE_CONNECT_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID"
+          export APP_STORE_CONNECT_KEY_IDENTIFIER="$APP_STORE_CONNECT_KEY_IDENTIFIER"
+          export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
+          # Creates/updates signing assets for the bundle id and App Store distribution
+          # Note: CERTIFICATE_PRIVATE_KEY is only used by keychain commands, not fetch-signing-files
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
       - name: Install signing certificates
         script: |
+          # Set CERTIFICATE_PRIVATE_KEY for keychain commands
+          export CERTIFICATE_PRIVATE_KEY="$CM_CERTIFICATE_PASSWORD"
           keychain add-certificates
           xcode-project use-profiles
       - name: Flutter clean and get
