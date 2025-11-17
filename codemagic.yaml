@@ -14,13 +14,17 @@ workflows:
         BUILD_NAME: 1.0.0
         # Apple Developer Team ID
         APPLE_DEVELOPER_TEAM_ID: BHBU67SZ4P
-      # IMPORTANT: Add these as ENCRYPTED environment variables in Codemagic UI
-      # (Application > Environment variables > Add variable > Mark as "Secure")
-      # Required variables with your values:
-      # APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
-      # APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
-      # APP_STORE_CONNECT_PRIVATE_KEY: (paste the full .p8 file content including BEGIN/END lines)
-      # CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
+        # App Store Connect API credentials
+        APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
+        APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
+        APP_STORE_CONNECT_PRIVATE_KEY: |
+          -----BEGIN PRIVATE KEY-----
+          MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgXz4V2zAScJ2jRWc8
+          h9ZQicjpxmUwDhQOdsQXoVssVaOgCgYIKoZIzj0DAQehRANCAAQ5j1CR7dC8oev0
+          RR7djgxADlFOEkypYRMid2nIb3oHuN1H5ZZcFgJE20MULJOKsdz7q4Tl5UPVm28p
+          IGbe1gFC
+          -----END PRIVATE KEY-----
+        CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -66,7 +70,6 @@ workflows:
       - build/ios/ipa/*.log
     publishing:
       app_store_connect:
-        # These are read from environment variables set in Codemagic UI
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
@@ -100,13 +103,17 @@ workflows:
         BUILD_NAME: 1.0.0
         # Apple Developer Team ID
         APPLE_DEVELOPER_TEAM_ID: BHBU67SZ4P
-      # IMPORTANT: Add these as ENCRYPTED environment variables in Codemagic UI
-      # (Application > Environment variables > Add variable > Mark as "Secure")
-      # Required variables with your values:
-      # APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
-      # APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
-      # APP_STORE_CONNECT_PRIVATE_KEY: (paste the full .p8 file content including BEGIN/END lines)
-      # CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
+        # App Store Connect API credentials
+        APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
+        APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
+        APP_STORE_CONNECT_PRIVATE_KEY: |
+          -----BEGIN PRIVATE KEY-----
+          MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgXz4V2zAScJ2jRWc8
+          h9ZQicjpxmUwDhQOdsQXoVssVaOgCgYIKoZIzj0DAQehRANCAAQ5j1CR7dC8oev0
+          RR7djgxADlFOEkypYRMid2nIb3oHuN1H5ZZcFgJE20MULJOKsdz7q4Tl5UPVm28p
+          IGbe1gFC
+          -----END PRIVATE KEY-----
+        CERTIFICATE_PRIVATE_KEY: o9wP!2z@48A3rt
     cache:
       cache_paths:
         - $HOME/.pub-cache
@@ -155,7 +162,7 @@ workflows:
           # - email1@example.com
           # - email2@example.com
           # Or use an environment variable: set EMAIL_RECIPIENT in Codemagic UI and use $EMAIL_RECIPIENT here
-          - your-email@example.com
+          - m.mehlab17@gmail.com
         notify:
           success: true
           failure: true
