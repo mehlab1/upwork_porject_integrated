@@ -1,0 +1,139 @@
+workflows:
+  ios_app_store:
+    name: iOS App Store (.ipa)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: 15.4
+      cocoapods: default
+      vars:
+        # Detected from ios project
+        BUNDLE_ID: com.kobi.pal
+        # Optional: override build name/number from pubspec if needed
+        BUILD_NAME: 1.0.0
+      # App Store Connect API key + certificate private key must be added as
+      # secure variables in Codemagic (Application > Environment variables).
+      # Use exact names below.
+      # APP_STORE_CONNECT_ISSUER_ID: Encrypted(...)
+      # APP_STORE_CONNECT_KEY_IDENTIFIER: Encrypted(...)
+      # APP_STORE_CONNECT_PRIVATE_KEY: Encrypted(...)
+      # CERTIFICATE_PRIVATE_KEY: Encrypted(...)
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $FLUTTER_ROOT/.pub-cache
+        - ios/Pods
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    scripts:
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Fetch iOS signing files from App Store Connect
+        script: |
+          # Creates/updates signing assets for the bundle id and App Store distribution
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Install signing certificates
+        script: |
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Flutter clean and get
+        script: |
+          flutter --version
+          flutter clean
+          flutter pub get
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod repo update
+          pod install
+      - name: Build iOS .ipa (release)
+        script: |
+          # BUILD_NUMBER is provided by Codemagic automatically
+          # BUILD_NAME can be overridden via env var if desired
+          flutter build ipa --release \
+            --build-name="${BUILD_NAME:-}" \
+            --build-number="$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/ipa/*.dSYM.zip
+      - build/ios/ipa/*.log
+    publishing:
+      app_store_connect:
+        # These are read from environment variables set in Codemagic UI
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        # Optionally auto-assign to groups
+        # beta_groups:
+        #   - Internal Testers
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+
+
+  ios_ipa_only:
+    name: iOS .ipa only (no upload)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: 15.4
+      cocoapods: default
+      vars:
+        BUNDLE_ID: com.kobi.pal
+        BUILD_NAME: 1.0.0
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $FLUTTER_ROOT/.pub-cache
+        - ios/Pods
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    scripts:
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Fetch iOS signing files from App Store Connect
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Install signing certificates
+        script: |
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Flutter clean and get
+        script: |
+          flutter --version
+          flutter clean
+          flutter pub get
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod repo update
+          pod install
+      - name: Build iOS .ipa (release)
+        script: |
+          flutter build ipa --release \
+            --build-name="${BUILD_NAME:-}" \
+            --build-number="$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/ipa/*.dSYM.zip
+      - build/ios/ipa/*.log
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+
