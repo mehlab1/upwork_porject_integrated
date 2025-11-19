@@ -116,20 +116,6 @@ class _YourPostsHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 36,
-            height: 36,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              padding: EdgeInsets.zero,
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 18,
-                color: _headerTitleColor,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Row(
               children: [

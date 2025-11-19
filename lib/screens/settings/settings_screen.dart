@@ -7,6 +7,7 @@ import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/screens/login/login_screen.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
+import 'package:pal/widgets/pal_toast.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -50,12 +51,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     controller.dispose();
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Account deactivated. You can reactivate by logging in again.',
-          ),
-        ),
+      PalToast.show(
+        context,
+        message: 'Account deactivated. You can reactivate by logging in again.',
       );
     }
   }
@@ -81,9 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     controller.dispose();
     if (result == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Username updated')));
+      PalToast.show(context, message: 'Username updated');
     }
   }
 
@@ -108,9 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     controller.dispose();
     if (result == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Birthday updated')));
+      PalToast.show(context, message: 'Birthday updated');
     }
   }
 
@@ -139,9 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     newController.dispose();
     confirmController.dispose();
     if (result == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Password reset code sent')));
+      PalToast.show(context, message: 'Password reset code sent');
     }
   }
 
@@ -161,9 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Thanks for sharing your feedback!')),
-      );
+      PalToast.show(context, message: 'Thanks for sharing your feedback!');
     }
   }
 
@@ -184,9 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (result == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Profile picture updated')));
+      PalToast.show(context, message: 'Profile picture updated');
     }
   }
 

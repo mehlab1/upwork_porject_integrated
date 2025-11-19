@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_svg/flutter_svg.dart' as svg;
 
 /// A slide-down push notification banner shown at the top of the screen.
@@ -33,17 +34,37 @@ class PalPushNotification extends StatefulWidget {
     OverlayEntry? barrierEntry;
     OverlayEntry? contentEntry;
     bool isClosed = false;
+    bool contentRemoved = false;
+    bool barrierRemoved = false;
 
     void closeAll() {
       if (isClosed) return; // Prevent double-removal
       isClosed = true;
-      try {
-        contentEntry?.remove();
-        barrierEntry?.remove();
-      } catch (e) {
-        // Entry might already be removed, ignore
-        debugPrint('PalPushNotification: Error removing overlay entries: $e');
-      }
+      
+      // Use post-frame callback to ensure overlay is still valid
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        // Safely remove content entry
+        if (contentEntry != null && !contentRemoved) {
+          contentRemoved = true;
+          try {
+            contentEntry!.remove();
+          } catch (e) {
+            // Entry might already be removed or overlay disposed
+            // Ignore assertion errors and other exceptions
+          }
+        }
+        
+        // Safely remove barrier entry
+        if (barrierEntry != null && !barrierRemoved) {
+          barrierRemoved = true;
+          try {
+            barrierEntry!.remove();
+          } catch (e) {
+            // Entry might already be removed or overlay disposed
+            // Ignore assertion errors and other exceptions
+          }
+        }
+      });
     }
 
     barrierEntry = OverlayEntry(
@@ -72,12 +93,19 @@ class PalPushNotification extends StatefulWidget {
               } catch (e) {
                 debugPrint('PalPushNotification: Error inserting barrier: $e');
               }
-            } else if (barrierEntry != null && !isClosed) {
-              try {
-                barrierEntry!.remove();
-              } catch (e) {
-                debugPrint('PalPushNotification: Error removing barrier: $e');
-              }
+            } else if (barrierEntry != null && !isClosed && !barrierRemoved) {
+              // Use post-frame callback to ensure overlay is still valid
+              SchedulerBinding.instance.addPostFrameCallback((_) {
+                if (!barrierRemoved && !isClosed) {
+                  barrierRemoved = true;
+                  try {
+                    barrierEntry!.remove();
+                  } catch (e) {
+                    // Entry might already be removed or overlay disposed
+                    // Ignore assertion errors and other exceptions
+                  }
+                }
+              });
             }
           },
         ),

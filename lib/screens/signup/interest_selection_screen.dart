@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../otp/otp_verification_screen.dart';
+import 'profile_upload_screen.dart';
 
 class InterestSelectionScreen extends StatefulWidget {
   const InterestSelectionScreen({super.key, required this.email});
@@ -55,7 +55,7 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => OtpVerificationScreen(email: widget.email),
+        builder: (context) => ProfileUploadScreen(email: widget.email),
       ),
     );
   }

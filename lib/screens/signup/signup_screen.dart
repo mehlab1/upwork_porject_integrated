@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
-import '../forgot_password/forgot_password_email_screen.dart';
 import '../otp/otp_verification_screen.dart';
 import 'interest_selection_screen.dart';
 
@@ -36,7 +36,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeToTerms = false;
-  bool _isStateDropdownOpen = false; // Dropdown open state for State field
+  // Dropdown open state for Account Type field
+  bool _isAccountTypeDropdownOpen = false;
 
   // Error messages
   String? _termsError;
@@ -251,6 +252,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // LIFECYCLE METHODS
   // ============================================================================
   @override
+  void initState() {
+    super.initState();
+    // Ensure dropdown state is always initialized
+    _isAccountTypeDropdownOpen = false;
+  }
+
+  @override
   void dispose() {
     _usernameCheckTimer?.cancel();
     _firstNameController.dispose();
@@ -271,7 +279,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   /// Builds a reusable input field with icon, error handling, and validation
   Widget _buildInputField({
     required String hintText,
-    required IconData icon,
+    IconData? icon,
+    String? iconAsset,
     TextEditingController? controller,
     bool obscureText = false,
     Widget? suffixIcon,
@@ -296,9 +305,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
             children: [
               const SizedBox(width: 20),
               // Icon
-              Icon(icon, color: _grey400, size: 20),
-              if (prefixText != null) ...[
+              if (iconAsset != null) ...[
+                SvgPicture.asset(iconAsset, width: 20, height: 20),
                 const SizedBox(width: 16),
+              ] else if (icon != null) ...[
+                Icon(icon, color: _grey400, size: 20),
+                const SizedBox(width: 16),
+              ],
+              if (prefixText != null) ...[
                 Text(
                   prefixText,
                   style: TextStyle(
@@ -307,8 +321,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     color: _grey400,
                   ),
                 ),
+                const SizedBox(width: 16),
               ],
-              const SizedBox(width: 16),
               // Input field
               Expanded(
                 child: TextField(
@@ -448,21 +462,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             children: [
               const SizedBox(height: 64),
 
-              // ========== UI: Header Section ==========
-              // Back button
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 26),
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Icon(Icons.arrow_back, color: _primary900, size: 20),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
               // Title - "Create Account"
               Text(
                 'Create Account',
@@ -478,17 +477,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 52),
 
-              // ========== UI: Form Fields Section ==========
               // Form fields container - width 342px, centered
-              SizedBox(
-                width: 342,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              Center(
+                child: SizedBox(
+                  width: 342,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // First Name
                     _buildInputField(
                       hintText: 'First Name',
-                      icon: Icons.person_outline,
+                      iconAsset: 'assets/authPages/profile.svg',
                       controller: _firstNameController,
                       errorText: _firstNameError,
                       onChanged: (value) {
@@ -514,7 +513,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     // Last Name
                     _buildInputField(
                       hintText: 'Last name',
-                      icon: Icons.person_outline,
+                      iconAsset: 'assets/authPages/profile.svg',
                       controller: _lastNameController,
                       errorText: _lastNameError,
                       onChanged: (value) {
@@ -600,180 +599,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                     const SizedBox(height: 10),
 
-                    // State (Dropdown)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(
-                              color: _stateError != null
-                                  ? Colors.red
-                                  : _primaryColor,
-                              width: 0.758,
-                            ),
-                            borderRadius: BorderRadius.vertical(
-                              top: const Radius.circular(14),
-                              bottom: Radius.circular(
-                                _isStateDropdownOpen ? 0 : 14,
-                              ),
-                            ),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _isStateDropdownOpen = !_isStateDropdownOpen;
-                                  _stateError = null;
-                                });
-                              },
-                              borderRadius: BorderRadius.vertical(
-                                top: const Radius.circular(14),
-                                bottom: Radius.circular(
-                                  _isStateDropdownOpen ? 0 : 14,
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.location_on_outlined,
-                                      color: _grey400,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        _stateController.text.isEmpty
-                                            ? 'State'
-                                            : _stateController.text,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: _stateController.text.isEmpty
-                                              ? _grey700
-                                              : _primary900,
-                                          fontFamily: 'Inter',
-                                          letterSpacing: -0.3125,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Icon(
-                                      _isStateDropdownOpen
-                                          ? Icons.keyboard_arrow_up
-                                          : Icons.keyboard_arrow_down,
-                                      color: _grey400,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (_isStateDropdownOpen)
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(14),
-                                bottomRight: Radius.circular(14),
-                              ),
-                              border: Border(
-                                top: BorderSide.none,
-                                left: BorderSide(
-                                  color: _primaryColor,
-                                  width: 0.758,
-                                ),
-                                right: BorderSide(
-                                  color: _primaryColor,
-                                  width: 0.758,
-                                ),
-                                bottom: BorderSide(
-                                  color: _primaryColor,
-                                  width: 0.758,
-                                ),
-                              ),
-                            ),
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              itemCount: _nigeriaStates.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 2),
-                              itemBuilder: (context, index) {
-                                final label = _nigeriaStates[index];
-                                final bool isSelected =
-                                    label == _stateController.text;
-                                return Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _stateController.text = label;
-                                        _stateError = null;
-                                        _isStateDropdownOpen = false;
-                                      });
-                                    },
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFFF8FAFC)
-                                            : Colors.white,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 12,
-                                      ),
-                                      child: Text(
-                                        label,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: isSelected
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                          color: _primary900,
-                                          fontFamily: 'Inter',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        if (_stateError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 20, top: 4),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  size: 14,
-                                  color: Colors.red,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _stateError!,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
+                    // State (Text Input)
+                    _buildInputField(
+                      hintText: 'location',
+                      controller: _stateController,
+                      errorText: _stateError,
+                      onChanged: (value) {
+                        setState(() {
+                          _stateError = null;
+                        });
+                      },
                     ),
 
                     const SizedBox(height: 10),
@@ -874,10 +709,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             child: Row(
                               children: [
                                 const SizedBox(width: 20),
-                                Icon(
-                                  Icons.cake_outlined,
-                                  color: _grey400,
-                                  size: 20,
+                                SvgPicture.asset(
+                                  'assets/authPages/calender.svg',
+                                  width: 20,
+                                  height: 20,
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
@@ -894,12 +729,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       letterSpacing: -0.3125,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Icon(
-                                  Icons.calendar_today_outlined,
-                                  color: _grey400,
-                                  size: 18,
                                 ),
                                 const SizedBox(width: 12),
                               ],
@@ -1031,48 +860,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   : _primaryColor,
                               width: 1,
                             ),
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.vertical(
+                              top: const Radius.circular(10),
+                              bottom: Radius.circular(
+                                (_isAccountTypeDropdownOpen == true) ? 0 : 10,
+                              ),
+                            ),
                           ),
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
                               onTap: () {
-                                // TODO: Show dropdown
-                                showDialog(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Text('Select Account Type'),
-                                    content: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ListTile(
-                                          title: Text('Individual user'),
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedAccountType =
-                                                  'Individual user';
-                                              _accountTypeError = null;
-                                            });
-                                            Navigator.pop(context);
-                                          },
-                                        ),
-                                        ListTile(
-                                          title: Text('Business Owner'),
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedAccountType =
-                                                  'Business Owner';
-                                              _accountTypeError = null;
-                                            });
-                                            Navigator.pop(context);
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
+                                setState(() {
+                                  _isAccountTypeDropdownOpen =
+                                      !_isAccountTypeDropdownOpen;
+                                  _accountTypeError = null;
+                                });
                               },
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.vertical(
+                                top: const Radius.circular(10),
+                                bottom: Radius.circular(
+                                  (_isAccountTypeDropdownOpen == true)
+                                      ? 0
+                                      : 10,
+                                ),
+                              ),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 14,
@@ -1097,7 +909,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       ),
                                     ),
                                     Icon(
-                                      Icons.keyboard_arrow_down,
+                                      (_isAccountTypeDropdownOpen == true)
+                                          ? Icons.keyboard_arrow_up
+                                          : Icons.keyboard_arrow_down,
                                       color: _grey400,
                                       size: 16,
                                     ),
@@ -1107,12 +921,108 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             ),
                           ),
                         ),
+                        if (_isAccountTypeDropdownOpen == true)
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(10),
+                                bottomRight: Radius.circular(10),
+                              ),
+                              border: Border(
+                                top: BorderSide.none,
+                                left: BorderSide(
+                                  color: _accountTypeError != null
+                                      ? Colors.red
+                                      : _primaryColor,
+                                  width: 1.513,
+                                ),
+                                right: BorderSide(
+                                  color: _accountTypeError != null
+                                      ? Colors.red
+                                      : _primaryColor,
+                                  width: 1.513,
+                                ),
+                                bottom: BorderSide(
+                                  color: _accountTypeError != null
+                                      ? Colors.red
+                                      : _primaryColor,
+                                  width: 1.513,
+                                ),
+                              ),
+                            ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 8,
+                              ),
+                              itemCount: 2,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 4),
+                              itemBuilder: (context, index) {
+                                final option = index == 0
+                                    ? 'Personal User'
+                                    : 'Business Owner';
+                                final isSelected =
+                                    _selectedAccountType == option;
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedAccountType = option;
+                                        _accountTypeError = null;
+                                        _isAccountTypeDropdownOpen = false;
+                                      });
+                                    },
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? const Color(0xFFF8FAFC)
+                                            : Colors.white,
+                                        borderRadius: BorderRadius.circular(
+                                          12,
+                                        ),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 12,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              option,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w500,
+                                                color: _primary900,
+                                                fontFamily: 'Inter',
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         if (_accountTypeError != null)
                           Padding(
                             padding: const EdgeInsets.only(left: 20, top: 4),
                             child: Text(
                               _accountTypeError!,
-                              style: TextStyle(fontSize: 12, color: Colors.red),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red,
+                              ),
                             ),
                           ),
                       ],
@@ -1120,180 +1030,169 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ],
                 ),
               ),
+              ),
 
               const SizedBox(height: 50),
 
-              // ========== UI: Terms & Conditions Section ==========
-              // Terms and conditions checkbox
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 33),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _agreeToTerms = !_agreeToTerms;
-                          if (_agreeToTerms) {
-                            _termsError = null;
-                          }
-                        });
-                      },
-                      child: Container(
-                        width: 24.476,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: _primaryColor, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                          color: _agreeToTerms ? _primaryColor : Colors.white,
-                        ),
-                        child: _agreeToTerms
-                            ? Icon(Icons.check, color: Colors.white, size: 16)
-                            : null,
+              // Sign up button - aligned with input forms
+              Center(
+                child: Container(
+                  width: 338,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _isLoading
+                        ? _primaryColor.withOpacity(0.7)
+                        : _primaryColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isLoading
+                          ? null
+                          : () async {
+                              if (_validateSignUp()) {
+                                await _handleSignUp();
+                              }
+                            },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Center(
+                        child: _isLoading
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : Text(
+                                'Sign up',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500, // Poppins Medium
+                                  color: Colors.white,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: RichText(
-                        text: TextSpan(
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.normal, // Rubik Regular
-                            color: _primary900,
-                            letterSpacing: 0.2,
-                            fontFamily: 'Rubik',
-                            height: 1.4,
-                          ),
-                          children: [
-                            const TextSpan(
-                              text: "By signing up I agree to the ",
-                            ),
-                            TextSpan(
-                              text: 'Terms of Use',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                            const TextSpan(text: ' and '),
-                            TextSpan(
-                              text: 'Privacy Policy',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                            const TextSpan(text: '.'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
 
-              if (_termsError != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 45, right: 33, top: 8),
-                  child: Row(
+              const SizedBox(height: 22),
+
+              // Terms and conditions checkbox - aligned with input forms
+              Center(
+                child: SizedBox(
+                  width: 342,
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 16,
-                        color: Colors.red,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _agreeToTerms = !_agreeToTerms;
+                                if (_agreeToTerms) {
+                                  _termsError = null;
+                                }
+                              });
+                            },
+                            child: Container(
+                              width: 24.476,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: _primaryColor,
+                                  width: 1,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                                color: _agreeToTerms
+                                    ? _primaryColor
+                                    : Colors.white,
+                              ),
+                              child: _agreeToTerms
+                                  ? Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 16,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight:
+                                      FontWeight.normal, // Rubik Regular
+                                  color: _primary900,
+                                  letterSpacing: 0.2,
+                                  fontFamily: 'Rubik',
+                                  height: 1.4,
+                                ),
+                                children: [
+                                  const TextSpan(
+                                    text: "By signing up I agree to the ",
+                                  ),
+                                  TextSpan(
+                                    text: 'Terms of Use',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const TextSpan(text: ' and '),
+                                  TextSpan(
+                                    text: 'Privacy Policy',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const TextSpan(text: '.'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _termsError!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.red,
-                            height: 1.4,
+                      if (_termsError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 36, top: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _termsError!,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.red,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-
-              const SizedBox(height: 30),
-
-              // ========== UI: Action Buttons Section ==========
-              // Sign up button - triggers validation and backend signup
-              Container(
-                width: 338,
-                height: 56,
-                decoration: BoxDecoration(
-                  color:
-                      _isLoading ? _primaryColor.withOpacity(0.7) : _primaryColor,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _isLoading
-                        ? null
-                        : () async {
-                            if (_validateSignUp()) {
-                              await _handleSignUp();
-                            }
-                          },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Center(
-                      child: _isLoading
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              'Sign up',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500, // Poppins Medium
-                                color: Colors.white,
-                                fontFamily: 'Poppins',
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
               ),
-
-              const SizedBox(height: 22),
-
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ForgotPasswordEmailScreen(),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  'Forgot Password?',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.normal,
-                    color: _grey400,
-                    fontFamily: 'Rubik',
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 22),
 
               // Divider
               SizedBox(
@@ -1301,27 +1200,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 height: 22,
                 child: Row(
                   children: [
-                    Expanded(
-                      flex: 7278,
-                      child: Container(
-                        alignment: Alignment.center,
-                        child: Container(
-                          height: 1,
-                          width: double.infinity,
-                          color: Colors.grey.withOpacity(0.2),
-                        ),
-                      ),
+                    // Left line (short, on the left)
+                    Container(
+                      width: 80,
+                      height: 1,
+                      color: Colors.grey.withOpacity(0.2),
                     ),
-                    Expanded(
-                      flex: 2722,
-                      child: Container(
-                        alignment: Alignment.center,
-                        child: Container(
-                          height: 1,
-                          width: double.infinity,
-                          color: Colors.grey.withOpacity(0.2),
-                        ),
-                      ),
+                    // Empty space in the center
+                    const Spacer(),
+                    // Right line (short, on the right)
+                    Container(
+                      width: 80,
+                      height: 1,
+                      color: Colors.grey.withOpacity(0.2),
                     ),
                   ],
                 ),
@@ -1329,8 +1220,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 30),
 
-              // ========== UI: Footer Section ==========
-              // Footer text with link to login screen
+              // Footer text
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(

@@ -10,7 +10,7 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen>
     with TickerProviderStateMixin {
-  // Color for "pal" text - starts as light gray (neutral-300), animates to black after 2 seconds
+  // Color for "pal" text - starts as light gray (neutral-300), animates to black
   Color _palTextColor = const Color(0xFFD4D4D4); // neutral-300 (light gray)
   Color _dotColor = const Color(0xFFD4D4D4); // neutral-300 (light gray)
   bool _isLogInPressed = false;
@@ -19,17 +19,32 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // Logo visibility state
   bool _showLogo = false;
   bool _showText = true;
+  bool _showKobi = false; // Controls visibility of "kobi" text
+
+  // Login button background color
+  Color _loginButtonColor = Colors.white;
 
   // Animation controllers
   late AnimationController _logoAnimationController;
   late Animation<double> _logoFadeAnimation;
   late AnimationController _textAnimationController;
   late Animation<double> _textFadeAnimation;
+  late AnimationController _palColorAnimationController;
+  late AnimationController _kobiFadeAnimationController;
+  late AnimationController _dotColorAnimationController;
+  late AnimationController _buttonColorAnimationController;
+
+  late Animation<Color?> _palColorAnimation;
+  late Animation<double> _kobiFadeAnimation;
+  late Animation<Color?> _dotColorAnimation;
+  late Animation<Color?> _buttonColorAnimation;
 
   // Bright blue color used for buttons when pressed
   static const Color _brightBlue = Color(0xFF155DFC);
   // Dark blue color for logo text (from Figma: #0f172b)
   static const Color _logoTextColor = Color(0xFF0F172B);
+  // Dark color for "pal" text
+  static const Color _darkPalColor = Color(0xFF000000);
 
   @override
   void initState() {
@@ -53,6 +68,82 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       CurvedAnimation(parent: _textAnimationController, curve: Curves.easeIn),
     );
 
+    // "pal" color animation (light gray to dark)
+    _palColorAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _palColorAnimation =
+        ColorTween(begin: const Color(0xFFD4D4D4), end: _darkPalColor).animate(
+          CurvedAnimation(
+            parent: _palColorAnimationController,
+            curve: Curves.easeInOut,
+          ),
+        );
+
+    // "kobi" fade in animation
+    _kobiFadeAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _kobiFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _kobiFadeAnimationController,
+        curve: Curves.easeIn,
+      ),
+    );
+
+    // Dot color animation (light gray to blue)
+    _dotColorAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _dotColorAnimation =
+        ColorTween(begin: const Color(0xFFD4D4D4), end: _brightBlue).animate(
+          CurvedAnimation(
+            parent: _dotColorAnimationController,
+            curve: Curves.easeInOut,
+          ),
+        );
+
+    // Button color animation (white to blue)
+    _buttonColorAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _buttonColorAnimation = ColorTween(begin: Colors.white, end: _brightBlue)
+        .animate(
+          CurvedAnimation(
+            parent: _buttonColorAnimationController,
+            curve: Curves.easeInOut,
+          ),
+        );
+
+    // Update colors during animations
+    _palColorAnimation.addListener(() {
+      if (mounted) {
+        setState(() {
+          _palTextColor = _palColorAnimation.value ?? const Color(0xFFD4D4D4);
+        });
+      }
+    });
+
+    _dotColorAnimation.addListener(() {
+      if (mounted) {
+        setState(() {
+          _dotColor = _dotColorAnimation.value ?? const Color(0xFFD4D4D4);
+        });
+      }
+    });
+
+    _buttonColorAnimation.addListener(() {
+      if (mounted) {
+        setState(() {
+          _loginButtonColor = _buttonColorAnimation.value ?? Colors.white;
+        });
+      }
+    });
+
     _textAnimationController.addStatusListener((status) {
       if (status == AnimationStatus.completed && mounted) {
         setState(() {
@@ -63,20 +154,31 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
     });
 
-    // Text is shown first, then fades out to reveal the logo
-    Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        _textAnimationController.forward();
+    // Animation sequence:
+    // Step 1: Text appears with light color (already set in initial state)
+    // Step 2: After 1.5 seconds, "pal" transitions to dark color
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && _showText) {
+        _palColorAnimationController.forward();
       }
     });
 
-    // Animate "pal" text and dot color to black shortly before it fades away
-    Timer(const Duration(milliseconds: 2000), () {
+    // Step 3: After 2.5 seconds, "kobi" appears and dot + button transition to blue
+    Timer(const Duration(milliseconds: 2500), () {
       if (mounted && _showText) {
         setState(() {
-          _palTextColor = Colors.black;
-          _dotColor = Colors.black;
+          _showKobi = true;
         });
+        _kobiFadeAnimationController.forward();
+        _dotColorAnimationController.forward();
+        _buttonColorAnimationController.forward();
+      }
+    });
+
+    // Step 4: After 4 seconds, text fades out and transitions to logo
+    Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        _textAnimationController.forward();
       }
     });
   }
@@ -85,6 +187,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   void dispose() {
     _logoAnimationController.dispose();
     _textAnimationController.dispose();
+    _palColorAnimationController.dispose();
+    _kobiFadeAnimationController.dispose();
+    _dotColorAnimationController.dispose();
+    _buttonColorAnimationController.dispose();
     super.dispose();
   }
 
@@ -126,35 +232,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             Expanded(
               child: Stack(
                 children: [
-                  // Logo section - positioned at top: 294px, left: 72px (from Figma)
+                  // Logo section - centered on the page
                   if (_showLogo)
-                    Positioned(
-                      left: 72,
-                      top: 294,
+                    Center(
                       child: FadeTransition(
                         opacity: _logoFadeAnimation,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Logo icon (66px from Figma)
-                            Image.asset(
-                              'assets/images/Logo.png',
+                        child: Image.asset(
+                          'assets/images/Logo.png',
+                          width: 279,
+                          height: 171,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            // Return a placeholder if asset fails to load
+                            return Container(
                               width: 279,
                               height: 171,
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                // Return a placeholder if asset fails to load
-                                return Container(
-                                  width: 279,
-                                  height: 171,
-                                  color: Colors.grey[200],
-                                  child: const Icon(Icons.image, size: 50),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 18), // gap-[18px] from Figma
-                            // Logo text section
-                          ],
+                              color: Colors.grey[200],
+                              child: const Icon(Icons.image, size: 50),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -163,7 +259,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   if (_showText)
                     Positioned(
                       left: 74,
-                      top: 180,
+                      top: 210,
                       child: FadeTransition(
                         opacity: _textFadeAnimation,
                         child: Column(
@@ -223,20 +319,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               child: Stack(
                                 alignment: Alignment.centerLeft,
                                 children: [
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    child: Text(
-                                      'kobi',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                        color: _logoTextColor,
-                                        fontFamily: 'Inter',
-                                        letterSpacing: 0.3,
+                                  if (_showKobi)
+                                    Positioned(
+                                      top: 0,
+                                      left: 0,
+                                      child: FadeTransition(
+                                        opacity: _kobiFadeAnimation,
+                                        child: Text(
+                                          'kobi',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                            color: _logoTextColor,
+                                            fontFamily: 'Inter',
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
                                   Positioned(
                                     bottom: 0,
                                     left: 0,
@@ -289,9 +389,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     SizedBox(
                       width: 338, // Figma: 338px
                       child: Material(
-                        color: _isLogInPressed ? _brightBlue : Colors.white,
+                        color: _isLogInPressed
+                            ? _brightBlue
+                            : _loginButtonColor, // Use animated color
                         borderRadius: BorderRadius.circular(20), // Figma: 20px
-                        elevation: _isLogInPressed ? 0 : 4,
+                        elevation:
+                            (_isLogInPressed ||
+                                _loginButtonColor != Colors.white)
+                            ? 0
+                            : 4,
                         shadowColor: Colors.black.withOpacity(0.25),
                         child: InkWell(
                           onTap: _handleLogIn,
@@ -320,9 +426,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               style: TextStyle(
                                 fontSize: 16, // Figma: 16px
                                 fontWeight: FontWeight.w500, // Poppins Medium
-                                color: _isLogInPressed
+                                color:
+                                    (_isLogInPressed ||
+                                        _loginButtonColor != Colors.white)
                                     ? Colors.white
-                                    : Colors.black, // Figma: black text
+                                    : const Color(
+                                        0xFF000000,
+                                      ), // rgba(0, 0, 0, 1)
                               ),
                             ),
                           ),

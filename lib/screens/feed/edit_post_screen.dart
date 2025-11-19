@@ -37,10 +37,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
         title: const Text('Edit Post'),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -69,4 +66,3 @@ class _EditPostScreenState extends State<EditPostScreen> {
     );
   }
 }
-

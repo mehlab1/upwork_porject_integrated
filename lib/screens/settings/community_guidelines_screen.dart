@@ -19,7 +19,7 @@ class CommunityGuidelinesScreen extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            _GuidelinesAppBar(onBack: () => Navigator.of(context).maybePop()),
+            const _GuidelinesAppBar(),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.only(bottom: 32),
@@ -54,9 +54,7 @@ class CommunityGuidelinesScreen extends StatelessWidget {
 }
 
 class _GuidelinesAppBar extends StatelessWidget {
-  const _GuidelinesAppBar({required this.onBack});
-
-  final VoidCallback onBack;
+  const _GuidelinesAppBar();
 
   @override
   Widget build(BuildContext context) {
@@ -70,13 +68,6 @@ class _GuidelinesAppBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            iconSize: 18,
-            color: const Color(0xFF0F172B),
-          ),
-          const SizedBox(width: 8),
           const Expanded(
             child: Text(
               'Community Guidelines',

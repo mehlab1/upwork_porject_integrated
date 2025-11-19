@@ -105,24 +105,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 children: [
                   const SizedBox(height: 32),
 
-                  // Back button
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 26),
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: _primary900,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
                   // Title
                   Padding(
                     padding:

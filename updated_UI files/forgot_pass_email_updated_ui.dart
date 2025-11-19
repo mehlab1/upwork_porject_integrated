@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../services/auth_service.dart';
+
 import '../otp/otp_verification_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -15,7 +15,6 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
   final TextEditingController _emailController = TextEditingController();
   String? _emailError;
   bool _isSubmitting = false;
-  final AuthService _authService = AuthService();
 
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _headlineColor = Color(0xFF0F172A);
@@ -44,72 +43,34 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       });
       return;
     }
-    
     setState(() {
       _emailError = null;
       _isSubmitting = true;
     });
 
-    try {
-      // Call forgot-password edge function
-      // This calls request_password_reset_otp RPC which:
-      // - Checks rate limits (3 per hour)
-      // - Creates OTP record with 15-minute expiration
-      // - Sends OTP via email
-      final response = await _authService.forgotPassword(email: email);
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
 
-      if (!mounted) return;
+    setState(() {
+      _isSubmitting = false;
+    });
 
-      setState(() {
-        _isSubmitting = false;
-      });
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(response['message'] ?? 'Password reset code sent to your email'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OtpVerificationScreen(
+          email: email,
+          onSuccess: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ResetPasswordScreen(email: email),
+              ),
+            );
+          },
         ),
-      );
-
-      // Navigate to OTP verification screen
-      // For password reset, OTP is collected and passed to reset-password screen
-      // The reset-password edge function verifies the OTP when resetting
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => OtpVerificationScreen(
-            email: email,
-            isPasswordReset: true, // Flag to indicate this is for password reset
-            onSuccess: (otpCode) {
-              // Pass OTP code to reset password screen
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ResetPasswordScreen(
-                    email: email,
-                    otpCode: otpCode,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-        if (e.toString().contains('rate limit') || e.toString().contains('too many')) {
-          _emailError = 'Too many requests. Please try again later.';
-        } else {
-          _emailError = e.toString().contains('not found') || e.toString().contains('does not exist')
-              ? 'If this email exists, a password reset code has been sent.'
-              : 'Failed to send password reset code. Please try again.';
-        }
-      });
-    }
+      ),
+    );
   }
 
   @override

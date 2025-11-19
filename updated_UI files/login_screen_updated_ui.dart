@@ -38,19 +38,6 @@ class _LoginScreenState extends State<LoginScreen>
       body: SafeArea(
         child: Stack(
           children: [
-            // Back button - positioned at left: 26px, top: 70px
-            Positioned(
-              left: 26,
-              top: 70,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: SizedBox(
-                  width: 19,
-                  height: 12,
-                  child: Icon(Icons.arrow_back, color: _primary900, size: 20),
-                ),
-              ),
-            ),
 
             // Main content
             SingleChildScrollView(
@@ -284,52 +271,54 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                       const SizedBox(height: 22),
 
-                      // Remember me - left: 26px
-                      Padding(
-                        padding: const EdgeInsets.only(left: 40),
-                        child: Row(
-                          children: [
-                            // Checkbox
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _rememberMe = !_rememberMe;
-                                });
-                              },
-                              child: Container(
-                                width: 24.4,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: _primaryColor,
-                                    width: 1,
+                      // Remember me - aligned with input forms
+                      Center(
+                        child: SizedBox(
+                          width: 338,
+                          child: Row(
+                            children: [
+                              // Checkbox
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _rememberMe = !_rememberMe;
+                                  });
+                                },
+                                child: Container(
+                                  width: 24.4,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: _primaryColor,
+                                      width: 1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                    color: _rememberMe
+                                        ? _primaryColor
+                                        : Colors.white,
                                   ),
-                                  borderRadius: BorderRadius.circular(6),
-                                  color: _rememberMe
-                                      ? _primaryColor
-                                      : Colors.white,
+                                  child: _rememberMe
+                                      ? Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                          size: 16,
+                                        )
+                                      : null,
                                 ),
-                                child: _rememberMe
-                                    ? Icon(
-                                        Icons.check,
-                                        color: Colors.white,
-                                        size: 16,
-                                      )
-                                    : null,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Remember me',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.normal, // Rubik Regular
-                                color: _primary900,
-                                letterSpacing: 0.2,
-                                fontFamily: 'Rubik',
+                              const SizedBox(width: 12),
+                              Text(
+                                'Remember me',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.normal, // Rubik Regular
+                                  color: _primary900,
+                                  letterSpacing: 0.2,
+                                  fontFamily: 'Rubik',
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
 
@@ -410,29 +399,19 @@ class _LoginScreenState extends State<LoginScreen>
                     height: 22,
                     child: Row(
                       children: [
-                        // Left divider (72.78% of width)
-                        Expanded(
-                          flex: 7278,
-                          child: Container(
-                            alignment: Alignment.center,
-                            child: Container(
-                              height: 1,
-                              width: double.infinity,
-                              color: Colors.grey.withOpacity(0.2),
-                            ),
-                          ),
+                        // Left line (short, on the left)
+                        Container(
+                          width: 80,
+                          height: 1,
+                          color: Colors.grey.withOpacity(0.2),
                         ),
-                        // Right divider (27.22% of width)
-                        Expanded(
-                          flex: 2722,
-                          child: Container(
-                            alignment: Alignment.center,
-                            child: Container(
-                              height: 1,
-                              width: double.infinity,
-                              color: Colors.grey.withOpacity(0.2),
-                            ),
-                          ),
+                        // Empty space in the center
+                        const Spacer(),
+                        // Right line (short, on the right)
+                        Container(
+                          width: 80,
+                          height: 1,
+                          color: Colors.grey.withOpacity(0.2),
                         ),
                       ],
                     ),

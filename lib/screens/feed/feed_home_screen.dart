@@ -71,9 +71,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
   // Category options from API
   List<String> get _categoryOptions {
-    // Add categories from API, sorted alphabetically
+    // Start with 'All Categories' option, then add categories from API, sorted alphabetically
     final categoryNames = _categoryMap.keys.toList()..sort();
-    return categoryNames;
+    return ['All Categories', ...categoryNames];
   }
 
   static const Map<String, String> _categoryOptionIcons = {
@@ -472,17 +472,17 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
-                        width: 52,
-                        height: 52,
+                        width: 45,
+                        height: 45,
                         decoration: BoxDecoration(
                           color: _primaryColor,
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
                           child: SvgPicture.asset(
                             'assets/images/icon.svg',
-                            width: 35,
-                            height: 35,
+                            width: 28,
+                            height: 28,
                             fit: BoxFit.contain,
                           ),
                         ),
@@ -509,7 +509,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                               ),
                             ),
                             Positioned(
-                              bottom: 0,
+                              top: 3,
                               left: 0,
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -517,7 +517,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                                   Text(
                                     'pal',
                                     style: TextStyle(
-                                      fontSize: 32,
+                                      fontSize: 37,
                                       fontWeight: FontWeight.w700,
                                       color: Color(0xFF111827),
                                       fontFamily: 'Inter',
@@ -527,7 +527,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                                   Text(
                                     '.',
                                     style: TextStyle(
-                                      fontSize: 32,
+                                      fontSize: 37,
                                       fontWeight: FontWeight.w700,
                                       color: Color(0xFF155DFC),
                                       fontFamily: 'Inter',
@@ -661,10 +661,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     );
 
     if (shouldCreatePost == true && mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CreatePostScreen()),
-      );
+      showCreatePostModal(context);
     }
   }
 
@@ -803,8 +800,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     final hasLocationFilter = _selectedLocation != null && 
         _selectedLocation != locationOptions.first && 
         _locationMap.containsKey(_selectedLocation);
-    // Category: any selected value is a valid filter if it exists in the map
+    // Category: "All Categories" (first option) means no filter, so check if not first option
+    final categoryOptionsList = _categoryOptions;
     final hasCategoryFilter = _selectedCategory != null && 
+        _selectedCategory != categoryOptionsList.first &&
         _categoryMap.containsKey(_selectedCategory);
     final hasFilters = hasLocationFilter || hasCategoryFilter;
 
@@ -1637,11 +1636,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Center(
-                              child: Icon(
-                                Icons.grid_view_rounded,
-                                size: 16,
-                                color: _optionTextColor,
-                              ),
+                              child:
+                                  _categoryOptionIcons[selectedCategory] != null
+                                  ? SvgPicture.asset(
+                                      _categoryOptionIcons[selectedCategory]!,
+                                      width: 16,
+                                      height: 16,
+                                    )
+                                  : Icon(Icons.grid_view_rounded, size: 16),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1686,8 +1688,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             showHeader: false,
             onSelected: (value) {
               setState(() {
-                // Set the selected category (all category options are valid filters)
-                _selectedCategory = value;
+                // Set the selected category
+                // If "All Categories" is selected, set to null to clear filter
+                _selectedCategory = value == categoryOptionsList.first ? null : value;
                 _isCategoryDropdownOpen = false;
                 // Reset feed state and fetch with new filter
                 _remotePosts.clear();
@@ -2051,12 +2054,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: _buildFirstPostButton(() {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CreatePostScreen(),
-                ),
-              );
+              showCreatePostModal(context);
             }),
           ),
         ],
@@ -2180,6 +2178,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Widget _buildCards(BuildContext context) {
+    final trending = _selectedTrending ?? _trendingOptions.first;
     final postsToShow = _visiblePosts;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
@@ -2191,9 +2190,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           _buildCategoryDropdown(),
           const SizedBox(height: 24),
           _buildMonthlySpotlight(),
-          if (_isTrendingDropdownOpen && _selectedTrending != null) ...[
+          if (_isTrendingDropdownOpen) ...[
             const SizedBox(height: 8),
-            _buildTrendingDropdownPanel(_selectedTrending!),
+            _buildTrendingDropdownPanel(trending),
           ],
           const SizedBox(height: 24),
           if (_isInitialPostsLoading)
@@ -2229,9 +2228,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 .map(
                   (post) => Padding(
                     padding: const EdgeInsets.only(bottom: 20),
-                    child: PostCard(
-                      data: post,
-                    ),
+                    child: PostCard(data: post),
                   ),
                 )
                 .toList(),

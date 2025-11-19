@@ -21,10 +21,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         title: const Text('Post Details'),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
       ),
       body: Center(
         child: Text(
@@ -36,4 +33,3 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 }
-

@@ -1,6 +1,6 @@
 {
-    "name": "pal_app",
-    "short_name": "pal_app",
+    "name": "pal",
+    "short_name": "pal",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

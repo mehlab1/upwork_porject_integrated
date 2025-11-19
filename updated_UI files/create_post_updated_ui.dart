@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../../services/post_service.dart';
+import 'package:pal/widgets/pal_toast.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -15,11 +15,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   bool _spotlightEnabled = true;
   String? _selectedLocation;
   bool _isLocationInlineOpen = false;
-  bool _isSubmitting = false;
-  
-  // Monthly Spotlight state
-  bool _isLoadingSpotlightStatus = false;
-  Map<String, dynamic>? _spotlightStatus;
 
   static const Map<String, Color> _categoryColors = {
     'Gist': Color(0xFFAD46FF),
@@ -40,37 +35,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     'Gbagada',
   ];
 
-  // Fallback hardcoded ids for locations and categories. These are used when
-  // the edge functions that fetch categories/locations fail (backend issue).
-  // The UI will continue to show the same labels but the app will send the
-  // mapped id to the create-post edge function so posts are created with a
-  // location/category id. Replace these ids with real ones if you have them.
-  static const Map<String, String> _fallbackLocationIdLookup = {
-    'Victoria Island (VI)': '1549afea-3d2d-4a84-ab4c-e781816578bc',
-    'Ikoyi': 'd2bab849-c561-4bc1-9a38-9b41acc713d2',
-    'Lekki': 'bb6c49e4-0ee1-4fca-83fc-703fc24588de',
-    'Lekki Phase 1': '7b634ec2-a209-4e5b-99d7-a4e3fda6bafa',
-    'Ajah': 'f530b1ec-765c-4108-bf3d-f1ee5160cb1d',
-    'Yaba': 'd854e619-8816-4114-b3b6-cc4667a4c93f',
-    'Surulere': 'bc3bd59c-dc8d-40da-b857-8f4aaf5edd9a',
-    'Ikeja': 'db730bb8-fe61-4259-818f-2ef073010a7d',
-    'Maryland': 'b4f2e110-7f8d-4046-8c48-13b0c3c3571e',
-    'Gbagada': '9171d84c-fc1b-4c18-9757-618bffb65ed3',
-  };
-
-  static const Map<String, String> _fallbackCategoryIdLookup = {
-    'Gist': '920895cb-cb64-47fa-bae4-3d600b174b27',
-    'Ask': '4610edf9-33a8-4173-94ed-5da6bfc1869c',
-    'Discussion': '923b71e2-e2d8-4ac5-a112-f4c4e2270983',
-  };
-
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _bodyController = TextEditingController();
   final FocusNode _titleFocusNode = FocusNode();
   final FocusNode _bodyFocusNode = FocusNode();
-  final PostService _postService = PostService();
-  Map<String, String> _categoryIdLookup = {};
-  Map<String, String> _locationIdLookup = {};
 
   @override
   void initState() {
@@ -79,61 +47,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     _bodyController.addListener(_onFormFieldChanged);
     _titleController.addListener(_capitalizeTitle);
     _bodyController.addListener(_capitalizeBody);
-    _checkSpotlightStatus();
-    Future(() async {
-      try {
-        final fetchedCategories = await _postService.getCategories();
-        final fetchedLocations = await _postService.getLocations();
-        if (!mounted) return;
-        setState(() {
-          final usedCategories = fetchedCategories.isNotEmpty ? fetchedCategories : _fallbackCategoryIdLookup;
-          final usedLocations = fetchedLocations.isNotEmpty ? fetchedLocations : _fallbackLocationIdLookup;
-          _categoryIdLookup = usedCategories;
-          _locationIdLookup = usedLocations;
-        });
-        // Log when backend returned empty lists so we can detect fallback usage locally
-        if (fetchedCategories.isEmpty || fetchedLocations.isEmpty) {
-          // ignore: avoid_print
-          print('DEBUG: Using fallback mappings for categories or locations (empty backend result)');
-        }
-      } catch (_) {
-        if (!mounted) return;
-        // On error, fall back to hardcoded mappings so the UI remains usable.
-        setState(() {
-          _categoryIdLookup = _fallbackCategoryIdLookup;
-          _locationIdLookup = _fallbackLocationIdLookup;
-        });
-        // ignore: avoid_print
-        print('DEBUG: Failed to fetch categories/locations - using fallback mappings');
-      }
-    });
-  }
-
-  Future<void> _checkSpotlightStatus() async {
-    try {
-      setState(() {
-        _isLoadingSpotlightStatus = true;
-      });
-
-      final response = await _postService.getMonthlySpotlightStatus();
-      if (!mounted) return;
-
-      setState(() {
-        _spotlightStatus = response;
-        _isLoadingSpotlightStatus = false;
-        // Set spotlight enabled based on availability
-        final isAvailable = response['is_available'] as bool? ?? false;
-        _spotlightEnabled = isAvailable;
-      });
-    } catch (e) {
-      // Silently handle error - fallback to default
-      if (!mounted) return;
-      setState(() {
-        _isLoadingSpotlightStatus = false;
-        _spotlightStatus = null;
-        _spotlightEnabled = false; // Disable if status fetch fails
-      });
-    }
   }
 
   @override
@@ -749,17 +662,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildSpotlightCard() {
-    // Check if spotlight is available
-    final isAvailable = _spotlightStatus?['is_available'] as bool? ?? false;
-    
-    // Hide card if spotlight is not available
-    if (!isAvailable) {
-      return const SizedBox.shrink();
-    }
-    
-    // Use dynamic title from API or fallback to hardcoded
-    final topicTitle = _spotlightStatus?['hot_topic_title'] as String? ?? 'Detty December';
-    
     return Container(
       decoration: BoxDecoration(
         color: const Color(0x66EEF2FF),
@@ -787,18 +689,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: const [
                 Text(
-                  topicTitle,
-                  style: const TextStyle(
+                  'Detty December',
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: _textPrimary,
                     fontFamily: 'Inter',
                   ),
                 ),
-                const SizedBox(height: 2),
-                const Text(
+                SizedBox(height: 2),
+                Text(
                   'Toggle for Festive spotlight',
                   style: TextStyle(
                     fontSize: 12,
@@ -840,7 +742,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: Colors.white,
                   ),
                   child: SvgPicture.asset(
-                    'assets/feedPage/newPosticon.svg',
+                    'assets/images/newPost.svg',
                     width: 10,
                     height: 10,
                     fit: BoxFit.scaleDown,
@@ -877,9 +779,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         children: [
           _buildStatusPrompt(),
           ElevatedButton(
-            onPressed: (_canPost && !_isSubmitting)
+            onPressed: (_canPost)
                 ? () {
                     _handleSubmit();
+                    Navigator.of(context).pop();
+                    PalToast.show(
+                      context,
+                      message: 'Post created successfully',
+                    );
                   }
                 : null,
             style: ButtonStyle(
@@ -925,89 +832,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
-  /// Helper function to ensure header/title ends with a period
-  String _ensureTitleEndsWithPeriod(String title) {
-    if (title.isEmpty) return title;
-    final trimmed = title.trim();
-    if (trimmed.endsWith('.')) {
-      return trimmed;
-    }
-    return '$trimmed.';
-  }
-
-  void _handleSubmit() async {
-    if (_isSubmitting || !_canPost) {
-      return;
-    }
-    final rawTitle = _titleController.text.trim();
-    final title = _ensureTitleEndsWithPeriod(rawTitle);
-    final body = _bodyController.text.trim();
-    final combinedContent =
-        body.isEmpty ? title : '$title\n\n$body'.trim();
-    if (combinedContent.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter post details.')),
-      );
-      return;
-    }
-    if (combinedContent.length > 1000) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Post exceeds 1000 characters.')),
-      );
-      return;
-    }
-    final categoryId = _categoryIdLookup[_activeCategory];
-    final selectedLocationName = _selectedLocation;
-    final locationId = selectedLocationName != null
-        ? _locationIdLookup[selectedLocationName]
-        : null;
-    if (locationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Selected location is unavailable right now.')),
-      );
-      return;
-    }
-    setState(() {
-      _isSubmitting = true;
-    });
-    try {
-      final response = await _postService.createPost(
-        content: combinedContent,
-        categoryId: categoryId,
-        locationId: locationId,
-        enableMonthlySpotlight: _spotlightEnabled,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isSubmitting = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response['message'] ?? 'Post created successfully',
-          ),
-        ),
-      );
-      Navigator.of(context).pop(true);
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isSubmitting = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
-        ),
-      );
-    }
-  }
+  void _handleSubmit() {}
 
   Future<void> _showLocationPicker() async {}
 

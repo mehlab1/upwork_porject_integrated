@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../login/login_screen.dart';
-import '../forgot_password/forgot_password_email_screen.dart';
 import 'interest_selection_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -30,8 +30,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _termsError;
   String? _dobError;
 
-  // Dropdown open state for State field
-  bool _isStateDropdownOpen = false;
+  // Dropdown open state for Account Type field
+  bool _isAccountTypeDropdownOpen = false;
 
   // Password strength (0-4 segments)
   int _passwordStrength = 0;
@@ -54,47 +54,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   static const Color _grey700 = Color(0xFF717182);
   static const Color _blue500 = Color(0xFF45556C);
   static const Color _greenSuccess = Color(0xFF00A63E);
-
-  // States list (hardcoded per design)
-  static const List<String> _nigeriaStates = [
-    'Abia',
-    'Abuja (FCT)',
-    'Adamawa',
-    'Akwa Ibom',
-    'Anambra',
-    'Bauchi',
-    'Bayelsa',
-    'Benue',
-    'Borno',
-    'Cross River',
-    'Delta',
-    'Ebonyi',
-    'Edo',
-    'Ekiti',
-    'Enugu',
-    'Gombe',
-    'Imo',
-    'Jigawa',
-    'Kaduna',
-    'Kano',
-    'Katsina',
-    'Kebbi',
-    'Kogi',
-    'Kwara',
-    'Lagos',
-    'Nasarawa',
-    'Niger',
-    'Ogun',
-    'Ondo',
-    'Osun',
-    'Oyo',
-    'Plateau',
-    'Rivers',
-    'Sokoto',
-    'Taraba',
-    'Yobe',
-    'Zamfara',
-  ];
 
   bool _isValidName(String value) {
     if (value.trim().length < 3) return false;
@@ -137,6 +96,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Ensure dropdown state is always initialized
+    _isAccountTypeDropdownOpen = false;
+  }
+
+  @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
@@ -151,7 +117,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Widget _buildInputField({
     required String hintText,
-    required IconData icon,
+    IconData? icon,
+    String? iconAsset,
     TextEditingController? controller,
     bool obscureText = false,
     Widget? suffixIcon,
@@ -176,9 +143,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
             children: [
               const SizedBox(width: 20),
               // Icon
-              Icon(icon, color: _grey400, size: 20),
-              if (prefixText != null) ...[
+              if (iconAsset != null) ...[
+                SvgPicture.asset(iconAsset, width: 20, height: 20),
                 const SizedBox(width: 16),
+              ] else if (icon != null) ...[
+                Icon(icon, color: _grey400, size: 20),
+                const SizedBox(width: 16),
+              ],
+              if (prefixText != null) ...[
                 Text(
                   prefixText,
                   style: TextStyle(
@@ -187,8 +159,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     color: _grey400,
                   ),
                 ),
+                const SizedBox(width: 16),
               ],
-              const SizedBox(width: 16),
               // Input field
               Expanded(
                 child: TextField(
@@ -326,20 +298,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             children: [
               const SizedBox(height: 64),
 
-              // Back button
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 26),
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Icon(Icons.arrow_back, color: _primary900, size: 20),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
               // Title - "Create Account"
               Text(
                 'Create Account',
@@ -356,762 +314,586 @@ class _SignUpScreenState extends State<SignUpScreen> {
               const SizedBox(height: 52),
 
               // Form fields container - width 342px, centered
-              SizedBox(
-                width: 342,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // First Name
-                    _buildInputField(
-                      hintText: 'First Name',
-                      icon: Icons.person_outline,
-                      controller: _firstNameController,
-                      errorText: _firstNameError,
-                      onChanged: (value) {
-                        setState(() {
-                          if (_hasSpecialCharacters(value)) {
-                            _firstNameError = 'Use Letters and spaces only';
-                          } else if (value.trim().length < 3) {
-                            _firstNameError = 'Use 3+ letters/spaces only';
-                          } else {
-                            _firstNameError = null;
-                          }
-                        });
-                      },
-                      suffixIcon:
-                          _isValidName(_firstNameController.text) &&
-                              !_hasSpecialCharacters(_firstNameController.text)
-                          ? _buildGreenTick()
-                          : null,
-                    ),
+              Center(
+                child: SizedBox(
+                  width: 342,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // First Name
+                      _buildInputField(
+                        hintText: 'First Name',
+                        iconAsset: 'assets/authPages/profile.svg',
+                        controller: _firstNameController,
+                        errorText: _firstNameError,
+                        onChanged: (value) {
+                          setState(() {
+                            if (_hasSpecialCharacters(value)) {
+                              _firstNameError = 'Use Letters and spaces only';
+                            } else if (value.trim().length < 3) {
+                              _firstNameError = 'Use 3+ letters/spaces only';
+                            } else {
+                              _firstNameError = null;
+                            }
+                          });
+                        },
+                        suffixIcon:
+                            _isValidName(_firstNameController.text) &&
+                                !_hasSpecialCharacters(
+                                  _firstNameController.text,
+                                )
+                            ? _buildGreenTick()
+                            : null,
+                      ),
 
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 10),
 
-                    // Last Name
-                    _buildInputField(
-                      hintText: 'Last name',
-                      icon: Icons.person_outline,
-                      controller: _lastNameController,
-                      errorText: _lastNameError,
-                      onChanged: (value) {
-                        setState(() {
-                          if (_hasSpecialCharacters(value)) {
-                            _lastNameError = 'Use Letters and spaces only';
-                          } else if (value.trim().length < 3) {
-                            _lastNameError = 'Use 3+ letters/spaces only';
-                          } else {
-                            _lastNameError = null;
-                          }
-                        });
-                      },
-                      suffixIcon:
-                          _isValidName(_lastNameController.text) &&
-                              !_hasSpecialCharacters(_lastNameController.text)
-                          ? _buildGreenTick()
-                          : null,
-                    ),
+                      // Last Name
+                      _buildInputField(
+                        hintText: 'Last name',
+                        iconAsset: 'assets/authPages/profile.svg',
+                        controller: _lastNameController,
+                        errorText: _lastNameError,
+                        onChanged: (value) {
+                          setState(() {
+                            if (_hasSpecialCharacters(value)) {
+                              _lastNameError = 'Use Letters and spaces only';
+                            } else if (value.trim().length < 3) {
+                              _lastNameError = 'Use 3+ letters/spaces only';
+                            } else {
+                              _lastNameError = null;
+                            }
+                          });
+                        },
+                        suffixIcon:
+                            _isValidName(_lastNameController.text) &&
+                                !_hasSpecialCharacters(_lastNameController.text)
+                            ? _buildGreenTick()
+                            : null,
+                      ),
 
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 10),
 
-                    // Username
-                    _buildInputField(
-                      hintText: 'Username',
-                      icon: Icons.alternate_email,
-                      controller: _usernameController,
-                      errorText: _usernameError,
-                      onChanged: (value) {
-                        setState(() {
-                          if (_hasSpaces(value)) {
-                            _usernameError = 'no spaces allowed';
-                          } else if (!_isValidUsername(value)) {
-                            _usernameError =
-                                'Use Alphanumeric or underscore only';
-                          } else {
-                            _usernameError = null;
-                          }
-                        });
-                      },
-                      suffixIcon:
-                          _isValidUsername(_usernameController.text) &&
-                              !_hasSpaces(_usernameController.text)
-                          ? _buildGreenTick()
-                          : null,
-                    ),
+                      // Username
+                      _buildInputField(
+                        hintText: 'Username',
+                        icon: Icons.alternate_email,
+                        controller: _usernameController,
+                        errorText: _usernameError,
+                        onChanged: (value) {
+                          setState(() {
+                            if (_hasSpaces(value)) {
+                              _usernameError = 'no spaces allowed';
+                            } else if (!_isValidUsername(value)) {
+                              _usernameError =
+                                  'Use Alphanumeric or underscore only';
+                            } else {
+                              _usernameError = null;
+                            }
+                          });
+                        },
+                        suffixIcon:
+                            _isValidUsername(_usernameController.text) &&
+                                !_hasSpaces(_usernameController.text)
+                            ? _buildGreenTick()
+                            : null,
+                      ),
 
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 10),
 
-                    // Email
-                    _buildInputField(
-                      hintText: 'Email',
-                      icon: Icons.email_outlined,
-                      controller: _emailController,
-                      errorText: _emailError,
-                      onChanged: (value) {
-                        setState(() {
-                          _emailError = null;
-                        });
-                      },
-                      suffixIcon:
-                          _emailController.text.isNotEmpty &&
-                              _emailError == null &&
-                              _isValidEmail(_emailController.text)
-                          ? _buildGreenTick()
-                          : null,
-                    ),
+                      // Email
+                      _buildInputField(
+                        hintText: 'Email',
+                        icon: Icons.email_outlined,
+                        controller: _emailController,
+                        errorText: _emailError,
+                        onChanged: (value) {
+                          setState(() {
+                            _emailError = null;
+                          });
+                        },
+                        suffixIcon:
+                            _emailController.text.isNotEmpty &&
+                                _emailError == null &&
+                                _isValidEmail(_emailController.text)
+                            ? _buildGreenTick()
+                            : null,
+                      ),
 
-                    const SizedBox(height: 10),
+                      const SizedBox(height: 10),
 
-                    // State (Dropdown)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(
-                              color: _stateError != null
-                                  ? Colors.red
-                                  : _primaryColor,
-                              width: 0.758,
-                            ),
-                            borderRadius: BorderRadius.vertical(
-                              top: const Radius.circular(14),
-                              bottom: Radius.circular(
-                                _isStateDropdownOpen ? 0 : 14,
-                              ),
-                            ),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _isStateDropdownOpen = !_isStateDropdownOpen;
-                                  _stateError = null;
-                                });
-                              },
-                              borderRadius: BorderRadius.vertical(
-                                top: const Radius.circular(14),
-                                bottom: Radius.circular(
-                                  _isStateDropdownOpen ? 0 : 14,
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.location_on_outlined,
-                                      color: _grey400,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        _stateController.text.isEmpty
-                                            ? 'State'
-                                            : _stateController.text,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: _stateController.text.isEmpty
-                                              ? _grey700
-                                              : _primary900,
-                                          fontFamily: 'Inter',
-                                          letterSpacing: -0.3125,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Icon(
-                                      _isStateDropdownOpen
-                                          ? Icons.keyboard_arrow_up
-                                          : Icons.keyboard_arrow_down,
-                                      color: _grey400,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (_isStateDropdownOpen)
+                      // State (Text Input)
+                      _buildInputField(
+                        hintText: 'location',
+                        controller: _stateController,
+                        errorText: _stateError,
+                        onChanged: (value) {
+                          setState(() {
+                            _stateError = null;
+                          });
+                        },
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Gender selection
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Container(
+                            padding: const EdgeInsets.all(16.748),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(14),
-                                bottomRight: Radius.circular(14),
+                              border: Border.all(
+                                color: _genderError != null
+                                    ? Colors.red
+                                    : _primaryColor,
+                                width: 0.758,
                               ),
-                              border: Border(
-                                top: BorderSide.none,
-                                left: BorderSide(
-                                  color: _primaryColor,
-                                  width: 0.758,
-                                ),
-                                right: BorderSide(
-                                  color: _primaryColor,
-                                  width: 0.758,
-                                ),
-                                bottom: BorderSide(
-                                  color: _primaryColor,
-                                  width: 0.758,
-                                ),
-                              ),
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              itemCount: _nigeriaStates.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 2),
-                              itemBuilder: (context, index) {
-                                final label = _nigeriaStates[index];
-                                final bool isSelected =
-                                    label == _stateController.text;
-                                return Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _stateController.text = label;
-                                        _stateError = null;
-                                        _isStateDropdownOpen = false;
-                                      });
-                                    },
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFFF8FAFC)
-                                            : Colors.white,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 12,
-                                      ),
-                                      child: Text(
-                                        label,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: isSelected
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                          color: _primary900,
-                                          fontFamily: 'Inter',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        if (_stateError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 20, top: 4),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  size: 14,
-                                  color: Colors.red,
-                                ),
-                                const SizedBox(width: 4),
                                 Text(
-                                  _stateError!,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.red,
+                                  'Gender',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: _blue500,
+                                    fontFamily: 'Inter',
+                                    letterSpacing: -0.1504,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Gender selection
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16.748),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(
-                              color: _genderError != null
-                                  ? Colors.red
-                                  : _primaryColor,
-                              width: 0.758,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Gender',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: _blue500,
-                                  fontFamily: 'Inter',
-                                  letterSpacing: -0.1504,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  _buildGenderOption('Male'),
-                                  const SizedBox(width: 16),
-                                  _buildGenderOption('Female'),
-                                  const SizedBox(width: 16),
-                                  _buildGenderOption('Other'),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_genderError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 20, top: 4),
-                            child: Text(
-                              _genderError!,
-                              style: TextStyle(fontSize: 12, color: Colors.red),
-                            ),
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Date of Birth (opens calendar)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(
-                              color: _dobError != null
-                                  ? Colors.red
-                                  : _primaryColor,
-                              width: 0.758,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () async {
-                              final now = DateTime.now();
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: DateTime(
-                                  now.year - 18,
-                                  now.month,
-                                  now.day,
-                                ),
-                                firstDate: DateTime(1900, 1, 1),
-                                lastDate: now,
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _dobController.text =
-                                      '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
-                                  _dobError = null;
-                                });
-                              }
-                            },
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 20),
-                                Icon(
-                                  Icons.cake_outlined,
-                                  color: _grey400,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Text(
-                                    _dobController.text.isEmpty
-                                        ? 'Date of Birth'
-                                        : _dobController.text,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: _dobController.text.isEmpty
-                                          ? _grey700
-                                          : _primary900,
-                                      fontFamily: 'Inter',
-                                      letterSpacing: -0.3125,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Icon(
-                                  Icons.calendar_today_outlined,
-                                  color: _grey400,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 12),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (_dobError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 20, top: 4),
-                            child: Text(
-                              _dobError!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.red,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Password
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildInputField(
-                          hintText: 'Password',
-                          icon: Icons.lock_outline,
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          errorText: _passwordError,
-                          onChanged: (value) {
-                            setState(() {
-                              _passwordError = null;
-                              _passwordStrength = _calculatePasswordStrength(
-                                value,
-                              );
-                            });
-                          },
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_passwordController.text.isNotEmpty &&
-                                  _passwordError == null &&
-                                  _passwordStrength >= 3)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: _buildGreenTick(),
-                                ),
-                              IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                  color: _grey400,
-                                  size: 20,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassword = !_obscurePassword;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        _buildPasswordStrengthIndicator(),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Confirm Password
-                    _buildInputField(
-                      hintText: 'Confirm Password',
-                      icon: Icons.lock_outline,
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirmPassword,
-                      errorText: _confirmPasswordError,
-                      onChanged: (value) {
-                        setState(() {
-                          _confirmPasswordError = null;
-                        });
-                      },
-                      suffixIcon: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_confirmPasswordController.text.isNotEmpty &&
-                              _confirmPasswordError == null &&
-                              _passwordController.text ==
-                                  _confirmPasswordController.text)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: _buildGreenTick(),
-                            ),
-                          IconButton(
-                            icon: Icon(
-                              _obscureConfirmPassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: _grey400,
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscureConfirmPassword =
-                                    !_obscureConfirmPassword;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    // Account type dropdown
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(
-                              color: _accountTypeError != null
-                                  ? Colors.red
-                                  : _primaryColor,
-                              width: 1,
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                // TODO: Show dropdown
-                                showDialog(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Text('Select Account Type'),
-                                    content: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ListTile(
-                                          title: Text('Individual user'),
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedAccountType =
-                                                  'Individual user';
-                                              _accountTypeError = null;
-                                            });
-                                            Navigator.pop(context);
-                                          },
-                                        ),
-                                        ListTile(
-                                          title: Text('Business Owner'),
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedAccountType =
-                                                  'Business Owner';
-                                              _accountTypeError = null;
-                                            });
-                                            Navigator.pop(context);
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                              borderRadius: BorderRadius.circular(10),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 18,
-                                ),
-                                child: Row(
+                                const SizedBox(height: 12),
+                                Row(
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        _selectedAccountType ??
-                                            'What will you most likely be using this account for',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.normal,
-                                          color: _selectedAccountType != null
-                                              ? _primary900
-                                              : _grey700,
-                                          fontFamily: 'Roboto',
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.keyboard_arrow_down,
-                                      color: _grey400,
-                                      size: 16,
-                                    ),
+                                    _buildGenderOption('Male'),
+                                    const SizedBox(width: 16),
+                                    _buildGenderOption('Female'),
+                                    const SizedBox(width: 16),
+                                    _buildGenderOption('Other'),
                                   ],
                                 ),
+                              ],
+                            ),
+                          ),
+                          if (_genderError != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 20, top: 4),
+                              child: Text(
+                                _genderError!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Date of Birth (opens calendar)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(
+                                color: _dobError != null
+                                    ? Colors.red
+                                    : _primaryColor,
+                                width: 0.758,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime(
+                                    now.year - 18,
+                                    now.month,
+                                    now.day,
+                                  ),
+                                  firstDate: DateTime(1900, 1, 1),
+                                  lastDate: now,
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    _dobController.text =
+                                        '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                                    _dobError = null;
+                                  });
+                                }
+                              },
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 20),
+                                  SvgPicture.asset(
+                                    'assets/authPages/calender.svg',
+                                    width: 20,
+                                    height: 20,
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      _dobController.text.isEmpty
+                                          ? 'Date of Birth'
+                                          : _dobController.text,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: _dobController.text.isEmpty
+                                            ? _grey700
+                                            : _primary900,
+                                        fontFamily: 'Inter',
+                                        letterSpacing: -0.3125,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                        if (_accountTypeError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 20, top: 4),
-                            child: Text(
-                              _accountTypeError!,
-                              style: TextStyle(fontSize: 12, color: Colors.red),
+                          if (_dobError != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 20, top: 4),
+                              child: Text(
+                                _dobError!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Password
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInputField(
+                            hintText: 'Password',
+                            icon: Icons.lock_outline,
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            errorText: _passwordError,
+                            onChanged: (value) {
+                              setState(() {
+                                _passwordError = null;
+                                _passwordStrength = _calculatePasswordStrength(
+                                  value,
+                                );
+                              });
+                            },
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_passwordController.text.isNotEmpty &&
+                                    _passwordError == null &&
+                                    _passwordStrength >= 3)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: _buildGreenTick(),
+                                  ),
+                                IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                    color: _grey400,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscurePassword = !_obscurePassword;
+                                    });
+                                  },
+                                ),
+                              ],
                             ),
                           ),
-                      ],
-                    ),
-                  ],
+                          _buildPasswordStrengthIndicator(),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Confirm Password
+                      _buildInputField(
+                        hintText: 'Confirm Password',
+                        icon: Icons.lock_outline,
+                        controller: _confirmPasswordController,
+                        obscureText: _obscureConfirmPassword,
+                        errorText: _confirmPasswordError,
+                        onChanged: (value) {
+                          setState(() {
+                            _confirmPasswordError = null;
+                          });
+                        },
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_confirmPasswordController.text.isNotEmpty &&
+                                _confirmPasswordError == null &&
+                                _passwordController.text ==
+                                    _confirmPasswordController.text)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _buildGreenTick(),
+                              ),
+                            IconButton(
+                              icon: Icon(
+                                _obscureConfirmPassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: _grey400,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureConfirmPassword =
+                                      !_obscureConfirmPassword;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Account type dropdown
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 70,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(
+                                color: _accountTypeError != null
+                                    ? Colors.red
+                                    : _primaryColor,
+                                width: 1,
+                              ),
+                              borderRadius: BorderRadius.vertical(
+                                top: const Radius.circular(10),
+                                bottom: Radius.circular(
+                                  (_isAccountTypeDropdownOpen == true) ? 0 : 10,
+                                ),
+                              ),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _isAccountTypeDropdownOpen =
+                                        !_isAccountTypeDropdownOpen;
+                                    _accountTypeError = null;
+                                  });
+                                },
+                                borderRadius: BorderRadius.vertical(
+                                  top: const Radius.circular(10),
+                                  bottom: Radius.circular(
+                                    (_isAccountTypeDropdownOpen == true)
+                                        ? 0
+                                        : 10,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 18,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _selectedAccountType ??
+                                              'What will you most likely be using this account for',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.normal,
+                                            color: _selectedAccountType != null
+                                                ? _primary900
+                                                : _grey700,
+                                            fontFamily: 'Roboto',
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Icon(
+                                        (_isAccountTypeDropdownOpen == true)
+                                            ? Icons.keyboard_arrow_up
+                                            : Icons.keyboard_arrow_down,
+                                        color: _grey400,
+                                        size: 16,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_isAccountTypeDropdownOpen == true)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: const BorderRadius.only(
+                                  bottomLeft: Radius.circular(10),
+                                  bottomRight: Radius.circular(10),
+                                ),
+                                border: Border(
+                                  top: BorderSide.none,
+                                  left: BorderSide(
+                                    color: _accountTypeError != null
+                                        ? Colors.red
+                                        : _primaryColor,
+                                    width: 1.513,
+                                  ),
+                                  right: BorderSide(
+                                    color: _accountTypeError != null
+                                        ? Colors.red
+                                        : _primaryColor,
+                                    width: 1.513,
+                                  ),
+                                  bottom: BorderSide(
+                                    color: _accountTypeError != null
+                                        ? Colors.red
+                                        : _primaryColor,
+                                    width: 1.513,
+                                  ),
+                                ),
+                              ),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                  horizontal: 8,
+                                ),
+                                itemCount: 2,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 4),
+                                itemBuilder: (context, index) {
+                                  final option = index == 0
+                                      ? 'Personal User'
+                                      : 'Business Owner';
+                                  final isSelected =
+                                      _selectedAccountType == option;
+                                  return Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedAccountType = option;
+                                          _accountTypeError = null;
+                                          _isAccountTypeDropdownOpen = false;
+                                        });
+                                      },
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? const Color(0xFFF8FAFC)
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 12,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                option,
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: isSelected
+                                                      ? FontWeight.w600
+                                                      : FontWeight.w500,
+                                                  color: _primary900,
+                                                  fontFamily: 'Inter',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (_accountTypeError != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 20, top: 4),
+                              child: Text(
+                                _accountTypeError!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               const SizedBox(height: 50),
 
-              // Terms and conditions checkbox
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 33),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _agreeToTerms = !_agreeToTerms;
-                          if (_agreeToTerms) {
-                            _termsError = null;
-                          }
-                        });
-                      },
-                      child: Container(
-                        width: 24.476,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: _primaryColor, width: 1),
-                          borderRadius: BorderRadius.circular(6),
-                          color: _agreeToTerms ? _primaryColor : Colors.white,
-                        ),
-                        child: _agreeToTerms
-                            ? Icon(Icons.check, color: Colors.white, size: 16)
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: RichText(
-                        text: TextSpan(
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.normal, // Rubik Regular
-                            color: _primary900,
-                            letterSpacing: 0.2,
-                            fontFamily: 'Rubik',
-                            height: 1.4,
-                          ),
-                          children: [
-                            const TextSpan(
-                              text: "By signing up I agree to the ",
-                            ),
-                            TextSpan(
-                              text: 'Terms of Use',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                            const TextSpan(text: ' and '),
-                            TextSpan(
-                              text: 'Privacy Policy',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                            const TextSpan(text: '.'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              if (_termsError != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 45, right: 33, top: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 16,
-                        color: Colors.red,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _termsError!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Colors.red,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 30),
-
-              // Sign up button
-              Container(
-                width: 338,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: _primaryColor,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      if (_validateSignUp()) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => InterestSelectionScreen(
-                              email: _emailController.text.trim(),
-                            ),
-                          ),
-                        );
-                      }
-                    },
+              // Sign up button - aligned with input forms
+              Center(
+                child: Container(
+                  width: 338,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: _primaryColor,
                     borderRadius: BorderRadius.circular(20),
-                    child: Center(
-                      child: Text(
-                        'Sign up',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500, // Poppins Medium
-                          color: Colors.white,
-                          fontFamily: 'Poppins',
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        if (_validateSignUp()) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => InterestSelectionScreen(
+                                email: _emailController.text.trim(),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Center(
+                        child: Text(
+                          'Sign up',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500, // Poppins Medium
+                            color: Colors.white,
+                            fontFamily: 'Poppins',
+                          ),
                         ),
                       ),
                     ),
@@ -1121,27 +903,112 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               const SizedBox(height: 22),
 
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ForgotPasswordEmailScreen(),
-                    ),
-                  );
-                },
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  'Forgot Password?',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.normal,
-                    color: _grey400,
-                    fontFamily: 'Rubik',
+              // Terms and conditions checkbox - aligned with input forms
+              Center(
+                child: SizedBox(
+                  width: 342,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _agreeToTerms = !_agreeToTerms;
+                                if (_agreeToTerms) {
+                                  _termsError = null;
+                                }
+                              });
+                            },
+                            child: Container(
+                              width: 24.476,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: _primaryColor,
+                                  width: 1,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                                color: _agreeToTerms
+                                    ? _primaryColor
+                                    : Colors.white,
+                              ),
+                              child: _agreeToTerms
+                                  ? Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 16,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight:
+                                      FontWeight.normal, // Rubik Regular
+                                  color: _primary900,
+                                  letterSpacing: 0.2,
+                                  fontFamily: 'Rubik',
+                                  height: 1.4,
+                                ),
+                                children: [
+                                  const TextSpan(
+                                    text: "By signing up I agree to the ",
+                                  ),
+                                  TextSpan(
+                                    text: 'Terms of Use',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const TextSpan(text: ' and '),
+                                  TextSpan(
+                                    text: 'Privacy Policy',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  const TextSpan(text: '.'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_termsError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 36, top: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _termsError!,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.red,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -1154,27 +1021,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 height: 22,
                 child: Row(
                   children: [
-                    Expanded(
-                      flex: 7278,
-                      child: Container(
-                        alignment: Alignment.center,
-                        child: Container(
-                          height: 1,
-                          width: double.infinity,
-                          color: Colors.grey.withOpacity(0.2),
-                        ),
-                      ),
+                    // Left line (short, on the left)
+                    Container(
+                      width: 80,
+                      height: 1,
+                      color: Colors.grey.withOpacity(0.2),
                     ),
-                    Expanded(
-                      flex: 2722,
-                      child: Container(
-                        alignment: Alignment.center,
-                        child: Container(
-                          height: 1,
-                          width: double.infinity,
-                          color: Colors.grey.withOpacity(0.2),
-                        ),
-                      ),
+                    // Empty space in the center
+                    const Spacer(),
+                    // Right line (short, on the right)
+                    Container(
+                      width: 80,
+                      height: 1,
+                      color: Colors.grey.withOpacity(0.2),
                     ),
                   ],
                 ),
