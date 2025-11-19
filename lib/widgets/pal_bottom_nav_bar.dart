@@ -45,19 +45,16 @@ class PalBottomNavigationBar extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _HomeSegment(
-                active: _homeActive,
-                onTap: onHomeTap,
+              _HomeSegment(active: _homeActive, onTap: onHomeTap),
+              Transform.translate(
+                offset: const Offset(-12, 0),
+                child: _NotificationSegment(
+                  active: _notificationsActive,
+                  onTap: onNotificationsTap,
+                  showDot: showNotificationDot && !_notificationsActive,
+                ),
               ),
-              _NotificationSegment(
-                active: _notificationsActive,
-                onTap: onNotificationsTap,
-                showDot: showNotificationDot && !_notificationsActive,
-              ),
-              _SettingsSegment(
-                active: _settingsActive,
-                onTap: onSettingsTap,
-              ),
+              _SettingsSegment(active: _settingsActive, onTap: onSettingsTap),
             ],
           ),
         ),
@@ -67,10 +64,7 @@ class PalBottomNavigationBar extends StatelessWidget {
 }
 
 class _HomeSegment extends StatelessWidget {
-  const _HomeSegment({
-    required this.active,
-    required this.onTap,
-  });
+  const _HomeSegment({required this.active, required this.onTap});
 
   final bool active;
   final VoidCallback onTap;
@@ -118,49 +112,58 @@ class _NotificationSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 50,
-      height: 50,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(25),
-        child: Container(
-          decoration: BoxDecoration(
-            color: active ? PalBottomNavigationBar._primaryColor : Colors.white,
-            borderRadius: BorderRadius.circular(25),
-            border: active
-                ? null
-                : Border.all(color: PalBottomNavigationBar._inactiveCircleBorder),
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              SvgPicture.asset(
-                'assets/navbar/notification.svg',
-                width: 24,
-                height: 24,
-                colorFilter: ColorFilter.mode(
-                  active
-                      ? Colors.white
-                      : PalBottomNavigationBar._inactiveIconColor,
-                  BlendMode.srcIn,
-                ),
-              ),
-              if (showDot)
-                Positioned(
-                  top: 10,
-                  right: 12,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE7000B),
-                      shape: BoxShape.circle,
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: SizedBox(
+        width: 50,
+        height: 50,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(25),
+          child: Container(
+            decoration: BoxDecoration(
+              color: active
+                  ? PalBottomNavigationBar._primaryColor
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(25),
+              border: active
+                  ? null
+                  : Border.all(
+                      color: PalBottomNavigationBar._inactiveCircleBorder,
                     ),
+            ),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.only(left: 8),
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                SvgPicture.asset(
+                  'assets/navbar/notification.svg',
+                  width: 24,
+                  height: 24,
+                  colorFilter: ColorFilter.mode(
+                    active
+                        ? Colors.white
+                        : PalBottomNavigationBar._inactiveIconColor,
+                    BlendMode.srcIn,
                   ),
                 ),
-            ],
+                if (showDot)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE7000B),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -169,10 +172,7 @@ class _NotificationSegment extends StatelessWidget {
 }
 
 class _SettingsSegment extends StatelessWidget {
-  const _SettingsSegment({
-    required this.active,
-    required this.onTap,
-  });
+  const _SettingsSegment({required this.active, required this.onTap});
 
   final bool active;
   final VoidCallback onTap;
@@ -191,7 +191,9 @@ class _SettingsSegment extends StatelessWidget {
             borderRadius: BorderRadius.circular(25),
             border: active
                 ? null
-                : Border.all(color: PalBottomNavigationBar._inactiveCircleBorder),
+                : Border.all(
+                    color: PalBottomNavigationBar._inactiveCircleBorder,
+                  ),
           ),
           alignment: Alignment.center,
           child: SvgPicture.asset(
@@ -208,4 +210,3 @@ class _SettingsSegment extends StatelessWidget {
     );
   }
 }
-

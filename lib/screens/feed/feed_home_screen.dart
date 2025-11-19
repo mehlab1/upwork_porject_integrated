@@ -19,7 +19,11 @@ class Variables {
 }
 
 class FeedHomeScreen extends StatefulWidget {
-  const FeedHomeScreen({super.key, this.showWelcomeModal = false, this.showFirstPostCard = false});
+  const FeedHomeScreen({
+    super.key,
+    this.showWelcomeModal = false,
+    this.showFirstPostCard = false,
+  });
 
   final bool showWelcomeModal;
   final bool showFirstPostCard;
@@ -96,7 +100,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           "You NEED to try the one at Yellow Chilli! Best I've ever had, hands down.",
       upvotes: 45,
       downvotes: 0,
-      initials: 'LB', id: '',
+      initials: 'LB',
+      id: '',
     ),
     CommentData(
       author: '@naija_gourmet',
@@ -105,7 +110,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           "Party jollof is undefeated! There's something about that smoky flavor from the firewood.",
       upvotes: 38,
       downvotes: 0,
-      avatarAsset: 'assets/images/profile.svg', id: '',
+      avatarAsset: 'assets/images/profile.svg',
+      id: '',
     ),
     CommentData(
       author: '@anonymous',
@@ -113,7 +119,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       body: 'checking',
       upvotes: 1,
       downvotes: 0,
-      initials: 'AN', id: '',
+      initials: 'AN',
+      id: '',
     ),
   ];
 
@@ -127,7 +134,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   bool _isFeedFetching = false;
   bool _hasMoreRemotePosts = true;
   int _remoteOffset = 0;
-  
+
   // Category and location mappings (name -> id)
   Map<String, String> _categoryMap = {};
   Map<String, String> _locationMap = {};
@@ -158,7 +165,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
 
-
   List<PostCardData> get _visiblePosts {
     // If showing spotlight posts, return those instead
     if (_isShowingSpotlightPosts) {
@@ -166,7 +172,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       final limit = math.min(_visiblePostLimit, _spotlightPosts.length);
       return _spotlightPosts.take(limit).toList();
     }
-    
+
     // Otherwise, return regular filtered posts
     final posts = _filteredPosts;
     if (posts.isEmpty) return const <PostCardData>[];
@@ -219,7 +225,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       // Note: posts.user_id references profiles.id, which should equal auth.users.id
       // Only fetch the id field and limit to 1 for efficiency
       final userId = user.id;
-      
+
       // Execute query: SELECT id FROM posts WHERE user_id = userId AND status = 'active' LIMIT 1
       final response = await Supabase.instance.client
           .from('posts')
@@ -237,15 +243,19 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         postsList = response;
       } else {
         // Handle unexpected response format
-        debugPrint('WARNING: Unexpected response type from posts query: ${response.runtimeType}');
+        debugPrint(
+          'WARNING: Unexpected response type from posts query: ${response.runtimeType}',
+        );
         postsList = [];
       }
 
       // If response list is empty, user has no posts
       // If response has data, user has at least one post
       final hasPosts = postsList.isNotEmpty;
-      
-      debugPrint('User post check: userId=$userId, hasPosts=$hasPosts, postsFound=${postsList.length}');
+
+      debugPrint(
+        'User post check: userId=$userId, hasPosts=$hasPosts, postsFound=${postsList.length}',
+      );
 
       // If user has 0 posts, show welcome modal and first post card
       // If user has posts, don't show them
@@ -257,14 +267,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       // Show welcome modal if user has 0 posts (based on SQL query result)
       // Use the SQL logic result directly, not widget.showWelcomeModal
       if (_shouldShowWelcomeModal) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeModal());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _showWelcomeModal(),
+        );
       }
     } catch (e) {
       // Error querying posts (network error, permission error, etc.)
       // Log the error for debugging
       debugPrint('ERROR: Failed to check user posts: $e');
       debugPrint('Error type: ${e.runtimeType}');
-      
+
       // Don't show welcome modal or first post card as a safe default
       // This handles cases where:
       // - Network errors
@@ -293,7 +305,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       setState(() {
         _spotlightStatus = response;
         _isLoadingSpotlightStatus = false;
-        
+
         // Set selected trending to first available option after API data loads
         final options = _trendingOptions;
         if (options.isNotEmpty && _selectedTrending == null) {
@@ -335,19 +347,26 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     });
 
     try {
-      print('DEBUG: _fetchSpotlightPosts called. Preparing request with limit=50 offset=0');
+      print(
+        'DEBUG: _fetchSpotlightPosts called. Preparing request with limit=50 offset=0',
+      );
       final response = await _postService.getMonthlySpotlightPosts(
         limit: 50, // Fetch more posts for spotlight
         offset: 0,
       );
 
-      print('DEBUG: Received spotlight posts response. Keys: ${response.keys.toList()}');
+      print(
+        'DEBUG: Received spotlight posts response. Keys: ${response.keys.toList()}',
+      );
       final respPostsList = (response['posts'] as List?) ?? const [];
-      print('DEBUG: Number of posts returned from spotlight function: ${respPostsList.length}');
+      print(
+        'DEBUG: Number of posts returned from spotlight function: ${respPostsList.length}',
+      );
 
       final posts = respPostsList;
-      final variant = PostCardVariant.newPost; // Use newPost variant for spotlight posts
-      
+      final variant =
+          PostCardVariant.newPost; // Use newPost variant for spotlight posts
+
       final mappedPosts = posts
           .map((post) {
             if (post is Map<String, dynamic>) {
@@ -369,14 +388,23 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         _spotlightPosts = mappedPosts;
         _isLoadingSpotlightPosts = false;
         // Update visible limit for spotlight posts
-        _visiblePostLimit = math.min(_initialVisiblePostCapacity, mappedPosts.length);
+        _visiblePostLimit = math.min(
+          _initialVisiblePostCapacity,
+          mappedPosts.length,
+        );
       });
     } catch (e) {
-      print('DEBUG: Exception in _fetchSpotlightPosts: ${e.runtimeType} ${e.toString()}');
+      print(
+        'DEBUG: Exception in _fetchSpotlightPosts: ${e.runtimeType} ${e.toString()}',
+      );
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message.isEmpty ? 'Failed to load spotlight posts.' : message)),
+        SnackBar(
+          content: Text(
+            message.isEmpty ? 'Failed to load spotlight posts.' : message,
+          ),
+        ),
       );
       setState(() {
         _isLoadingSpotlightPosts = false;
@@ -390,16 +418,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
     // Don't set selectedTrending here - wait for API data
-    
+
     // Check user profile to determine if welcome modal and first post card should be shown
     _checkUserProfile(showFirstPostCard: widget.showFirstPostCard);
-    
+
     // Fetch monthly spotlight status
     _fetchSpotlightStatus();
-    
+
     // Fetch category and location mappings
     _fetchCategoryAndLocationMappings();
-    
+
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _initializeVisibleLimit(),
     );
@@ -736,7 +764,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   Future<void> _refreshFeed() async {
     setState(() {
       _isInitialPostsLoading = true;
-      
+
       // Reset all filters on pull to refresh
       _selectedFilter = 'New';
       _selectedLocation = null;
@@ -748,25 +776,25 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       _isLocationDropdownOpen = false;
       _isCategoryDropdownOpen = false;
       _isTrendingDropdownOpen = false;
-      
+
       // Reset feed state
       _remotePosts.clear();
       _remoteOffset = 0;
       _hasMoreRemotePosts = true;
       _isLoadingMore = false;
     });
-    
+
     _resetVisibleLimitForFilter(_selectedFilter);
-    
+
     // Refresh category and location mappings to ensure dropdowns are up to date
     await _fetchCategoryAndLocationMappings();
-    
+
     // Fetch fresh data from backend
     await _fetchFeed(reset: true);
-    
+
     // Refresh spotlight status to get latest options
     await _fetchSpotlightStatus();
-    
+
     // Delay for smooth UI transition (matching provided code pattern)
     // Note: _fetchFeed may also set _isInitialPostsLoading to false, but we ensure
     // it's set after the delay to match the provided UI behavior
@@ -778,7 +806,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   /// Fetches feed posts with optional category and location filtering
-  /// 
+  ///
   /// Filtering Logic:
   /// - Categories and locations are loaded from API endpoints:
   ///   - get-categories: https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-categories
@@ -792,17 +820,23 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   ///   - Default sorting functions (get_posts_hot, get_posts_latest, get_posts_top) otherwise
   Future<void> _fetchFeed({bool reset = false}) async {
     if (_isFeedFetching) return;
-    if (!_hasMoreRemotePosts && !reset && _selectedFilter != 'Hot' && _selectedFilter != 'Top') return;
+    if (!_hasMoreRemotePosts &&
+        !reset &&
+        _selectedFilter != 'Hot' &&
+        _selectedFilter != 'Top')
+      return;
 
     // Check if location or category filters are selected
     // Location: "All Areas" (first option) means no filter, so check if not first option
     final locationOptions = _locationOptions;
-    final hasLocationFilter = _selectedLocation != null && 
-        _selectedLocation != locationOptions.first && 
+    final hasLocationFilter =
+        _selectedLocation != null &&
+        _selectedLocation != locationOptions.first &&
         _locationMap.containsKey(_selectedLocation);
     // Category: "All Categories" (first option) means no filter, so check if not first option
     final categoryOptionsList = _categoryOptions;
-    final hasCategoryFilter = _selectedCategory != null && 
+    final hasCategoryFilter =
+        _selectedCategory != null &&
         _selectedCategory != categoryOptionsList.first &&
         _categoryMap.containsKey(_selectedCategory);
     final hasFilters = hasLocationFilter || hasCategoryFilter;
@@ -815,18 +849,17 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         if (reset) {
           _remotePosts.clear();
           _remoteOffset = 0;
-          _hasMoreRemotePosts = false; // Hot filter returns single post, no pagination
+          _hasMoreRemotePosts =
+              false; // Hot filter returns single post, no pagination
         }
       });
 
       try {
-        final response = await _postService.getHottestPost(
-          timeframe: 'today',
-        );
+        final response = await _postService.getHottestPost(timeframe: 'today');
 
         final hottestPost = response['hottest_post'] as Map<String, dynamic>?;
         final variant = PostCardVariant.hot;
-        
+
         List<PostCardData> mappedPosts = [];
         if (hottestPost != null) {
           final mappedPost = _mapPostToCardData(hottestPost, variant);
@@ -849,18 +882,26 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           }
           final filteredLength = _postsForFilter(_selectedFilter).length;
           if (reset) {
-            _visiblePostLimit =
-                math.min(_initialVisiblePostCapacity, filteredLength);
+            _visiblePostLimit = math.min(
+              _initialVisiblePostCapacity,
+              filteredLength,
+            );
           } else {
-            _visiblePostLimit =
-                math.min(filteredLength, _visiblePostLimit + mappedPosts.length);
+            _visiblePostLimit = math.min(
+              filteredLength,
+              _visiblePostLimit + mappedPosts.length,
+            );
           }
         });
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message.isEmpty ? 'Failed to load hottest post.' : message)),
+          SnackBar(
+            content: Text(
+              message.isEmpty ? 'Failed to load hottest post.' : message,
+            ),
+          ),
         );
       } finally {
         if (!mounted) return;
@@ -880,18 +921,17 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         if (reset) {
           _remotePosts.clear();
           _remoteOffset = 0;
-          _hasMoreRemotePosts = false; // Top filter returns single post, no pagination
+          _hasMoreRemotePosts =
+              false; // Top filter returns single post, no pagination
         }
       });
 
       try {
-        final response = await _postService.getTopPost(
-          period: 'all_time',
-        );
+        final response = await _postService.getTopPost(period: 'all_time');
 
         final topPost = response['top_post'] as Map<String, dynamic>?;
         final variant = PostCardVariant.top;
-        
+
         List<PostCardData> mappedPosts = [];
         if (topPost != null) {
           final mappedPost = _mapPostToCardData(topPost, variant);
@@ -914,18 +954,26 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           }
           final filteredLength = _postsForFilter(_selectedFilter).length;
           if (reset) {
-            _visiblePostLimit =
-                math.min(_initialVisiblePostCapacity, filteredLength);
+            _visiblePostLimit = math.min(
+              _initialVisiblePostCapacity,
+              filteredLength,
+            );
           } else {
-            _visiblePostLimit =
-                math.min(filteredLength, _visiblePostLimit + mappedPosts.length);
+            _visiblePostLimit = math.min(
+              filteredLength,
+              _visiblePostLimit + mappedPosts.length,
+            );
           }
         });
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message.isEmpty ? 'Failed to load top post.' : message)),
+          SnackBar(
+            content: Text(
+              message.isEmpty ? 'Failed to load top post.' : message,
+            ),
+          ),
         );
       } finally {
         if (!mounted) return;
@@ -958,27 +1006,33 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       // and will filter posts accordingly using get_posts_by_category or get_posts_by_location
       String? categoryId;
       String? locationId;
-      
+
       // Only filter by category if a specific category is selected and exists in the map
       if (hasCategoryFilter && _selectedCategory != null) {
         categoryId = _categoryMap[_selectedCategory];
         // If categoryId is null, the mapping might not be loaded yet - log for debugging
         if (categoryId == null) {
-          debugPrint('WARNING: Category filter selected but ID not found in mapping: $_selectedCategory');
+          debugPrint(
+            'WARNING: Category filter selected but ID not found in mapping: $_selectedCategory',
+          );
         }
       }
-      
+
       // Only filter by location if a specific location is selected (not "All Areas") and exists in the map
       if (hasLocationFilter && _selectedLocation != null) {
         locationId = _locationMap[_selectedLocation];
         // If locationId is null, the mapping might not be loaded yet - log for debugging
         if (locationId == null) {
-          debugPrint('WARNING: Location filter selected but ID not found in mapping: $_selectedLocation');
+          debugPrint(
+            'WARNING: Location filter selected but ID not found in mapping: $_selectedLocation',
+          );
         }
       }
-      
-      debugPrint('Fetching feed with filters: sort=$sortParam, categoryId=$categoryId, locationId=$locationId');
-      
+
+      debugPrint(
+        'Fetching feed with filters: sort=$sortParam, categoryId=$categoryId, locationId=$locationId',
+      );
+
       // Call get-feed function with category_id and location_id parameters
       // The backend will use get_posts_by_category if category_id is provided,
       // or get_posts_by_location if location_id is provided,
@@ -1011,8 +1065,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
       final pagination = response['pagination'] as Map<String, dynamic>?;
       final hasMore = pagination?['has_more'] as bool? ?? false;
-      final updatedOffset = pagination?['next_offset'] as int? ??
-          (nextOffset + posts.length);
+      final updatedOffset =
+          pagination?['next_offset'] as int? ?? (nextOffset + posts.length);
 
       if (!mounted) return;
       setState(() {
@@ -1021,18 +1075,24 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         _hasMoreRemotePosts = hasMore;
         final filteredLength = _postsForFilter(_selectedFilter).length;
         if (reset) {
-          _visiblePostLimit =
-              math.min(_initialVisiblePostCapacity, filteredLength);
+          _visiblePostLimit = math.min(
+            _initialVisiblePostCapacity,
+            filteredLength,
+          );
         } else {
-          _visiblePostLimit =
-              math.min(filteredLength, _visiblePostLimit + mappedPosts.length);
+          _visiblePostLimit = math.min(
+            filteredLength,
+            _visiblePostLimit + mappedPosts.length,
+          );
         }
       });
     } catch (e) {
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message.isEmpty ? 'Failed to load feed.' : message)),
+        SnackBar(
+          content: Text(message.isEmpty ? 'Failed to load feed.' : message),
+        ),
       );
     } finally {
       if (!mounted) return;
@@ -1100,17 +1160,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     final categoryMap = post['categories'] as Map<String, dynamic>?;
     final locationMap = post['locations'] as Map<String, dynamic>?;
 
-    final username = (post['username'] ??
-            profile?['username'] ??
-            '@pal_user')
+    final username = (post['username'] ?? profile?['username'] ?? '@pal_user')
         .toString();
-    final category =
-        (post['category_name'] ?? categoryMap?['name'] ?? '').toString();
-    final location =
-        (post['location_name'] ?? locationMap?['name'] ?? '').toString();
+    final category = (post['category_name'] ?? categoryMap?['name'] ?? '')
+        .toString();
+    final location = (post['location_name'] ?? locationMap?['name'] ?? '')
+        .toString();
 
-    final createdAt =
-        DateTime.tryParse(post['created_at']?.toString() ?? '');
+    final createdAt = DateTime.tryParse(post['created_at']?.toString() ?? '');
 
     final commentsCount = _parseInt(
       post['comments_count'] ?? post['comment_count'] ?? post['replies_count'],
@@ -1364,7 +1421,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               _remotePosts.clear();
               _remoteOffset = 0;
               _hasMoreRemotePosts = true;
-              _isShowingSpotlightPosts = false; // Reset spotlight posts when switching filters
+              _isShowingSpotlightPosts =
+                  false; // Reset spotlight posts when switching filters
               _resetVisibleLimitForFilter(label);
             });
             _fetchFeed(reset: true);
@@ -1404,7 +1462,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     // Get current location options from API (includes "All Areas" as first option)
     final locationOptions = _locationOptions;
     final selectedLocation = _selectedLocation ?? locationOptions.first;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1511,7 +1569,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               setState(() {
                 // If "All Areas" is selected, set to null to clear filter
                 // Otherwise, set the selected location
-                _selectedLocation = (value == locationOptions.first) ? null : value;
+                _selectedLocation = (value == locationOptions.first)
+                    ? null
+                    : value;
                 _isLocationDropdownOpen = false;
                 // Reset feed state and fetch with new filter
                 _remotePosts.clear();
@@ -1530,7 +1590,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   Widget _buildCategoryDropdown() {
     // Get current category options from API
     final categoryOptionsList = _categoryOptions;
-    
+
     // If no categories loaded yet, show placeholder
     if (categoryOptionsList.isEmpty) {
       return Container(
@@ -1574,7 +1634,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         ),
       );
     }
-    
+
     final selectedCategory = _selectedCategory ?? categoryOptionsList.first;
     final categoryOptions = categoryOptionsList
         .map(
@@ -1690,7 +1750,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               setState(() {
                 // Set the selected category
                 // If "All Categories" is selected, set to null to clear filter
-                _selectedCategory = value == categoryOptionsList.first ? null : value;
+                _selectedCategory = value == categoryOptionsList.first
+                    ? null
+                    : value;
                 _isCategoryDropdownOpen = false;
                 // Reset feed state and fetch with new filter
                 _remotePosts.clear();
@@ -1712,46 +1774,47 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     if (options.isEmpty || _selectedTrending == null) {
       return const SizedBox.shrink();
     }
-    
+
     final trending = _selectedTrending!;
-    
+
     // Use API data for Monthly Spotlight
     String topicTitle = trending.label;
     String topicDescription = trending.description;
     int postCountValue = trending.postCount ?? 0;
     bool isActive = trending.isActive;
-    
+
     // If this is Monthly Spotlight and we have API data, use it
     if (trending.tag == 'Monthly Spotlight' && _spotlightStatus != null) {
       final isAvailable = _spotlightStatus!['is_available'] as bool? ?? false;
       final hotTopicTitle = _spotlightStatus!['hot_topic_title'] as String?;
       final stats = _spotlightStatus!['stats'] as Map<String, dynamic>?;
-      
+
       if (hotTopicTitle != null && hotTopicTitle.isNotEmpty) {
         topicTitle = hotTopicTitle;
       }
-      
+
       if (stats != null) {
         // Try to get spotlight posts count - check multiple possible field names
         // This should be the count of posts where is_monthly_spotlight = true
-        final spotlightPostsRaw = stats['spotlight_posts'] ?? 
-                                 stats['monthly_spotlight_posts'] ?? 
-                                 stats['total_posts'];
+        final spotlightPostsRaw =
+            stats['spotlight_posts'] ??
+            stats['monthly_spotlight_posts'] ??
+            stats['total_posts'];
         if (spotlightPostsRaw != null) {
           // Use existing _parseInt helper to handle int, string, or other numeric types
           postCountValue = _parseInt(spotlightPostsRaw);
         }
       }
-      
+
       // Fallback: Use actual count from fetched spotlight posts if available
       // This ensures we show the real count of posts with is_monthly_spotlight = true
       if (_spotlightPosts.isNotEmpty && postCountValue == 0) {
         postCountValue = _spotlightPosts.length;
       }
-      
+
       isActive = isAvailable;
     }
-    
+
     final tagLabel = (trending.tag ?? 'Trending Topic').toUpperCase();
     final postsLabel = '$postCountValue post${postCountValue == 1 ? '' : 's'}';
 
@@ -1789,16 +1852,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             child: Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
                     color: const Color.fromRGBO(222, 231, 255, 1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: SvgPicture.asset(
                     trending.iconAsset,
-                    width: 14,
-                    height: 14,
+                    width: 12,
+                    height: 12,
                     colorFilter: ColorFilter.mode(
                       trending.iconColor,
                       BlendMode.srcIn,
@@ -1906,12 +1969,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
   Widget _buildTrendingDropdownPanel(_TrendingOption currentSelection) {
     final options = _trendingOptions;
-    
+
     // Don't show dropdown if no options available
     if (options.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1968,10 +2031,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       _selectedTrending = option;
       _isTrendingDropdownOpen = false;
     });
-    
+
     // Monthly Spotlight is the only option, fetch spotlight posts from edge function
     _fetchSpotlightPosts();
-    
+
     // Scroll to top when spotlight is selected
     _scrollToTop();
   }
@@ -1979,35 +2042,41 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   // Get available spotlight options from API only
   List<_TrendingOption> get _trendingOptions {
     final List<_TrendingOption> options = [];
-    
+
     // Only add Monthly Spotlight if available from API (only one option ever)
     if (_spotlightStatus != null) {
       final isAvailable = _spotlightStatus!['is_available'] as bool? ?? false;
       if (isAvailable) {
-        final hotTopicTitle = _spotlightStatus!['hot_topic_title'] as String? ?? 'Monthly Spotlight';
+        final hotTopicTitle =
+            _spotlightStatus!['hot_topic_title'] as String? ??
+            'Monthly Spotlight';
         final stats = _spotlightStatus!['stats'] as Map<String, dynamic>?;
         // Use existing _parseInt helper to handle int, string, or other numeric types
         // Try to get spotlight posts count - check multiple possible field names
-        final postCount = stats != null 
-            ? _parseInt(stats['spotlight_posts'] ?? 
-                       stats['monthly_spotlight_posts'] ?? 
-                       stats['total_posts'] ?? 
-                       0)
+        final postCount = stats != null
+            ? _parseInt(
+                stats['spotlight_posts'] ??
+                    stats['monthly_spotlight_posts'] ??
+                    stats['total_posts'] ??
+                    0,
+              )
             : 0;
-        
+
         // Add Monthly Spotlight option (only one option ever, so no duplicates possible)
-        options.add(_TrendingOption(
-          tag: 'Monthly Spotlight',
-          label: hotTopicTitle,
-          description: 'Share posts related to the monthly spotlight topic',
-          iconAsset: 'assets/images/dettyIcon.svg',
-          iconColor: const Color.fromRGBO(79, 57, 246, 1),
-          postCount: postCount,
-          isActive: true,
-        ));
+        options.add(
+          _TrendingOption(
+            tag: 'Monthly Spotlight',
+            label: hotTopicTitle,
+            description: 'Share posts related to the monthly spotlight topic',
+            iconAsset: 'assets/images/dettyIcon.svg',
+            iconColor: const Color.fromRGBO(79, 57, 246, 1),
+            postCount: postCount,
+            isActive: true,
+          ),
+        );
       }
     }
-    
+
     return options;
   }
 
@@ -2225,13 +2294,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               )
             else
               ...postsToShow
-                .map(
-                  (post) => Padding(
-                    padding: const EdgeInsets.only(bottom: 20),
-                    child: PostCard(data: post),
-                  ),
-                )
-                .toList(),
+                  .map(
+                    (post) => Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: PostCard(data: post),
+                    ),
+                  )
+                  .toList(),
             if (_isLoadingMore)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
@@ -2509,8 +2578,8 @@ class _TrendingDropdownTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 30,
-                height: 30,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   color: const Color(0xFFDAE9F8),
                   borderRadius: BorderRadius.circular(10),
@@ -2518,8 +2587,8 @@ class _TrendingDropdownTile extends StatelessWidget {
                 child: Center(
                   child: SvgPicture.asset(
                     option.iconAsset,
-                    width: 16,
-                    height: 16,
+                    width: 14,
+                    height: 14,
                     colorFilter: ColorFilter.mode(
                       option.iconColor,
                       BlendMode.srcIn,

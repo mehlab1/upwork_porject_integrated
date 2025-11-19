@@ -49,9 +49,7 @@ const _commentAvatarBackground = Color(0xFFF1F5F9);
 enum PostCardVariant { top, hot, newPost }
 
 class PostCardData {
-
   const PostCardData({
-
     required this.variant,
 
     required this.username,
@@ -75,7 +73,6 @@ class PostCardData {
     this.avatarAsset,
 
     this.comments,
-
   });
 
   final PostCardVariant variant;
@@ -103,9 +100,7 @@ class PostCardData {
   final List<CommentData>? comments;
 
   PostCardData copyWith({int? votes, List<CommentData>? comments}) {
-
     return PostCardData(
-
       variant: variant,
 
       username: username,
@@ -129,17 +124,12 @@ class PostCardData {
       avatarAsset: avatarAsset,
 
       comments: comments ?? this.comments,
-
     );
-
   }
-
 }
 
 class CommentData {
-
   const CommentData({
-
     required this.id,
 
     required this.author,
@@ -159,7 +149,6 @@ class CommentData {
     this.replies = const [],
 
     this.status = 'active',
-
   });
 
   final String id;
@@ -183,7 +172,6 @@ class CommentData {
   final String status;
 
   CommentData copyWith({
-
     String? id,
 
     String? author,
@@ -203,11 +191,8 @@ class CommentData {
     List<CommentData>? replies,
 
     String? status,
-
   }) {
-
     return CommentData(
-
       id: id ?? this.id,
 
       author: author ?? this.author,
@@ -227,29 +212,29 @@ class CommentData {
       replies: replies ?? this.replies,
 
       status: status ?? this.status,
-
     );
-
   }
-
 }
 
 class PostCard extends StatefulWidget {
-
-  const PostCard({super.key, required this.data, this.isPinnedAdmin = false});
+  const PostCard({
+    super.key,
+    required this.data,
+    this.isPinnedAdmin = false,
+    this.isYourPosts = false,
+  });
 
   final PostCardData data;
 
   final bool isPinnedAdmin;
 
+  final bool isYourPosts;
+
   @override
-
   State<PostCard> createState() => _PostCardState();
-
 }
 
 class _PostCardState extends State<PostCard> {
-
   final GlobalKey _menuKey = GlobalKey();
 
   OverlayEntry? _overlayEntry;
@@ -263,7 +248,7 @@ class _PostCardState extends State<PostCard> {
   int _userVote = 0; // 1 = upvoted, -1 = downvoted, 0 = neutral
 
   List<CommentData> _comments = const [];
-  
+
   int? _actualCommentCount; // Store the actual comment count from API
 
   int? _activeReplyIndex;
@@ -279,21 +264,15 @@ class _PostCardState extends State<PostCard> {
   PostCardData get data => widget.data;
 
   List<CommentData> get _currentComments {
-
     if (_comments.isEmpty && (widget.data.comments?.isNotEmpty ?? false)) {
-
       _comments = _cloneComments(widget.data.comments!);
-
     }
 
     return _comments;
-
   }
 
   @override
-
   void initState() {
-
     super.initState();
 
     _currentVotes = data.votes;
@@ -302,56 +281,44 @@ class _PostCardState extends State<PostCard> {
 
     // Initialize comment count from feed data, but we'll verify it when comments are loaded
     // Don't trust feed count as it might include deleted comments
-    _actualCommentCount = null; // Start with null, will be set when comments are loaded
+    _actualCommentCount =
+        null; // Start with null, will be set when comments are loaded
 
     _loadCurrentUsername();
-    
+
     // Load comments in background to get accurate count (only if feed shows comments exist)
     if (data.commentsCount > 0 && data.id != null) {
       // Load comments in background to get accurate count of active comments
       Future.microtask(() => _loadComments());
     }
-
   }
 
   Future<void> _loadCurrentUsername() async {
-
     try {
-
       final response = await _postService.getProfile();
 
       final profile = response['profile'] as Map<String, dynamic>?;
 
       if (profile != null && mounted) {
-
         final username = profile['username']?.toString();
 
         if (username != null && username.isNotEmpty) {
-
           setState(() {
-
-            _currentUsername = username.startsWith('@') ? username : '@$username';
-
+            _currentUsername = username.startsWith('@')
+                ? username
+                : '@$username';
           });
-
         }
-
       }
-
     } catch (e) {
-
       // Silently fail - will use fallback '@user'
 
       debugPrint('Failed to load username: $e');
-
     }
-
   }
 
   String _mapReportReasonToBackendEnum(String reasonTitle) {
-
     const reasonMap = {
-
       'Spam or misleading': 'spam',
 
       'Harassment or hate speech': 'harassment',
@@ -361,31 +328,22 @@ class _PostCardState extends State<PostCard> {
       'False information': 'misinformation',
 
       'Other': 'other',
-
     };
 
     return reasonMap[reasonTitle] ?? 'other';
-
   }
 
   @override
-
   void didUpdateWidget(covariant PostCard oldWidget) {
-
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.data.comments != widget.data.comments) {
-
       _comments = _cloneComments(widget.data.comments ?? const []);
-
     }
-
   }
 
   @override
-
   void dispose() {
-
     _removeOverlay();
 
     _commentController.dispose();
@@ -393,35 +351,32 @@ class _PostCardState extends State<PostCard> {
     _replyController.dispose();
 
     super.dispose();
-
   }
 
   void _removeOverlay() {
-
     _overlayEntry?.remove();
 
     _overlayEntry = null;
-
   }
 
   /// Load comments from the API when comments section is expanded
   Future<void> _loadComments() async {
     if (data.id == null) return;
-    
+
     try {
       final response = await _postService.getComments(postId: data.id!);
-      
+
       if (!mounted) return;
-      
+
       final commentsList = response['comments'] as List<dynamic>? ?? [];
       final mappedComments = commentsList
           .map((comment) => _mapCommentFromResponse(comment))
           .whereType<CommentData>()
           .toList();
-      
+
       // Calculate actual comment count (including replies)
       final actualCount = _totalCommentCount(mappedComments);
-      
+
       setState(() {
         _comments = mappedComments;
         // Update the actual comment count from loaded comments
@@ -436,38 +391,37 @@ class _PostCardState extends State<PostCard> {
   /// Map comment from API response to CommentData
   CommentData? _mapCommentFromResponse(dynamic commentData) {
     if (commentData is! Map<String, dynamic>) return null;
-    
+
     final id = commentData['id']?.toString() ?? '';
     if (id.isEmpty) return null;
-    
+
     final profile = commentData['profiles'] as Map<String, dynamic>?;
-    final username = (commentData['username'] ?? 
-                     profile?['username'] ?? 
-                     '@user').toString();
+    final username =
+        (commentData['username'] ?? profile?['username'] ?? '@user').toString();
     final author = username.startsWith('@') ? username : '@$username';
-    
+
     final createdAt = commentData['created_at'] != null
         ? DateTime.tryParse(commentData['created_at'].toString())
         : null;
-    
+
     final content = commentData['content']?.toString() ?? '';
     final upvotes = _parseInt(commentData['upvote_count'] ?? 0);
     final downvotes = _parseInt(commentData['downvote_count'] ?? 0);
     final status = commentData['status']?.toString() ?? 'active';
-    
+
     // Get replies if present
     final repliesData = commentData['replies'] as List<dynamic>? ?? [];
     final replies = repliesData
         .map((reply) => _mapCommentFromResponse(reply))
         .whereType<CommentData>()
         .toList();
-    
+
     // Get initials from username
     final sanitized = username.replaceAll(RegExp(r'[^A-Za-z]'), '');
     final initial = sanitized.isNotEmpty
         ? sanitized.substring(0, 1).toUpperCase()
         : 'U';
-    
+
     return CommentData(
       id: id,
       author: author,
@@ -505,16 +459,17 @@ class _PostCardState extends State<PostCard> {
     return '${difference.inDays ~/ 7}w ago';
   }
 
-  void _handleCommentError(Object error, StackTrace stackTrace, {String? customMessage}) {
-
+  void _handleCommentError(
+    Object error,
+    StackTrace stackTrace, {
+    String? customMessage,
+  }) {
     final message = customMessage ?? 'Comment thread update failed: $error';
 
     _recentCommentErrors.insert(0, message);
 
     if (_recentCommentErrors.length > 5) {
-
       _recentCommentErrors.removeLast();
-
     }
 
     debugPrint(message);
@@ -522,69 +477,49 @@ class _PostCardState extends State<PostCard> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-
       SnackBar(
-
-        content: Text(customMessage ?? 'Something went wrong while posting your comment.'),
-
+        content: Text(
+          customMessage ?? 'Something went wrong while posting your comment.',
+        ),
       ),
-
     );
-
   }
 
   List<CommentData> _cloneComments(List<CommentData> source) {
-
     if (source.isEmpty) return <CommentData>[];
 
     return source
-
         .map(
+          (comment) => comment.copyWith(
+            id: comment.id,
 
-          (comment) =>
+            status: comment.status,
 
-              comment.copyWith(
-
-                id: comment.id,
-
-                status: comment.status,
-
-                replies: _cloneComments(comment.replies),
-
-              ),
-
+            replies: _cloneComments(comment.replies),
+          ),
         )
-
         .toList();
-
   }
 
   int _totalCommentCount(List<CommentData> items) {
-
     int total = 0;
 
     for (final comment in items) {
-
       // Only count comments with status 'active'
 
       if (comment.status == 'active') {
-
         total += 1;
 
         // Recursively count active replies
 
         total += _totalCommentCount(comment.replies);
-
       }
-
     }
 
     return total;
-
   }
 
   Future<void> _addComment(String text) async {
-
     if (data.id == null) return;
 
     final trimmed = text.trim();
@@ -594,19 +529,15 @@ class _PostCardState extends State<PostCard> {
     if (trimmed.isEmpty) return;
 
     if (trimmed.length > 500) {
-
       if (mounted) {
-
         ScaffoldMessenger.of(context).showSnackBar(
-
-          const SnackBar(content: Text('Comment must be 500 characters or less.')),
-
+          const SnackBar(
+            content: Text('Comment must be 500 characters or less.'),
+          ),
         );
-
       }
 
       return;
-
     }
 
     // Optimistically update UI
@@ -614,9 +545,7 @@ class _PostCardState extends State<PostCard> {
     final sanitized = trimmed.replaceAll(RegExp(r'[^A-Za-z]'), '');
 
     final initial = sanitized.isNotEmpty
-
         ? sanitized.substring(0, 1).toUpperCase()
-
         : 'Y';
 
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -624,7 +553,6 @@ class _PostCardState extends State<PostCard> {
     final username = _currentUsername ?? '@user';
 
     final optimisticComment = CommentData(
-
       id: tempId,
 
       author: username,
@@ -642,23 +570,18 @@ class _PostCardState extends State<PostCard> {
       replies: const [],
 
       status: 'active',
-
     );
 
     final updated = [optimisticComment, ..._currentComments];
 
     setState(() {
-
       _comments = updated;
       // Update comment count optimistically
       _actualCommentCount = _totalCommentCount(updated);
-
     });
 
     if (_commentController.text.isNotEmpty) {
-
       _commentController.text = '';
-
     }
 
     FocusScope.of(context).unfocus();
@@ -666,37 +589,33 @@ class _PostCardState extends State<PostCard> {
     // Call backend
 
     try {
-
       final response = await _postService.createComment(
-
         postId: data.id!,
 
         content: trimmed,
-
       );
 
       // Check for success and handle response according to edge function format
 
-      if (response['success'] == true && response['comment'] != null && mounted) {
-
+      if (response['success'] == true &&
+          response['comment'] != null &&
+          mounted) {
         final commentData = response['comment'] as Map<String, dynamic>;
 
         final realId = commentData['id']?.toString() ?? tempId;
 
         // Extract username - check multiple possible fields
 
-        final realUsername = (commentData['username'] ?? 
-
-                             commentData['author'] ?? 
-
-                             commentData['profiles']?['username'] ?? 
-
-                             username)?.toString() ?? username;
+        final realUsername =
+            (commentData['username'] ??
+                    commentData['author'] ??
+                    commentData['profiles']?['username'] ??
+                    username)
+                ?.toString() ??
+            username;
 
         final createdAt = commentData['created_at'] != null
-
             ? DateTime.tryParse(commentData['created_at'].toString())
-
             : null;
 
         final upvotes = _parseInt(commentData['upvote_count'] ?? 0);
@@ -708,18 +627,17 @@ class _PostCardState extends State<PostCard> {
         final content = commentData['content']?.toString() ?? trimmed;
 
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           final index = updatedComments.indexWhere((c) => c.id == tempId);
 
           if (index != -1) {
-
             updatedComments[index] = optimisticComment.copyWith(
-
               id: realId,
 
-              author: realUsername.startsWith('@') ? realUsername : '@$realUsername',
+              author: realUsername.startsWith('@')
+                  ? realUsername
+                  : '@$realUsername',
 
               timeAgo: _formatTimeAgo(createdAt),
 
@@ -730,7 +648,6 @@ class _PostCardState extends State<PostCard> {
               body: content,
 
               status: status,
-
             );
 
             _comments = updatedComments;
@@ -738,67 +655,57 @@ class _PostCardState extends State<PostCard> {
             _actualCommentCount = _totalCommentCount(updatedComments);
             // Reload comments to ensure sync with backend and get updated count
             _loadComments();
-
           }
-
         });
-
       } else if (response['success'] == false && mounted) {
-
         // Handle content moderation or other blocking errors
 
-        final errorMessage = response['message'] ?? 
-
-                            response['error'] ?? 
-
-                            'Your comment could not be posted.';
+        final errorMessage =
+            response['message'] ??
+            response['error'] ??
+            'Your comment could not be posted.';
 
         // Remove optimistic comment
 
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           updatedComments.removeWhere((c) => c.id == tempId);
 
           _comments = updatedComments;
-
         });
 
-        _handleCommentError(Exception(errorMessage), StackTrace.current, customMessage: errorMessage);
-
+        _handleCommentError(
+          Exception(errorMessage),
+          StackTrace.current,
+          customMessage: errorMessage,
+        );
       } else if (mounted) {
-
         // Unexpected response format
 
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           updatedComments.removeWhere((c) => c.id == tempId);
 
           _comments = updatedComments;
-
         });
 
-        _handleCommentError(Exception('Unexpected response from server'), StackTrace.current);
-
+        _handleCommentError(
+          Exception('Unexpected response from server'),
+          StackTrace.current,
+        );
       }
-
     } catch (error, stackTrace) {
-
       // Remove optimistic comment on error
 
       if (mounted) {
-
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           updatedComments.removeWhere((c) => c.id == tempId);
 
           _comments = updatedComments;
-
         });
 
         // Extract error message from exception
@@ -807,34 +714,25 @@ class _PostCardState extends State<PostCard> {
 
         String? customMessage;
 
-        if (errorStr.contains('Comment blocked') || errorStr.contains('inappropriate content')) {
-
+        if (errorStr.contains('Comment blocked') ||
+            errorStr.contains('inappropriate content')) {
           customMessage = errorStr;
-
         } else if (errorStr.contains('Post not found')) {
-
           customMessage = 'The post you are commenting on no longer exists.';
-
-        } else if (errorStr.contains('content is required') || errorStr.contains('must be between')) {
-
-          customMessage = 'Invalid comment. Please check the comment length (1-500 characters).';
-
+        } else if (errorStr.contains('content is required') ||
+            errorStr.contains('must be between')) {
+          customMessage =
+              'Invalid comment. Please check the comment length (1-500 characters).';
         } else if (errorStr.contains('Unauthorized')) {
-
           customMessage = 'You must be logged in to post comments.';
-
         }
 
         _handleCommentError(error, stackTrace, customMessage: customMessage);
-
       }
-
     }
-
   }
 
   Future<void> _addReply(int parentIndex, String text) async {
-
     if (data.id == null) return;
 
     final trimmed = text.trim();
@@ -844,27 +742,21 @@ class _PostCardState extends State<PostCard> {
     if (trimmed.isEmpty) return;
 
     if (trimmed.length > 500) {
-
       if (mounted) {
-
         ScaffoldMessenger.of(context).showSnackBar(
-
-          const SnackBar(content: Text('Reply must be 500 characters or less.')),
-
+          const SnackBar(
+            content: Text('Reply must be 500 characters or less.'),
+          ),
         );
-
       }
 
       return;
-
     }
 
     final current = List<CommentData>.from(_currentComments);
 
     if (parentIndex < 0 || parentIndex >= current.length) {
-
       return;
-
     }
 
     final parent = current[parentIndex];
@@ -874,9 +766,7 @@ class _PostCardState extends State<PostCard> {
     final sanitized = trimmed.replaceAll(RegExp(r'[^A-Za-z]'), '');
 
     final initial = sanitized.isNotEmpty
-
         ? sanitized.substring(0, 1).toUpperCase()
-
         : 'Y';
 
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -884,7 +774,6 @@ class _PostCardState extends State<PostCard> {
     final username = _currentUsername ?? '@user';
 
     final optimisticReply = CommentData(
-
       id: tempId,
 
       author: username,
@@ -902,25 +791,21 @@ class _PostCardState extends State<PostCard> {
       replies: const [],
 
       status: 'active',
-
     );
 
-    final updatedReplies = List<CommentData>.from(parent.replies)..add(optimisticReply);
+    final updatedReplies = List<CommentData>.from(parent.replies)
+      ..add(optimisticReply);
 
     current[parentIndex] = parent.copyWith(replies: updatedReplies);
 
     setState(() {
-
       _comments = current;
 
       _activeReplyIndex = null;
 
       if (_replyController.text.isNotEmpty) {
-
         _replyController.text = '';
-
       }
-
     });
 
     FocusScope.of(context).unfocus();
@@ -928,39 +813,35 @@ class _PostCardState extends State<PostCard> {
     // Call backend
 
     try {
-
       final response = await _postService.createComment(
-
         postId: data.id!,
 
         content: trimmed,
 
         parentId: parent.id,
-
       );
 
       // Check for success and handle response according to edge function format
 
-      if (response['success'] == true && response['comment'] != null && mounted) {
-
+      if (response['success'] == true &&
+          response['comment'] != null &&
+          mounted) {
         final commentData = response['comment'] as Map<String, dynamic>;
 
         final realId = commentData['id']?.toString() ?? tempId;
 
         // Extract username - check multiple possible fields
 
-        final realUsername = (commentData['username'] ?? 
-
-                             commentData['author'] ?? 
-
-                             commentData['profiles']?['username'] ?? 
-
-                             username)?.toString() ?? username;
+        final realUsername =
+            (commentData['username'] ??
+                    commentData['author'] ??
+                    commentData['profiles']?['username'] ??
+                    username)
+                ?.toString() ??
+            username;
 
         final createdAt = commentData['created_at'] != null
-
             ? DateTime.tryParse(commentData['created_at'].toString())
-
             : null;
 
         final upvotes = _parseInt(commentData['upvote_count'] ?? 0);
@@ -972,24 +853,26 @@ class _PostCardState extends State<PostCard> {
         final content = commentData['content']?.toString() ?? trimmed;
 
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           if (parentIndex < updatedComments.length) {
-
             final updatedParent = updatedComments[parentIndex];
 
-            final updatedParentReplies = List<CommentData>.from(updatedParent.replies);
+            final updatedParentReplies = List<CommentData>.from(
+              updatedParent.replies,
+            );
 
-            final replyIndex = updatedParentReplies.indexWhere((r) => r.id == tempId);
+            final replyIndex = updatedParentReplies.indexWhere(
+              (r) => r.id == tempId,
+            );
 
             if (replyIndex != -1) {
-
               updatedParentReplies[replyIndex] = optimisticReply.copyWith(
-
                 id: realId,
 
-                author: realUsername.startsWith('@') ? realUsername : '@$realUsername',
+                author: realUsername.startsWith('@')
+                    ? realUsername
+                    : '@$realUsername',
 
                 timeAgo: _formatTimeAgo(createdAt),
 
@@ -1000,107 +883,103 @@ class _PostCardState extends State<PostCard> {
                 body: content,
 
                 status: status,
-
               );
 
-              updatedComments[parentIndex] = updatedParent.copyWith(replies: updatedParentReplies);
+              updatedComments[parentIndex] = updatedParent.copyWith(
+                replies: updatedParentReplies,
+              );
 
               _comments = updatedComments;
               // Update comment count after adding a reply
               _actualCommentCount = _totalCommentCount(updatedComments);
-
             }
-
           }
-
         });
-
       } else if (response['success'] == false && mounted) {
-
         // Handle content moderation or other blocking errors
 
-        final errorMessage = response['message'] ?? 
-
-                            response['error'] ?? 
-
-                            'Your reply could not be posted.';
+        final errorMessage =
+            response['message'] ??
+            response['error'] ??
+            'Your reply could not be posted.';
 
         // Remove optimistic reply
 
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           if (parentIndex < updatedComments.length) {
-
             final updatedParent = updatedComments[parentIndex];
 
-            final updatedParentReplies = List<CommentData>.from(updatedParent.replies);
+            final updatedParentReplies = List<CommentData>.from(
+              updatedParent.replies,
+            );
 
             updatedParentReplies.removeWhere((r) => r.id == tempId);
 
-            updatedComments[parentIndex] = updatedParent.copyWith(replies: updatedParentReplies);
+            updatedComments[parentIndex] = updatedParent.copyWith(
+              replies: updatedParentReplies,
+            );
 
             _comments = updatedComments;
-
           }
-
         });
 
-        _handleCommentError(Exception(errorMessage), StackTrace.current, customMessage: errorMessage);
-
+        _handleCommentError(
+          Exception(errorMessage),
+          StackTrace.current,
+          customMessage: errorMessage,
+        );
       } else if (mounted) {
-
         // Unexpected response format
 
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           if (parentIndex < updatedComments.length) {
-
             final updatedParent = updatedComments[parentIndex];
 
-            final updatedParentReplies = List<CommentData>.from(updatedParent.replies);
+            final updatedParentReplies = List<CommentData>.from(
+              updatedParent.replies,
+            );
 
             updatedParentReplies.removeWhere((r) => r.id == tempId);
 
-            updatedComments[parentIndex] = updatedParent.copyWith(replies: updatedParentReplies);
+            updatedComments[parentIndex] = updatedParent.copyWith(
+              replies: updatedParentReplies,
+            );
 
             _comments = updatedComments;
-
           }
-
         });
 
-        _handleCommentError(Exception('Unexpected response from server'), StackTrace.current);
-
+        _handleCommentError(
+          Exception('Unexpected response from server'),
+          StackTrace.current,
+        );
       }
-
     } catch (error, stackTrace) {
-
       // Remove optimistic reply on error
 
       if (mounted) {
-
         setState(() {
-
           final updatedComments = List<CommentData>.from(_currentComments);
 
           if (parentIndex < updatedComments.length) {
-
             final updatedParent = updatedComments[parentIndex];
 
-            final updatedParentReplies = List<CommentData>.from(updatedParent.replies);
+            final updatedParentReplies = List<CommentData>.from(
+              updatedParent.replies,
+            );
 
             updatedParentReplies.removeWhere((r) => r.id == tempId);
 
-            updatedComments[parentIndex] = updatedParent.copyWith(replies: updatedParentReplies);
+            updatedComments[parentIndex] = updatedParent.copyWith(
+              replies: updatedParentReplies,
+            );
 
             _comments = updatedComments;
-
           }
-
         });
 
         // Extract error message from exception
@@ -1109,96 +988,65 @@ class _PostCardState extends State<PostCard> {
 
         String? customMessage;
 
-        if (errorStr.contains('Comment blocked') || errorStr.contains('inappropriate content')) {
-
+        if (errorStr.contains('Comment blocked') ||
+            errorStr.contains('inappropriate content')) {
           customMessage = errorStr;
-
         } else if (errorStr.contains('Post not found')) {
-
           customMessage = 'The post you are replying to no longer exists.';
-
-        } else if (errorStr.contains('Comment not found') || errorStr.contains('Parent comment not found')) {
-
+        } else if (errorStr.contains('Comment not found') ||
+            errorStr.contains('Parent comment not found')) {
           customMessage = 'The comment you are replying to no longer exists.';
-
         } else if (errorStr.contains('Cannot reply to a reply')) {
-
-          customMessage = 'You can only reply to top-level comments, not to replies.';
-
-        } else if (errorStr.contains('content is required') || errorStr.contains('must be between')) {
-
-          customMessage = 'Invalid reply. Please check the reply length (1-500 characters).';
-
+          customMessage =
+              'You can only reply to top-level comments, not to replies.';
+        } else if (errorStr.contains('content is required') ||
+            errorStr.contains('must be between')) {
+          customMessage =
+              'Invalid reply. Please check the reply length (1-500 characters).';
         } else if (errorStr.contains('Unauthorized')) {
-
           customMessage = 'You must be logged in to post replies.';
-
         }
 
         _handleCommentError(error, stackTrace, customMessage: customMessage);
-
       }
-
     }
-
   }
 
   void _toggleInlineReply(int index) {
-
     try {
-
       setState(() {
-
         if (_activeReplyIndex == index) {
-
           _activeReplyIndex = null;
 
           if (_replyController.text.isNotEmpty) {
-
             _replyController.text = '';
-
           }
-
         } else {
-
           _activeReplyIndex = index;
 
           if (_replyController.text.isNotEmpty) {
-
             _replyController.text = '';
-
           }
-
         }
-
       });
-
     } catch (error, stackTrace) {
-
       _handleCommentError(error, stackTrace);
-
     }
-
   }
 
   void _toggleMenu(BuildContext parentContext) {
-
     if (!mounted) return;
 
     if (_overlayEntry != null) {
-
       _removeOverlay();
 
       return;
-
     }
 
     final menuContext = _menuKey.currentContext;
 
     if (menuContext == null || !menuContext.mounted) {
-
       return;
-
     }
 
     final renderBox = menuContext.findRenderObject() as RenderBox?;
@@ -1210,141 +1058,100 @@ class _PostCardState extends State<PostCard> {
     final offset = renderBox.localToGlobal(Offset.zero);
 
     _overlayEntry = OverlayEntry(
-
       builder: (context) => Positioned.fill(
-
         child: GestureDetector(
-
           behavior: HitTestBehavior.translucent,
 
           onTap: _removeOverlay,
 
           child: Stack(
-
             children: [
-
               Positioned(
-
                 bottom: MediaQuery.of(context).size.height - offset.dy + 8,
 
                 right:
-
                     MediaQuery.of(context).size.width -
-
                     (offset.dx + size.width) +
-
                     8,
 
                 child: _PostActionsPopover(
-
                   onReport: () async {
-
                     _removeOverlay();
 
                     if (!mounted) return;
 
                     await _showReportPostSheet(parentContext);
-
                   },
 
                   onDelete: () async {
-
                     _removeOverlay();
 
                     if (!mounted) return;
 
                     await _showDeleteDialog(parentContext, data.title);
-
                   },
-
                 ),
-
               ),
-
             ],
-
           ),
-
         ),
-
       ),
-
     );
 
     Overlay.of(parentContext, rootOverlay: true).insert(_overlayEntry!);
-
   }
 
   @override
-
   Widget build(BuildContext context) {
-
     final palette = _PostCardPalette.fromVariant(data.variant);
 
     final bool isAdminPinned = widget.isPinnedAdmin;
 
     return Padding(
-
       padding: const EdgeInsets.only(bottom: 24),
 
       child: Align(
-
         alignment: Alignment.center,
 
         child: SizedBox(
-
           width: 360,
 
           child: Container(
-
             decoration: BoxDecoration(
-
               borderRadius: BorderRadius.circular(24),
 
               border: Border.all(
-
                 color: palette.outerBorderColor,
 
                 width: 1.51027,
-
               ),
-
             ),
 
             child: Container(
-
               margin: const EdgeInsets.only(top: 2),
 
               decoration: BoxDecoration(
-
                 color: Colors.white,
 
                 borderRadius: BorderRadius.circular(24),
-
               ),
 
               child: Column(
-
                 mainAxisSize: MainAxisSize.min,
 
                 crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
-
                   if (palette.showHeader) _HighlightHeader(palette: palette),
 
                   Padding(
-
                     padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
 
                     child: Column(
-
                       crossAxisAlignment: CrossAxisAlignment.start,
 
                       children: [
-
                         _PostHeader(
-
                           data: data,
 
                           palette: palette,
@@ -1362,17 +1169,14 @@ class _PostCardState extends State<PostCard> {
                           showMetaBadges: !isAdminPinned,
 
                           customBadge: isAdminPinned ? _AdminBadge() : null,
-
                         ),
 
                         const SizedBox(height: 24),
 
                         _PostTitle(
-
                           title: data.title,
 
                           color: palette.titleColor,
-
                         ),
 
                         const SizedBox(height: 16),
@@ -1382,15 +1186,14 @@ class _PostCardState extends State<PostCard> {
                         const SizedBox(height: 24),
 
                         _PostFooter(
-
                           data: data.copyWith(comments: _currentComments),
 
                           palette: palette,
 
                           onMoreTap: isAdminPinned
-
                               ? null
-
+                              : widget.isYourPosts
+                              ? () => _showDeleteDialog(context, data.title)
                               : () => _toggleMenu(context),
 
                           moreButtonKey: isAdminPinned ? null : _menuKey,
@@ -1401,7 +1204,10 @@ class _PostCardState extends State<PostCard> {
                             });
                             // Load comments from API when expanding comments section
                             // Also reload if we don't have an accurate count yet
-                            if (_showComments && (_comments.isEmpty || _actualCommentCount == null) && data.id != null) {
+                            if (_showComments &&
+                                (_comments.isEmpty ||
+                                    _actualCommentCount == null) &&
+                                data.id != null) {
                               _loadComments();
                             }
                           },
@@ -1410,17 +1216,19 @@ class _PostCardState extends State<PostCard> {
 
                           showMoreButton: !isAdminPinned,
 
-                          commentCount: _actualCommentCount ?? 
-                              (_currentComments.isNotEmpty ? _totalCommentCount(_currentComments) : data.commentsCount),
+                          isYourPosts: widget.isYourPosts,
 
+                          commentCount:
+                              _actualCommentCount ??
+                              (_currentComments.isNotEmpty
+                                  ? _totalCommentCount(_currentComments)
+                                  : data.commentsCount),
                         ),
 
                         if (_showComments) ...[
-
                           const _PostCommentsDivider(),
 
                           _CommentsSection(
-
                             palette: palette,
 
                             data: data.copyWith(comments: _currentComments),
@@ -1438,41 +1246,25 @@ class _PostCardState extends State<PostCard> {
                             onSubmitReply: _addReply,
 
                             onReportComment: (comment) =>
-
                                 _showReportCommentSheet(context, comment),
 
                             onDeleteComment: (comment) =>
-
                                 _showDeleteCommentDialog(context, comment),
-
                           ),
-
                         ],
-
                       ],
-
                     ),
-
                   ),
-
                 ],
-
               ),
-
             ),
-
           ),
-
         ),
-
       ),
-
     );
-
   }
 
   Future<void> _handleUpvote() async {
-
     if (data.id == null) return;
 
     final previousVote = _userVote;
@@ -1480,103 +1272,78 @@ class _PostCardState extends State<PostCard> {
     final previousVotes = _currentVotes;
 
     setState(() {
-
       if (_userVote == 1) {
-
         // Already upvoted, unvote (remove the upvote)
 
         _currentVotes = (_currentVotes - 1).clamp(0, double.infinity).toInt();
 
         _userVote = 0;
-
       } else {
-
         if (_userVote == -1) {
-
           // Currently downvoted, switch to upvote (remove downvote, add upvote = +2)
 
           _currentVotes += 2;
-
         } else {
-
           // Neutral, add upvote
 
           _currentVotes += 1;
-
         }
 
         _userVote = 1;
-
       }
-
     });
 
     try {
-
       final voteType = previousVote == 1 ? 'remove' : 'upvote';
 
-      final response = await _postService.votePost(postId: data.id!, voteType: voteType);
+      final response = await _postService.votePost(
+        postId: data.id!,
+        voteType: voteType,
+      );
 
       // Sync with backend response to ensure consistency
 
       if (response['net_score'] != null && mounted) {
-
         final netScore = _parseInt(response['net_score']);
 
         final userVoteStr = response['user_vote']?.toString().toLowerCase();
 
         setState(() {
-
           _currentVotes = netScore.clamp(0, double.infinity).toInt();
 
           // Map backend user_vote string to our integer state
 
           if (userVoteStr == 'upvote') {
-
             _userVote = 1;
-
           } else if (userVoteStr == 'downvote') {
-
             _userVote = -1;
-
           } else {
-
             _userVote = 0;
-
           }
-
         });
-
       }
-
     } catch (e) {
-
       // Revert on error
 
       if (mounted) {
-
         setState(() {
-
           _currentVotes = previousVotes;
 
           _userVote = previousVote;
-
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-
-          SnackBar(content: Text('Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}')),
-
+          SnackBar(
+            content: Text(
+              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
         );
-
       }
-
     }
-
   }
 
   Future<void> _handleDownvote() async {
-
     if (data.id == null) return;
 
     final previousVote = _userVote;
@@ -1584,135 +1351,101 @@ class _PostCardState extends State<PostCard> {
     final previousVotes = _currentVotes;
 
     setState(() {
-
       if (_userVote == -1) {
-
         // Already downvoted, unvote (remove the downvote)
 
         _currentVotes += 1;
 
         _userVote = 0;
-
       } else {
-
         if (_userVote == 1) {
-
           // Currently upvoted, switch to downvote (remove upvote, add downvote = -2)
 
           _currentVotes = (_currentVotes - 2).clamp(0, double.infinity).toInt();
-
         } else {
-
           // Neutral, add downvote (but don't go negative)
 
           _currentVotes = (_currentVotes - 1).clamp(0, double.infinity).toInt();
-
         }
 
         _userVote = -1;
-
       }
-
     });
 
     try {
-
       final voteType = previousVote == -1 ? 'remove' : 'downvote';
 
-      final response = await _postService.votePost(postId: data.id!, voteType: voteType);
+      final response = await _postService.votePost(
+        postId: data.id!,
+        voteType: voteType,
+      );
 
       // Sync with backend response to ensure consistency
 
       if (response['net_score'] != null && mounted) {
-
         final netScore = _parseInt(response['net_score']);
 
         final userVoteStr = response['user_vote']?.toString().toLowerCase();
 
         setState(() {
-
           _currentVotes = netScore.clamp(0, double.infinity).toInt();
 
           // Map backend user_vote string to our integer state
 
           if (userVoteStr == 'upvote') {
-
             _userVote = 1;
-
           } else if (userVoteStr == 'downvote') {
-
             _userVote = -1;
-
           } else {
-
             _userVote = 0;
-
           }
-
         });
-
       }
-
     } catch (e) {
-
       // Revert on error
 
       if (mounted) {
-
         setState(() {
-
           _currentVotes = previousVotes;
 
           _userVote = previousVote;
-
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-
-          SnackBar(content: Text('Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}')),
-
+          SnackBar(
+            content: Text(
+              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
         );
-
       }
-
     }
-
   }
 
   Future<void> _showDeleteCommentDialog(
-
     BuildContext context,
 
     CommentData comment,
-
   ) async {
-
     final preview = comment.body.length > 60
-
         ? '${comment.body.substring(0, 57)}...'
-
         : comment.body;
 
     final result = await showDialog<DeleteCommentResult>(
-
       context: context,
 
       barrierDismissible: false,
 
       builder: (_) => DeleteCommentDialog(commentPreview: preview),
-
     );
 
     if (result?.confirmed == true && context.mounted) {
-
       try {
-
         await _postService.deleteComment(commentId: comment.id);
 
         // Remove comment from local state
 
         setState(() {
-
           final updated = List<CommentData>.from(_currentComments);
 
           // Find and remove comment (including from replies)
@@ -1720,10 +1453,9 @@ class _PostCardState extends State<PostCard> {
           _removeCommentRecursive(updated, comment.id);
 
           _comments = updated;
-          
+
           // Update comment count after deletion
           _actualCommentCount = _totalCommentCount(updated);
-          
         });
 
         // Reload comments from API to ensure count is accurate
@@ -1732,19 +1464,12 @@ class _PostCardState extends State<PostCard> {
         }
 
         if (context.mounted) {
-
           ScaffoldMessenger.of(context).showSnackBar(
-
             const SnackBar(content: Text('Comment deleted successfully.')),
-
           );
-
         }
-
       } catch (e) {
-
         if (context.mounted) {
-
           final errorStr = e.toString().replaceFirst('Exception: ', '');
 
           final errorStrLower = errorStr.toLowerCase();
@@ -1754,61 +1479,37 @@ class _PostCardState extends State<PostCard> {
           // Check for permission/ownership errors
 
           if (errorStrLower.contains('cannot delete another user\'s comment') ||
-
               errorStrLower.contains('cannot delete') ||
-
               errorStrLower.contains('not owner') ||
-
               errorStrLower.contains('only owner') ||
-
               errorStrLower.contains('permission denied') ||
-
               errorStrLower.contains('forbidden')) {
-
             errorMessage = 'You can only delete your own comments.';
-
           } else if (errorStrLower.contains('comment not found')) {
-
             errorMessage = 'This comment no longer exists.';
-
           } else if (errorStrLower.contains('unauthorized')) {
-
             errorMessage = 'You must be logged in to delete comments.';
-
           } else {
-
             // Use the original error message if it's user-friendly, otherwise show generic message
 
-            errorMessage = errorStr.isNotEmpty ? errorStr : 'Failed to delete comment. Please try again.';
-
+            errorMessage = errorStr.isNotEmpty
+                ? errorStr
+                : 'Failed to delete comment. Please try again.';
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
-
-            SnackBar(
-
-              content: Text(errorMessage),
-
-            ),
-
-          );
-
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(errorMessage)));
         }
-
       }
-
     }
-
   }
 
   void _removeCommentRecursive(List<CommentData> comments, String commentId) {
-
     comments.removeWhere((comment) => comment.id == commentId);
 
     for (final comment in comments) {
-
       if (comment.replies.isNotEmpty) {
-
         final replies = List<CommentData>.from(comment.replies);
 
         _removeCommentRecursive(replies, commentId);
@@ -1818,20 +1519,15 @@ class _PostCardState extends State<PostCard> {
         final index = comments.indexOf(comment);
 
         if (index != -1) {
-
           comments[index] = comment.copyWith(replies: replies);
-
         }
-
       }
-
     }
-
   }
 
   Future<void> _showReportPostSheet(BuildContext context) async {
     if (data.id == null) return;
-    
+
     final result = await showModalBottomSheet<ReportResult?>(
       context: context,
       isScrollControlled: true,
@@ -1847,7 +1543,7 @@ class _PostCardState extends State<PostCard> {
           reason: backendReason,
           description: result.details.isNotEmpty ? result.details : null,
         );
-        
+
         if (context.mounted) {
           await showDialog<void>(
             context: context,
@@ -1863,7 +1559,7 @@ class _PostCardState extends State<PostCard> {
           String errorMessage;
 
           // Check for "cannot report own post" error (case-insensitive)
-          if (errorStrLower.contains('cannot report own post') || 
+          if (errorStrLower.contains('cannot report own post') ||
               errorStrLower.contains('cannot report your own post') ||
               errorStrLower.contains('you cannot report your own post')) {
             errorMessage = 'You cannot report your own post.';
@@ -1875,14 +1571,14 @@ class _PostCardState extends State<PostCard> {
             errorMessage = 'You must be logged in to report posts.';
           } else {
             // Use the original error message if it's user-friendly, otherwise show generic message
-            errorMessage = errorStr.isNotEmpty ? errorStr : 'Failed to submit report. Please try again.';
+            errorMessage = errorStr.isNotEmpty
+                ? errorStr
+                : 'Failed to submit report. Please try again.';
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-            ),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(errorMessage)));
         }
       }
     }
@@ -1890,7 +1586,7 @@ class _PostCardState extends State<PostCard> {
 
   Future<void> _showDeleteDialog(BuildContext context, String title) async {
     if (data.id == null) return;
-    
+
     final result = await showDialog<DeletePostResult>(
       context: context,
       barrierDismissible: false,
@@ -1902,7 +1598,7 @@ class _PostCardState extends State<PostCard> {
     // Simple: call edge function and show message based on response
     try {
       final response = await _postService.deletePost(postId: data.id!);
-      
+
       // Check response from edge function
       if (response['success'] == true) {
         // Show success message
@@ -1913,11 +1609,12 @@ class _PostCardState extends State<PostCard> {
         }
       } else {
         // Show error from response
-        final message = response['message']?.toString() ?? 'Failed to delete post.';
+        final message =
+            response['message']?.toString() ?? 'Failed to delete post.';
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
         }
       }
     } catch (e) {
@@ -1942,27 +1639,25 @@ class _PostCardState extends State<PostCard> {
       } else if (errorStrLower.contains('unauthorized')) {
         errorMessage = 'You must be logged in to delete posts.';
       } else {
-        errorMessage = errorStr.isNotEmpty ? errorStr : 'Failed to delete post. Please try again.';
+        errorMessage = errorStr.isNotEmpty
+            ? errorStr
+            : 'Failed to delete post. Please try again.';
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage)));
       }
     }
   }
 
   Future<void> _showReportCommentSheet(
-
     BuildContext context,
 
     CommentData comment,
-
   ) async {
-
     final result = await showModalBottomSheet<ReportResult?>(
-
       context: context,
 
       isScrollControlled: true,
@@ -1970,43 +1665,31 @@ class _PostCardState extends State<PostCard> {
       backgroundColor: Colors.transparent,
 
       builder: (_) => const ReportPostSheet(subject: ReportSubject.comment),
-
     );
 
     if (result != null && context.mounted) {
-
       try {
-
         final backendReason = _mapReportReasonToBackendEnum(result.reason);
 
         await _postService.reportComment(
-
           commentId: comment.id,
 
           reason: backendReason,
 
           description: result.details.isNotEmpty ? result.details : null,
-
         );
 
         if (context.mounted) {
-
           await showDialog<void>(
-
             context: context,
 
             barrierDismissible: false,
 
             builder: (_) => const ReportSuccessDialog(),
-
           );
-
         }
-
       } catch (e) {
-
         if (context.mounted) {
-
           final errorStr = e.toString().replaceFirst('Exception: ', '');
 
           final errorStrLower = errorStr.toLowerCase();
@@ -2015,126 +1698,85 @@ class _PostCardState extends State<PostCard> {
 
           // Check for "cannot report own comment" error (case-insensitive)
 
-          if (errorStrLower.contains('cannot report own comment') || 
-
+          if (errorStrLower.contains('cannot report own comment') ||
               errorStrLower.contains('cannot report your own comment') ||
-
               errorStrLower.contains('you cannot report your own comment')) {
-
             errorMessage = 'You cannot report your own comment.';
-
           } else if (errorStrLower.contains('already reported')) {
-
             errorMessage = 'You have already reported this comment.';
-
           } else if (errorStrLower.contains('comment not found')) {
-
             errorMessage = 'This comment no longer exists.';
-
           } else if (errorStrLower.contains('unauthorized')) {
-
             errorMessage = 'You must be logged in to report comments.';
-
           } else {
-
             // Use the original error message if it's user-friendly, otherwise show generic message
 
-            errorMessage = errorStr.isNotEmpty ? errorStr : 'Failed to submit report. Please try again.';
-
+            errorMessage = errorStr.isNotEmpty
+                ? errorStr
+                : 'Failed to submit report. Please try again.';
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
-
-            SnackBar(
-
-              content: Text(errorMessage),
-
-            ),
-
-          );
-
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(errorMessage)));
         }
-
       }
-
     }
-
   }
-
 }
 
 class _HighlightHeader extends StatelessWidget {
-
   const _HighlightHeader({required this.palette});
 
   final _PostCardPalette palette;
 
   @override
-
   Widget build(BuildContext context) {
-
     return SizedBox(
-
       height: 48,
 
       width: double.infinity,
 
       child: DecoratedBox(
-
         decoration: BoxDecoration(
-
           borderRadius: const BorderRadius.only(
-
             topLeft: Radius.circular(24),
 
             topRight: Radius.circular(24),
-
           ),
 
           gradient: LinearGradient(
-
             colors: palette.headerGradient,
 
             begin: Alignment.centerLeft,
 
             end: Alignment.centerRight,
-
           ),
-
         ),
 
         child: Padding(
-
           padding: const EdgeInsets.symmetric(horizontal: 16),
 
           child: Align(
-
             alignment: Alignment.centerLeft,
 
             child: DecoratedBox(
-
               decoration: BoxDecoration(
-
                 color: palette.headerPillColor,
 
                 borderRadius: BorderRadius.circular(8),
 
                 boxShadow: palette.headerPillShadows,
-
               ),
 
               child: Padding(
-
                 padding: const EdgeInsets.fromLTRB(8, 3.1, 8.5, 2.9),
 
                 child: Row(
-
                   mainAxisSize: MainAxisSize.min,
 
                   children: [
-
                     SvgPicture.asset(
-
                       palette.headerIconAsset,
 
                       width: 13,
@@ -2142,23 +1784,18 @@ class _HighlightHeader extends StatelessWidget {
                       height: 13,
 
                       colorFilter: const ColorFilter.mode(
-
                         Colors.white,
 
                         BlendMode.srcIn,
-
                       ),
-
                     ),
 
                     const SizedBox(width: 6),
 
                     Text(
-
                       palette.headerLabel,
 
                       style: const TextStyle(
-
                         fontSize: 11.5,
 
                         fontWeight: FontWeight.w600,
@@ -2166,35 +1803,21 @@ class _HighlightHeader extends StatelessWidget {
                         color: Colors.white,
 
                         fontFamily: 'Inter',
-
                       ),
-
                     ),
-
                   ],
-
                 ),
-
               ),
-
             ),
-
           ),
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 class _PostHeader extends StatelessWidget {
-
   const _PostHeader({
-
     required this.data,
 
     required this.palette,
@@ -2212,7 +1835,6 @@ class _PostHeader extends StatelessWidget {
     this.showMetaBadges = true,
 
     this.customBadge,
-
   });
 
   final PostCardData data;
@@ -2234,47 +1856,33 @@ class _PostHeader extends StatelessWidget {
   final Widget? customBadge;
 
   @override
-
   Widget build(BuildContext context) {
-
     final bool hasBadges = showMetaBadges || customBadge != null;
 
     return Row(
-
       crossAxisAlignment: CrossAxisAlignment.start,
 
       children: [
-
         _Avatar(
-
           asset: data.avatarAsset,
 
           borderColor: palette.avatarBorderColor,
-
         ),
 
         const SizedBox(width: 12),
 
         Expanded(
-
           child: Column(
-
             crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
-
               Row(
-
                 children: [
-
                   Flexible(
-
                     child: Text(
-
                       data.username,
 
                       style: const TextStyle(
-
                         fontSize: 16,
 
                         fontWeight: FontWeight.w600,
@@ -2282,77 +1890,57 @@ class _PostHeader extends StatelessWidget {
                         color: Color(0xFF0F172A),
 
                         fontFamily: 'Inter',
-
                       ),
 
                       overflow: TextOverflow.ellipsis,
-
                     ),
-
                   ),
 
                   const SizedBox(width: 8),
 
                   const Text(
-
                     '•',
 
                     style: TextStyle(
-
                       fontSize: 16,
 
                       color: Color(0xFF94A3B8),
 
                       fontFamily: 'Inter',
-
                     ),
-
                   ),
 
                   const SizedBox(width: 8),
 
                   Flexible(
-
                     child: Text(
-
                       data.timeAgo,
 
                       style: const TextStyle(
-
                         fontSize: 14,
 
                         color: Color(0xFF64748B),
 
                         fontFamily: 'Inter',
-
                       ),
 
                       overflow: TextOverflow.ellipsis,
-
                     ),
-
                   ),
-
                 ],
-
               ),
 
               if (hasBadges) ...[
-
                 const SizedBox(height: 12),
 
                 if (showMetaBadges)
-
                   Wrap(
-
                     spacing: 8,
 
                     runSpacing: 8,
 
                     children: [
-
                       _Badge(
-
                         icon: 'assets/images/locationIcon.svg',
 
                         label: data.location,
@@ -2362,11 +1950,9 @@ class _PostHeader extends StatelessWidget {
                         foreground: palette.locationForeground,
 
                         borderColor: palette.locationBorder,
-
                       ),
 
                       _Badge(
-
                         icon: 'assets/images/askIcon.svg',
 
                         label: data.category,
@@ -2376,35 +1962,23 @@ class _PostHeader extends StatelessWidget {
                         foreground: const Color(0xFF15803D),
 
                         borderColor: const Color(0xFFBDE9CE),
-
                       ),
-
                     ],
-
                   )
-
                 else if (customBadge != null)
-
                   Align(
-
                     alignment: Alignment.centerLeft,
 
                     child: SizedBox(width: 70.43, child: customBadge!),
-
                   ),
-
               ],
-
             ],
-
           ),
-
         ),
 
         const SizedBox(width: 12),
 
         _VotePanel(
-
           data: data,
 
           palette: palette,
@@ -2418,19 +1992,13 @@ class _PostHeader extends StatelessWidget {
           onUpvote: onUpvote,
 
           onDownvote: onDownvote,
-
         ),
-
       ],
-
     );
-
   }
-
 }
 
 class _PostTitle extends StatelessWidget {
-
   const _PostTitle({required this.title, required this.color});
 
   final String title;
@@ -2438,15 +2006,11 @@ class _PostTitle extends StatelessWidget {
   final Color color;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Text(
-
       title,
 
       style: TextStyle(
-
         fontSize: 18,
 
         fontWeight: FontWeight.w700,
@@ -2456,31 +2020,22 @@ class _PostTitle extends StatelessWidget {
         color: color,
 
         fontFamily: 'Inter',
-
       ),
-
     );
-
   }
-
 }
 
 class _PostBody extends StatelessWidget {
-
   const _PostBody({required this.body});
 
   final String body;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Text(
-
       body,
 
       style: const TextStyle(
-
         fontSize: 14,
 
         height: 1.65,
@@ -2488,19 +2043,13 @@ class _PostBody extends StatelessWidget {
         color: Color(0xFF45556C),
 
         fontFamily: 'Inter',
-
       ),
-
     );
-
   }
-
 }
 
 class _PostFooter extends StatelessWidget {
-
   const _PostFooter({
-
     required this.data,
 
     required this.palette,
@@ -2517,6 +2066,7 @@ class _PostFooter extends StatelessWidget {
 
     this.commentCount,
 
+    this.isYourPosts = false,
   });
 
   final PostCardData data;
@@ -2535,64 +2085,50 @@ class _PostFooter extends StatelessWidget {
 
   final int? commentCount;
 
+  final bool isYourPosts;
+
   @override
-
   Widget build(BuildContext context) {
-
     final comments = data.comments ?? const [];
 
     final computedCount =
-
         commentCount ??
-
         (comments.isNotEmpty ? comments.length : data.commentsCount);
 
     return Row(
-
       children: [
-
         InkWell(
-
           borderRadius: BorderRadius.circular(12),
 
           onTap: onToggleComments,
 
           child: Container(
-
             height: 36,
 
             padding: const EdgeInsets.symmetric(horizontal: 12),
 
             decoration: BoxDecoration(
-
               color: Colors.transparent,
 
               borderRadius: BorderRadius.circular(12),
-
             ),
 
             child: Row(
-
               children: [
-
                 Icon(
-
                   Icons.chat_bubble_outline,
 
                   size: 16,
 
                   color: palette.commentAccentColor,
-
                 ),
 
                 const SizedBox(width: 8),
 
                 Text(
-
                   '$computedCount comments',
 
                   style: TextStyle(
-
                     fontSize: 14,
 
                     fontWeight: FontWeight.w600,
@@ -2600,41 +2136,29 @@ class _PostFooter extends StatelessWidget {
                     color: palette.commentAccentColor,
 
                     fontFamily: 'Inter',
-
                   ),
-
                 ),
 
                 const SizedBox(width: 6),
 
                 Icon(
-
                   commentsExpanded
-
                       ? Icons.keyboard_arrow_up
-
                       : Icons.keyboard_arrow_down,
 
                   size: 18,
 
                   color: palette.commentAccentColor,
-
                 ),
-
               ],
-
             ),
-
           ),
-
         ),
 
         const Spacer(),
 
         if (showMoreButton)
-
           InkWell(
-
             key: moreButtonKey,
 
             borderRadius: BorderRadius.circular(20),
@@ -2642,27 +2166,28 @@ class _PostFooter extends StatelessWidget {
             onTap: onMoreTap,
 
             child: Padding(
-
               padding: const EdgeInsets.all(4),
 
-              child: Icon(Icons.more_horiz, size: 18, color: palette.metaColor),
-
+              child: isYourPosts
+                  ? SvgPicture.asset(
+                      _menuDeleteIconUrl,
+                      width: 18,
+                      height: 18,
+                      colorFilter: const ColorFilter.mode(
+                        Color(0xFF0A0A0A),
+                        BlendMode.srcIn,
+                      ),
+                    )
+                  : Icon(Icons.more_horiz, size: 18, color: palette.metaColor),
             ),
-
           ),
-
       ],
-
     );
-
   }
-
 }
 
 Future<void> _showReportPostSheet(BuildContext context) async {
-
   final result = await showModalBottomSheet<ReportResult?>(
-
     context: context,
 
     isScrollControlled: true,
@@ -2670,53 +2195,38 @@ Future<void> _showReportPostSheet(BuildContext context) async {
     backgroundColor: Colors.transparent,
 
     builder: (_) => const ReportPostSheet(),
-
   );
 
   if (result != null && context.mounted) {
-
     await showDialog<void>(
-
       context: context,
 
       barrierDismissible: false,
 
       builder: (_) => const ReportSuccessDialog(),
-
     );
-
   }
-
 }
 
 Future<void> _showDeleteDialog(BuildContext context, String title) async {
-
   final result = await showDialog<DeletePostResult>(
-
     context: context,
 
     barrierDismissible: false,
 
     builder: (_) => DeletePostDialog(postTitle: title),
-
   );
 
   if (result?.confirmed == true && context.mounted) {
-
     // TODO: Hook into actual delete logic when available.
 
     ScaffoldMessenger.of(context).showSnackBar(
-
       const SnackBar(content: Text('Post deleted (placeholder).')),
-
     );
-
   }
-
 }
 
 class _Avatar extends StatelessWidget {
-
   const _Avatar({this.asset, required this.borderColor});
 
   final String? asset;
@@ -2724,91 +2234,64 @@ class _Avatar extends StatelessWidget {
   final Color borderColor;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Container(
-
       width: 47,
 
       height: 47,
 
       decoration: BoxDecoration(
-
         shape: BoxShape.circle,
 
         color: Colors.white,
 
         border: Border.all(color: borderColor, width: 3),
-
       ),
 
       clipBehavior: Clip.antiAlias,
 
       child: asset != null
-
           ? _Avatar._buildImage(asset!)
-
           : _Avatar._buildDefaultImage(),
-
     );
-
   }
 
   static Widget _buildImage(String path) {
-
     if (path.toLowerCase().endsWith('.svg')) {
-
       return SvgPicture.asset(
-
         path,
 
         fit: BoxFit.cover,
 
         placeholderBuilder: (_) =>
-
             Image.asset('assets/feedPage/profile.png', fit: BoxFit.cover),
-
       );
-
     }
 
     return Image.asset(
-
       path,
 
       fit: BoxFit.cover,
 
       errorBuilder: (_, __, ___) =>
-
           SvgPicture.asset('assets/feedPage/profile.svg', fit: BoxFit.cover),
-
     );
-
   }
 
   static Widget _buildDefaultImage() {
-
     return Image.asset(
-
       'assets/feedPage/profile.png',
 
       fit: BoxFit.cover,
 
       errorBuilder: (_, __, ___) =>
-
           SvgPicture.asset('assets/feedPage/profile.svg', fit: BoxFit.cover),
-
     );
-
   }
-
 }
 
 class _Badge extends StatelessWidget {
-
   const _Badge({
-
     required this.icon,
 
     required this.label,
@@ -2818,7 +2301,6 @@ class _Badge extends StatelessWidget {
     required this.foreground,
 
     required this.borderColor,
-
   });
 
   final String icon;
@@ -2832,33 +2314,25 @@ class _Badge extends StatelessWidget {
   final Color borderColor;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Container(
-
       height: 22,
 
       padding: const EdgeInsets.symmetric(horizontal: 12),
 
       decoration: BoxDecoration(
-
         color: background,
 
         borderRadius: BorderRadius.circular(80),
 
         border: Border.all(color: borderColor, width: 1),
-
       ),
 
       child: Row(
-
         mainAxisSize: MainAxisSize.min,
 
         children: [
-
           SvgPicture.asset(
-
             icon,
 
             width: 14,
@@ -2866,17 +2340,14 @@ class _Badge extends StatelessWidget {
             height: 14,
 
             colorFilter: ColorFilter.mode(foreground, BlendMode.srcIn),
-
           ),
 
           const SizedBox(width: 6),
 
           Text(
-
             label,
 
             style: TextStyle(
-
               fontSize: 12,
 
               fontWeight: FontWeight.w600,
@@ -2884,91 +2355,65 @@ class _Badge extends StatelessWidget {
               color: foreground,
 
               fontFamily: 'Inter',
-
             ),
-
           ),
-
         ],
-
       ),
-
     );
-
   }
-
 }
 
 class _AdminBadge extends StatelessWidget {
-
   const _AdminBadge();
 
   @override
-
   Widget build(BuildContext context) {
-
     return LayoutBuilder(
-
       builder: (context, constraints) {
-
         final double availableWidth = constraints.maxWidth;
 
         final bool hasFiniteWidth = availableWidth.isFinite;
 
         final double badgeWidth = hasFiniteWidth
-
             ? math.min(availableWidth, 70.43)
-
             : 70.43;
 
         return Container(
-
           width: badgeWidth,
 
           height: 19.98,
 
           decoration: BoxDecoration(
-
             borderRadius: BorderRadius.circular(80),
 
             gradient: const LinearGradient(
-
               colors: [Color(0xFF4F39F6), Color(0xFF9810FA)],
 
               begin: Alignment.centerLeft,
 
               end: Alignment.centerRight,
-
             ),
 
             boxShadow: const [
-
               BoxShadow(
-
                 color: Color(0x33000000),
 
                 blurRadius: 8,
 
                 offset: Offset(0, 4),
-
               ),
-
             ],
-
           ),
 
           padding: EdgeInsets.zero,
 
           child: Row(
-
             mainAxisAlignment: MainAxisAlignment.center,
 
             mainAxisSize: MainAxisSize.min,
 
             children: [
-
               SvgPicture.asset(
-
                 'assets/feedPage/adminIcon.svg',
 
                 width: 12,
@@ -2976,27 +2421,21 @@ class _AdminBadge extends StatelessWidget {
                 height: 12,
 
                 placeholderBuilder: (_) =>
-
                     const SizedBox(width: 12, height: 12),
 
                 colorFilter: const ColorFilter.mode(
-
                   Colors.white,
 
                   BlendMode.srcIn,
-
                 ),
-
               ),
 
               const SizedBox(width: 6),
 
               const Text(
-
                 'Admin',
 
                 style: TextStyle(
-
                   fontSize: 12,
 
                   fontWeight: FontWeight.w600,
@@ -3004,29 +2443,18 @@ class _AdminBadge extends StatelessWidget {
                   color: Colors.white,
 
                   fontFamily: 'Inter',
-
                 ),
-
               ),
-
             ],
-
           ),
-
         );
-
       },
-
     );
-
   }
-
 }
 
 class _VotePanel extends StatelessWidget {
-
   const _VotePanel({
-
     required this.data,
 
     required this.palette,
@@ -3040,7 +2468,6 @@ class _VotePanel extends StatelessWidget {
     required this.onUpvote,
 
     required this.onDownvote,
-
   });
 
   final PostCardData data;
@@ -3058,7 +2485,6 @@ class _VotePanel extends StatelessWidget {
   final VoidCallback onDownvote;
 
   @override
-
   Widget build(BuildContext context) {
     // Default to transparent, show background only when voted
     // For normal posts, use rgba(15, 23, 43, 1) when voted
@@ -3093,37 +2519,29 @@ class _VotePanel extends StatelessWidget {
     final Color downIconColor = isDownvoted ? Colors.white : defaultIconColor;
 
     return Container(
-
       width: 65,
 
       decoration: BoxDecoration(
-
         gradient: LinearGradient(
-
           colors: palette.votePanelGradient,
 
           begin: Alignment.topCenter,
 
           end: Alignment.bottomCenter,
-
         ),
 
         borderRadius: BorderRadius.circular(16),
 
         border: Border.all(color: palette.votePanelBorderColor, width: 1.2),
-
       ),
 
       padding: const EdgeInsets.symmetric(vertical: 12),
 
       child: Column(
-
         mainAxisSize: MainAxisSize.min,
 
         children: [
-
           _VoteButton(
-
             icon: 'assets/images/upArrow.svg',
 
             background: upBackground,
@@ -3139,17 +2557,14 @@ class _VotePanel extends StatelessWidget {
             iconSize: 16,
 
             onPressed: onUpvote,
-
           ),
 
           const SizedBox(height: 10),
 
           Text(
-
             '$votes',
 
             style: TextStyle(
-
               fontSize: 16,
 
               fontWeight: FontWeight.w700,
@@ -3157,15 +2572,12 @@ class _VotePanel extends StatelessWidget {
               color: palette.accentColor,
 
               fontFamily: 'Inter',
-
             ),
-
           ),
 
           const SizedBox(height: 10),
 
           _VoteButton(
-
             icon: 'assets/images/downArrow.svg',
 
             background: downBackground,
@@ -3181,23 +2593,15 @@ class _VotePanel extends StatelessWidget {
             iconSize: 16,
 
             onPressed: onDownvote,
-
           ),
-
         ],
-
       ),
-
     );
-
   }
-
 }
 
 class _VoteButton extends StatelessWidget {
-
   const _VoteButton({
-
     required this.icon,
 
     required this.background,
@@ -3211,7 +2615,6 @@ class _VoteButton extends StatelessWidget {
     this.iconSize = 14,
 
     this.onPressed,
-
   });
 
   final String icon;
@@ -3229,31 +2632,24 @@ class _VoteButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
-
   Widget build(BuildContext context) {
-
     final borderWidth = borderColor.opacity == 0 ? 0.0 : 1.0;
 
     final child = Container(
-
       width: size,
 
       height: size,
 
       decoration: BoxDecoration(
-
         color: background,
 
         borderRadius: BorderRadius.circular(12),
 
         border: Border.all(color: borderColor, width: borderWidth),
-
       ),
 
       child: Center(
-
         child: SvgPicture.asset(
-
           icon,
 
           width: iconSize,
@@ -3261,41 +2657,29 @@ class _VoteButton extends StatelessWidget {
           height: iconSize,
 
           colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-
         ),
-
       ),
-
     );
 
     if (onPressed == null) {
-
       return child;
-
     }
 
     return Material(
-
       color: Colors.transparent,
 
       child: InkWell(
-
         onTap: onPressed,
 
         borderRadius: BorderRadius.circular(12),
 
         child: child,
-
       ),
-
     );
-
   }
-
 }
 
 class _PostActionsPopover extends StatelessWidget {
-
   const _PostActionsPopover({required this.onReport, required this.onDelete});
 
   final VoidCallback onReport;
@@ -3303,19 +2687,14 @@ class _PostActionsPopover extends StatelessWidget {
   final VoidCallback onDelete;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Material(
-
       color: Colors.transparent,
 
       child: Container(
-
         width: 188,
 
         decoration: BoxDecoration(
-
           color: Colors.white,
 
           borderRadius: BorderRadius.circular(16),
@@ -3323,33 +2702,25 @@ class _PostActionsPopover extends StatelessWidget {
           border: Border.all(color: _menuBorderColor, width: 0.756),
 
           boxShadow: const [
-
             BoxShadow(
-
               color: Color(0x14000000),
 
               blurRadius: 12,
 
               offset: Offset(0, 6),
-
             ),
-
           ],
-
         ),
 
         padding: const EdgeInsets.symmetric(vertical: 8),
 
         child: Column(
-
           mainAxisSize: MainAxisSize.min,
 
           crossAxisAlignment: CrossAxisAlignment.start,
 
           children: [
-
             _PopoverMenuItem(
-
               label: 'Report Post',
 
               color: _menuReportColor,
@@ -3357,21 +2728,17 @@ class _PostActionsPopover extends StatelessWidget {
               iconUrl: _menuReportIconUrl,
 
               onTap: onReport,
-
             ),
 
             Container(
-
               height: 1,
 
               margin: const EdgeInsets.symmetric(horizontal: 12),
 
               color: _menuDividerColor,
-
             ),
 
             _PopoverMenuItem(
-
               label: 'Delete Post',
 
               color: _menuDeleteColor,
@@ -3379,25 +2746,16 @@ class _PostActionsPopover extends StatelessWidget {
               iconUrl: _menuDeleteIconUrl,
 
               onTap: onDelete,
-
             ),
-
           ],
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 class _PopoverMenuItem extends StatelessWidget {
-
   const _PopoverMenuItem({
-
     required this.label,
 
     required this.color,
@@ -3405,7 +2763,6 @@ class _PopoverMenuItem extends StatelessWidget {
     required this.iconUrl,
 
     required this.onTap,
-
   });
 
   final String label;
@@ -3417,25 +2774,18 @@ class _PopoverMenuItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-
   Widget build(BuildContext context) {
-
     return InkWell(
-
       onTap: onTap,
 
       borderRadius: BorderRadius.circular(12),
 
       child: Padding(
-
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
 
         child: Row(
-
           children: [
-
             SvgPicture.asset(
-
               iconUrl,
 
               width: 16,
@@ -3443,17 +2793,14 @@ class _PopoverMenuItem extends StatelessWidget {
               height: 16,
 
               colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-
             ),
 
             const SizedBox(width: 10),
 
             Text(
-
               label,
 
               style: TextStyle(
-
                 fontSize: 14,
 
                 fontWeight: FontWeight.w500,
@@ -3463,55 +2810,36 @@ class _PopoverMenuItem extends StatelessWidget {
                 fontFamily: 'Inter',
 
                 letterSpacing: -0.1504,
-
               ),
-
             ),
-
           ],
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 class _PostCommentsDivider extends StatelessWidget {
-
   const _PostCommentsDivider();
 
   @override
-
   Widget build(BuildContext context) {
-
     return Padding(
-
       padding: const EdgeInsets.only(top: 16),
 
       child: Container(
-
         width: double.infinity,
 
         height: 1,
 
         color: const Color(0xFFBEDBFF),
-
       ),
-
     );
-
   }
-
 }
 
 class _CommentsSection extends StatelessWidget {
-
   const _CommentsSection({
-
     required this.palette,
 
     required this.data,
@@ -3531,7 +2859,6 @@ class _CommentsSection extends StatelessWidget {
     required this.onReportComment,
 
     required this.onDeleteComment,
-
   });
 
   final _PostCardPalette palette;
@@ -3555,33 +2882,24 @@ class _CommentsSection extends StatelessWidget {
   final ValueChanged<CommentData> onDeleteComment;
 
   @override
-
   Widget build(BuildContext context) {
-
     final comments = data.comments ?? const [];
 
     return DecoratedBox(
-
       decoration: const BoxDecoration(
-
         color: _commentsSectionBackground,
 
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-
       ),
 
       child: Padding(
-
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
 
         child: Column(
-
           crossAxisAlignment: CrossAxisAlignment.start,
 
           children: [
-
             _CommentInputField(
-
               palette: palette,
 
               controller: controller,
@@ -3589,17 +2907,13 @@ class _CommentsSection extends StatelessWidget {
               buttonLabel: 'Post',
 
               onSubmit: onSubmitComment,
-
             ),
 
             if (comments.isNotEmpty) ...[
-
               const SizedBox(height: 16),
 
               for (int i = 0; i < comments.length; i++) ...[
-
                 _CommentCard(
-
                   palette: palette,
 
                   comment: comments[i],
@@ -3609,21 +2923,15 @@ class _CommentsSection extends StatelessWidget {
                   onDelete: () => onDeleteComment(comments[i]),
 
                   onReply: () => onReplyToComment(i),
-
                 ),
 
                 if (replyController != null &&
-
                     onSubmitReply != null &&
-
                     activeReplyIndex == i)
-
                   Padding(
-
                     padding: const EdgeInsets.only(left: 28, top: 8),
 
                     child: _CommentInputField(
-
                       palette: palette,
 
                       controller: replyController!,
@@ -3633,23 +2941,17 @@ class _CommentsSection extends StatelessWidget {
                       onSubmit: (value) => onSubmitReply!(i, value),
 
                       autoClear: false,
-
                     ),
-
                   ),
 
                 if (comments[i].replies.isNotEmpty) ...[
-
                   const SizedBox(height: 8),
 
                   for (int j = 0; j < comments[i].replies.length; j++) ...[
-
                     Padding(
-
                       padding: const EdgeInsets.only(left: 28),
 
                       child: _CommentCard(
-
                         palette: palette,
 
                         comment: comments[i].replies[j],
@@ -3659,41 +2961,26 @@ class _CommentsSection extends StatelessWidget {
                         onDelete: () => onDeleteComment(comments[i].replies[j]),
 
                         isReply: true,
-
                       ),
-
                     ),
 
                     if (j != comments[i].replies.length - 1)
-
                       const SizedBox(height: 8),
-
                   ],
-
                 ],
 
                 if (i != comments.length - 1) const SizedBox(height: 12),
-
               ],
-
             ],
-
           ],
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 class _CommentInputField extends StatelessWidget {
-
   const _CommentInputField({
-
     required this.palette,
 
     required this.controller,
@@ -3703,10 +2990,9 @@ class _CommentInputField extends StatelessWidget {
     this.buttonLabel = 'Reply',
 
     this.autoClear = true,
-
   });
 
-  static const int _maxCommentLength = 150;
+  static const int _maxCommentLength = 280;
 
   static const Color _hintColor = Color(0xFF90A1B9);
 
@@ -3729,29 +3015,22 @@ class _CommentInputField extends StatelessWidget {
   final bool autoClear;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Container(
-
       decoration: BoxDecoration(
-
         color: Colors.white,
 
         borderRadius: BorderRadius.circular(14),
 
         border: Border.all(color: const Color(0xFFE2E8F0), width: 0.756),
-
       ),
 
       padding: const EdgeInsets.all(12),
 
       child: ValueListenableBuilder<TextEditingValue>(
-
         valueListenable: controller,
 
         builder: (context, value, _) {
-
           final String text = value.text;
 
           final int characterCount = text.length;
@@ -3765,7 +3044,6 @@ class _CommentInputField extends StatelessWidget {
           final Color iconColor = isEnabled ? Colors.white : Colors.white70;
 
           final TextStyle inputStyle = TextStyle(
-
             fontSize: 14,
 
             fontWeight: FontWeight.w400,
@@ -3777,11 +3055,9 @@ class _CommentInputField extends StatelessWidget {
             fontFamily: 'Inter',
 
             letterSpacing: -0.1504,
-
           );
 
           final TextStyle counterStyle = TextStyle(
-
             fontSize: 12,
 
             fontWeight: FontWeight.w500,
@@ -3789,43 +3065,32 @@ class _CommentInputField extends StatelessWidget {
             color: isOverLimit ? _errorColor : _limitColor,
 
             fontFamily: 'Inter',
-
           );
 
           return Column(
-
             crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
-
               Container(
-
                 decoration: BoxDecoration(
-
                   color: Colors.white,
 
                   borderRadius: BorderRadius.circular(10),
 
                   border: Border.all(
-
                     color: const Color(0xFFE2E8F0),
 
                     width: 0.756,
-
                   ),
-
                 ),
 
                 padding: const EdgeInsets.symmetric(
-
                   horizontal: 12,
 
                   vertical: 8,
-
                 ),
 
                 child: TextField(
-
                   controller: controller,
 
                   maxLines: 3,
@@ -3833,13 +3098,11 @@ class _CommentInputField extends StatelessWidget {
                   minLines: 3,
 
                   decoration: const InputDecoration(
-
                     border: InputBorder.none,
 
                     hintText: 'Share your thoughts...',
 
                     hintStyle: TextStyle(
-
                       fontSize: 14,
 
                       fontWeight: FontWeight.w400,
@@ -3849,75 +3112,54 @@ class _CommentInputField extends StatelessWidget {
                       letterSpacing: -0.1504,
 
                       fontFamily: 'Inter',
-
                     ),
-
                   ),
 
                   style: inputStyle,
-
                 ),
-
               ),
 
               const SizedBox(height: 8),
 
               Align(
-
                 alignment: Alignment.centerRight,
 
                 child: Text(
-
                   '$characterCount/$_maxCommentLength characters',
 
                   style: counterStyle,
-
                 ),
-
               ),
 
               const SizedBox(height: 12),
 
               Row(
-
                 mainAxisAlignment: MainAxisAlignment.end,
 
                 children: [
-
                   SizedBox(
-
                     width: 90,
 
                     child: ElevatedButton(
-
                       onPressed: isEnabled
-
                           ? () {
-
                               final value = controller.text.trim();
 
                               if (value.isEmpty) return;
 
                               if (autoClear) {
-
                                 controller.clear();
-
                               }
 
                               onSubmit?.call(value);
 
                               if (autoClear) {
-
                                 FocusScope.of(context).unfocus();
-
                               }
-
                             }
-
                           : null,
 
                       style: ElevatedButton.styleFrom(
-
                         elevation: 0,
 
                         backgroundColor: _primaryBlue,
@@ -3927,25 +3169,19 @@ class _CommentInputField extends StatelessWidget {
                         disabledBackgroundColor: _primaryBlue.withOpacity(0.3),
 
                         shape: RoundedRectangleBorder(
-
                           borderRadius: BorderRadius.circular(10),
-
                         ),
 
                         padding: const EdgeInsets.symmetric(vertical: 12),
-
                       ),
 
                       child: Row(
-
                         mainAxisAlignment: MainAxisAlignment.center,
 
                         mainAxisSize: MainAxisSize.min,
 
                         children: [
-
                           SvgPicture.asset(
-
                             _replyIconUrl,
 
                             width: 16,
@@ -3953,23 +3189,18 @@ class _CommentInputField extends StatelessWidget {
                             height: 16,
 
                             colorFilter: ColorFilter.mode(
-
                               iconColor,
 
                               BlendMode.srcIn,
-
                             ),
-
                           ),
 
                           const SizedBox(width: 8),
 
                           Text(
-
                             buttonLabel,
 
                             style: TextStyle(
-
                               fontSize: 14,
 
                               fontWeight: FontWeight.w500,
@@ -3979,41 +3210,24 @@ class _CommentInputField extends StatelessWidget {
                               fontFamily: 'Inter',
 
                               letterSpacing: -0.1504,
-
                             ),
-
                           ),
-
                         ],
-
                       ),
-
                     ),
-
                   ),
-
                 ],
-
               ),
-
             ],
-
           );
-
         },
-
       ),
-
     );
-
   }
-
 }
 
 class _CommentCard extends StatefulWidget {
-
   const _CommentCard({
-
     required this.palette,
 
     required this.comment,
@@ -4025,7 +3239,6 @@ class _CommentCard extends StatefulWidget {
     this.onReply,
 
     this.isReply = false,
-
   });
 
   final _PostCardPalette palette;
@@ -4041,13 +3254,10 @@ class _CommentCard extends StatefulWidget {
   final bool isReply;
 
   @override
-
   State<_CommentCard> createState() => _CommentCardState();
-
 }
 
 class _CommentCardState extends State<_CommentCard> {
-
   OverlayEntry? _overlayEntry;
 
   final GlobalKey _menuKey = GlobalKey();
@@ -4059,31 +3269,22 @@ class _CommentCardState extends State<_CommentCard> {
   final PostService _postService = PostService();
 
   @override
-
   void initState() {
-
     super.initState();
 
     _currentVotes = _initialVotes;
-
   }
 
   @override
-
   void didUpdateWidget(covariant _CommentCard oldWidget) {
-
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.comment.upvotes != widget.comment.upvotes ||
-
         oldWidget.comment.downvotes != widget.comment.downvotes) {
-
       _currentVotes = _initialVotes;
 
       _userVote = 0;
-
     }
-
   }
 
   int get _initialVotes => widget.comment.upvotes - widget.comment.downvotes;
@@ -4093,193 +3294,155 @@ class _CommentCardState extends State<_CommentCard> {
   String get _currentVotesLabel => _currentVotesValue.toString();
 
   Future<void> _handleUpvote() async {
-
     final previousVote = _userVote;
 
     final previousVotes = _currentVotes;
 
     setState(() {
-
       int updated = _currentVotesValue;
 
       if (_userVote == 1) {
-
         // Already upvoted, unvote (remove the upvote)
 
         updated -= 1;
 
         _userVote = 0;
-
       } else if (_userVote == -1) {
-
         // Currently downvoted, switch to upvote (remove downvote, add upvote = +2)
 
         updated += 2;
 
         _userVote = 1;
-
       } else {
-
         // Neutral, add upvote
 
         updated += 1;
 
         _userVote = 1;
-
       }
 
       _currentVotes = updated;
-
     });
 
     try {
-
       final voteType = previousVote == 1 ? 'remove' : 'upvote';
 
-      await _postService.voteComment(commentId: widget.comment.id, voteType: voteType);
-
+      await _postService.voteComment(
+        commentId: widget.comment.id,
+        voteType: voteType,
+      );
     } catch (e) {
-
       // Revert on error
 
       if (mounted) {
-
         setState(() {
-
           _currentVotes = previousVotes;
 
           _userVote = previousVote;
-
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-
-          SnackBar(content: Text('Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}')),
-
+          SnackBar(
+            content: Text(
+              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
         );
-
       }
-
     }
-
   }
 
   Future<void> _handleDownvote() async {
-
     final previousVote = _userVote;
 
     final previousVotes = _currentVotes;
 
     setState(() {
-
       int updated = _currentVotesValue;
 
       if (_userVote == -1) {
-
         // Already downvoted, unvote (remove the downvote)
 
         updated += 1;
 
         _userVote = 0;
-
       } else if (_userVote == 1) {
-
         // Currently upvoted, switch to downvote (remove upvote, add downvote = -2)
 
         updated -= 2;
 
         _userVote = -1;
-
       } else {
-
         // Neutral, add downvote (count can go negative)
 
         updated -= 1;
 
         _userVote = -1;
-
       }
 
       _currentVotes = updated;
-
     });
 
     try {
-
       final voteType = previousVote == -1 ? 'remove' : 'downvote';
 
-      await _postService.voteComment(commentId: widget.comment.id, voteType: voteType);
-
+      await _postService.voteComment(
+        commentId: widget.comment.id,
+        voteType: voteType,
+      );
     } catch (e) {
-
       // Revert on error
 
       if (mounted) {
-
         setState(() {
-
           _currentVotes = previousVotes;
 
           _userVote = previousVote;
-
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-
-          SnackBar(content: Text('Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}')),
-
+          SnackBar(
+            content: Text(
+              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
+          ),
         );
-
       }
-
     }
-
   }
 
   @override
-
   void dispose() {
-
     _removeOverlay();
 
     super.dispose();
-
   }
 
   void _removeOverlay() {
-
     _overlayEntry?.remove();
 
     _overlayEntry = null;
-
   }
 
   void _toggleMenu() {
-
     if (!mounted) return;
 
     if (_overlayEntry != null) {
-
       _removeOverlay();
 
       return;
-
     }
 
     final context = _menuKey.currentContext;
 
     if (context == null || !context.mounted) {
-
       return;
-
     }
 
     final renderBox = context.findRenderObject() as RenderBox?;
 
     if (renderBox == null || !renderBox.attached) {
-
       return;
-
     }
 
     final size = renderBox.size;
@@ -4287,73 +3450,48 @@ class _CommentCardState extends State<_CommentCard> {
     final offset = renderBox.localToGlobal(Offset.zero);
 
     _overlayEntry = OverlayEntry(
-
       builder: (overlayContext) => Positioned.fill(
-
         child: GestureDetector(
-
           behavior: HitTestBehavior.translucent,
 
           onTap: _removeOverlay,
 
           child: Stack(
-
             children: [
-
               Positioned(
-
                 bottom:
-
                     MediaQuery.of(overlayContext).size.height - offset.dy + 8,
 
                 right:
-
                     MediaQuery.of(overlayContext).size.width -
-
                     (offset.dx + size.width) +
-
                     8,
 
                 child: _CommentActionsPopover(
-
                   onReport: () {
-
                     _removeOverlay();
 
                     widget.onReport();
-
                   },
 
                   onDelete: () {
-
                     _removeOverlay();
 
                     widget.onDelete();
-
                   },
-
                 ),
-
               ),
-
             ],
-
           ),
-
         ),
-
       ),
-
     );
 
     Overlay.of(context, rootOverlay: true).insert(_overlayEntry!);
-
   }
 
   @override
-
   Widget build(BuildContext context) {
-
     final comment = widget.comment;
 
     final palette = widget.palette;
@@ -4365,79 +3503,55 @@ class _CommentCardState extends State<_CommentCard> {
     final bool isReply = widget.isReply;
 
     return Container(
-
       decoration: BoxDecoration(
-
         color: Colors.white,
 
         borderRadius: BorderRadius.circular(isReply ? 12 : 14),
 
         border: Border.all(
-
           color: isReply
-
               ? _commentCardBorder.withOpacity(0.7)
-
               : _commentCardBorder,
 
           width: 0.756,
-
         ),
-
       ),
 
       padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
 
       child: Column(
-
         crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
-
           Row(
-
             crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
-
               _CommentAvatar(
-
                 asset: comment.avatarAsset,
 
                 initials: comment.initials,
-
               ),
 
               const SizedBox(width: 12),
 
               Expanded(
-
                 child: Column(
-
                   crossAxisAlignment: CrossAxisAlignment.start,
 
                   children: [
-
                     Row(
-
                       crossAxisAlignment: CrossAxisAlignment.start,
 
                       children: [
-
                         Expanded(
-
                           child: Row(
-
                             children: [
-
                               Flexible(
-
                                 child: Text(
-
                                   comment.author,
 
                                   style: const TextStyle(
-
                                     fontSize: 14,
 
                                     fontWeight: FontWeight.w600,
@@ -4447,59 +3561,44 @@ class _CommentCardState extends State<_CommentCard> {
                                     fontFamily: 'Inter',
 
                                     letterSpacing: -0.1504,
-
                                   ),
 
                                   overflow: TextOverflow.ellipsis,
-
                                 ),
-
                               ),
 
                               const SizedBox(width: 6),
 
                               const Text(
-
                                 '•',
 
                                 style: TextStyle(
-
                                   fontSize: 12,
 
                                   color: _commentMetaDotColor,
 
                                   fontFamily: 'Inter',
-
                                 ),
-
                               ),
 
                               const SizedBox(width: 6),
 
                               Text(
-
                                 comment.timeAgo,
 
                                 style: const TextStyle(
-
                                   fontSize: 12,
 
                                   color: _commentMetaTextColor,
 
                                   fontFamily: 'Inter',
-
                                 ),
-
                               ),
-
                             ],
-
                           ),
-
                         ),
 
                         InkWell(
-
                           key: _menuKey,
 
                           borderRadius: BorderRadius.circular(16),
@@ -4507,11 +3606,9 @@ class _CommentCardState extends State<_CommentCard> {
                           onTap: _toggleMenu,
 
                           child: Padding(
-
                             padding: const EdgeInsets.all(4),
 
                             child: SvgPicture.asset(
-
                               'assets/settings/deletePost.svg',
 
                               width: 16,
@@ -4519,31 +3616,22 @@ class _CommentCardState extends State<_CommentCard> {
                               height: 16,
 
                               colorFilter: const ColorFilter.mode(
-
                                 _commentMetaTextColor,
 
                                 BlendMode.srcIn,
-
                               ),
-
                             ),
-
                           ),
-
                         ),
-
                       ],
-
                     ),
 
                     const SizedBox(height: 8),
 
                     Text(
-
                       comment.body,
 
                       style: const TextStyle(
-
                         fontSize: 14,
 
                         fontWeight: FontWeight.w400,
@@ -4555,21 +3643,16 @@ class _CommentCardState extends State<_CommentCard> {
                         height: 1.6,
 
                         letterSpacing: -0.1504,
-
                       ),
-
                     ),
 
                     const SizedBox(height: 12),
 
                     Row(
-
                       mainAxisSize: MainAxisSize.min,
 
                       children: [
-
                         _CommentVoteButton(
-
                           iconAsset: 'assets/images/upArrow.svg',
 
                           isActive: hasUpvoted,
@@ -4577,17 +3660,14 @@ class _CommentCardState extends State<_CommentCard> {
                           onTap: _handleUpvote,
 
                           activeColor: palette.commentAccentColor,
-
                         ),
 
                         const SizedBox(width: 12),
 
                         Text(
-
                           _currentVotesLabel,
 
                           style: const TextStyle(
-
                             fontSize: 14,
 
                             fontWeight: FontWeight.w600,
@@ -4597,15 +3677,12 @@ class _CommentCardState extends State<_CommentCard> {
                             fontFamily: 'Inter',
 
                             letterSpacing: -0.1504,
-
                           ),
-
                         ),
 
                         const SizedBox(width: 12),
 
                         _CommentVoteButton(
-
                           iconAsset: 'assets/images/downArrow.svg',
 
                           isActive: hasDownvoted,
@@ -4613,23 +3690,17 @@ class _CommentCardState extends State<_CommentCard> {
                           onTap: _handleDownvote,
 
                           activeColor: palette.downvoteColor,
-
                         ),
-
                       ],
-
                     ),
 
                     if (!isReply && widget.onReply != null) ...[
-
                       const SizedBox(height: 10),
 
                       TextButton(
-
                         onPressed: widget.onReply,
 
                         style: TextButton.styleFrom(
-
                           padding: EdgeInsets.zero,
 
                           minimumSize: Size.zero,
@@ -4637,15 +3708,12 @@ class _CommentCardState extends State<_CommentCard> {
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
 
                           foregroundColor: _commentMetaTextColor,
-
                         ),
 
                         child: const Text(
-
                           'Reply',
 
                           style: TextStyle(
-
                             fontSize: 13,
 
                             fontWeight: FontWeight.w500,
@@ -4653,43 +3721,26 @@ class _CommentCardState extends State<_CommentCard> {
                             color: _commentMetaTextColor,
 
                             fontFamily: 'Inter',
-
                           ),
-
                         ),
-
                       ),
-
                     ],
-
                   ],
-
                 ),
-
               ),
-
             ],
-
           ),
-
         ],
-
       ),
-
     );
-
   }
-
 }
 
 class _CommentActionsPopover extends StatelessWidget {
-
   const _CommentActionsPopover({
-
     required this.onReport,
 
     required this.onDelete,
-
   });
 
   final VoidCallback onReport;
@@ -4697,19 +3748,14 @@ class _CommentActionsPopover extends StatelessWidget {
   final VoidCallback onDelete;
 
   @override
-
   Widget build(BuildContext context) {
-
     return Material(
-
       color: Colors.transparent,
 
       child: Container(
-
         width: 176,
 
         decoration: BoxDecoration(
-
           color: Colors.white,
 
           borderRadius: BorderRadius.circular(14),
@@ -4717,33 +3763,25 @@ class _CommentActionsPopover extends StatelessWidget {
           border: Border.all(color: _menuBorderColor, width: 0.756),
 
           boxShadow: const [
-
             BoxShadow(
-
               color: Color(0x14000000),
 
               blurRadius: 10,
 
               offset: Offset(0, 4),
-
             ),
-
           ],
-
         ),
 
         padding: const EdgeInsets.symmetric(vertical: 8),
 
         child: Column(
-
           mainAxisSize: MainAxisSize.min,
 
           crossAxisAlignment: CrossAxisAlignment.start,
 
           children: [
-
             _PopoverMenuItem(
-
               label: 'Report Comment',
 
               color: _menuReportColor,
@@ -4751,21 +3789,17 @@ class _CommentActionsPopover extends StatelessWidget {
               iconUrl: _menuReportIconUrl,
 
               onTap: onReport,
-
             ),
 
             Container(
-
               height: 1,
 
               margin: const EdgeInsets.symmetric(horizontal: 12),
 
               color: _menuDividerColor,
-
             ),
 
             _PopoverMenuItem(
-
               label: 'Delete Comment',
 
               color: _menuDeleteColor,
@@ -4773,23 +3807,15 @@ class _CommentActionsPopover extends StatelessWidget {
               iconUrl: _menuDeleteIconUrl,
 
               onTap: onDelete,
-
             ),
-
           ],
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 class _CommentAvatar extends StatelessWidget {
-
   const _CommentAvatar({this.asset, this.initials});
 
   final String? asset;
@@ -4797,21 +3823,14 @@ class _CommentAvatar extends StatelessWidget {
   final String? initials;
 
   @override
-
   Widget build(BuildContext context) {
-
     Widget buildImageWidget(String path) {
-
       if (path.toLowerCase().endsWith('.svg')) {
-
         return SvgPicture.asset(path, width: 32, height: 32, fit: BoxFit.cover);
-
       }
 
       return ClipOval(
-
         child: Image.asset(
-
           path,
 
           width: 32,
@@ -4821,7 +3840,6 @@ class _CommentAvatar extends StatelessWidget {
           fit: BoxFit.cover,
 
           errorBuilder: (_, __, ___) => SvgPicture.asset(
-
             'assets/feedPage/profile.svg',
 
             width: 32,
@@ -4829,97 +3847,73 @@ class _CommentAvatar extends StatelessWidget {
             height: 32,
 
             fit: BoxFit.cover,
-
           ),
-
         ),
-
       );
-
     }
 
     if (asset != null && asset!.isNotEmpty) {
-
       if (asset!.startsWith('http')) {
-
         return Container(
-
           width: 32,
 
           height: 32,
 
           decoration: BoxDecoration(
-
             shape: BoxShape.circle,
 
             color: _commentAvatarBackground,
 
             border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
-
           ),
 
           clipBehavior: Clip.antiAlias,
 
           child: CircleAvatar(
-
             radius: 16,
 
             backgroundImage: NetworkImage(asset!),
-
           ),
-
         );
-
       }
 
       return Container(
-
         width: 32,
 
         height: 32,
 
         decoration: BoxDecoration(
-
           shape: BoxShape.circle,
 
           color: _commentAvatarBackground,
 
           border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
-
         ),
 
         clipBehavior: Clip.antiAlias,
 
         child: ClipOval(child: buildImageWidget(asset!)),
-
       );
-
     }
 
     return Container(
-
       width: 32,
 
       height: 32,
 
       decoration: BoxDecoration(
-
         shape: BoxShape.circle,
 
         color: _commentAvatarBackground,
 
         border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
-
       ),
 
       child: Center(
-
         child: Text(
-
           initials ?? '',
 
           style: const TextStyle(
-
             fontSize: 12,
 
             fontWeight: FontWeight.w600,
@@ -4927,23 +3921,15 @@ class _CommentAvatar extends StatelessWidget {
             color: Color(0xFF314158),
 
             fontFamily: 'Inter',
-
           ),
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 class _PostCardPalette {
-
   const _PostCardPalette({
-
     required this.borderColor,
 
     required this.titleColor,
@@ -5003,7 +3989,6 @@ class _PostCardPalette {
     required this.commentsSectionBackground,
 
     required this.commentBubbleBorderColor,
-
   });
 
   final Color borderColor;
@@ -5067,13 +4052,9 @@ class _PostCardPalette {
   final Color commentBubbleBorderColor;
 
   static _PostCardPalette fromVariant(PostCardVariant variant) {
-
     switch (variant) {
-
       case PostCardVariant.top:
-
         return _PostCardPalette(
-
           borderColor: const Color(0x4DBEDBFF),
 
           titleColor: const Color(0xFF0F172A),
@@ -5111,13 +4092,11 @@ class _PostCardPalette {
           showHeader: true,
 
           headerGradient: const [
-
             Color(0xFFEFF6FF),
 
             Color(0xB8EEF2F8),
 
             Color(0x00ECE8E8),
-
           ],
 
           headerBorderColor: Colors.transparent,
@@ -5125,27 +4104,21 @@ class _PostCardPalette {
           headerPillColor: const Color(0xFF2B7FFF),
 
           headerPillShadows: const [
-
             BoxShadow(
-
               color: Color(0x332B7FFF),
 
               blurRadius: 4,
 
               offset: Offset(0, 2),
-
             ),
 
             BoxShadow(
-
               color: Color(0x332B7FFF),
 
               blurRadius: 6,
 
               offset: Offset(0, 3),
-
             ),
-
           ],
 
           headerLabel: '👑 Top Post',
@@ -5163,13 +4136,10 @@ class _PostCardPalette {
           commentsSectionBackground: const Color.fromRGBO(239, 246, 255, 0.35),
 
           commentBubbleBorderColor: const Color(0xFFBDD6FF),
-
         );
 
       case PostCardVariant.hot:
-
         return _PostCardPalette(
-
           borderColor: const Color(0xFFFFD0A6),
 
           titleColor: const Color(0xFF331B09),
@@ -5193,11 +4163,9 @@ class _PostCardPalette {
           avatarBorderColor: const Color(0xFFFF6900),
 
           votePanelGradient: const [
-
             Color.fromRGBO(255, 237, 212, 1),
 
             Color.fromRGBO(255, 247, 237, 1),
-
           ],
 
           votePanelBorderColor: const Color(0xFFFFB86A),
@@ -5213,11 +4181,9 @@ class _PostCardPalette {
           showHeader: true,
 
           headerGradient: const [
-
             Color.fromRGBO(255, 247, 237, 1),
 
             Color.fromRGBO(236, 232, 232, 0),
-
           ],
 
           headerBorderColor: Colors.transparent,
@@ -5225,27 +4191,21 @@ class _PostCardPalette {
           headerPillColor: const Color(0xFFFF6900),
 
           headerPillShadows: const [
-
             BoxShadow(
-
               color: Color(0x33FF6900),
 
               blurRadius: 4,
 
               offset: Offset(0, 2),
-
             ),
 
             BoxShadow(
-
               color: Color(0x33FF6900),
 
               blurRadius: 6,
 
               offset: Offset(0, 3),
-
             ),
-
           ],
 
           headerLabel: '🔥 Hottest Post',
@@ -5263,13 +4223,10 @@ class _PostCardPalette {
           commentsSectionBackground: const Color.fromRGBO(255, 247, 237, 0.4),
 
           commentBubbleBorderColor: const Color(0xFFFFB86A),
-
         );
 
       case PostCardVariant.newPost:
-
         return _PostCardPalette(
-
           borderColor: const Color(0xFFD1D6DE),
 
           titleColor: const Color(0xFF0F172A),
@@ -5293,11 +4250,9 @@ class _PostCardPalette {
           avatarBorderColor: const Color(0xFF45556C),
 
           votePanelGradient: const [
-
             Color.fromRGBO(248, 250, 252, 1),
 
             Color.fromRGBO(248, 250, 252, 1),
-
           ],
 
           votePanelBorderColor: const Color.fromRGBO(226, 232, 240, 1),
@@ -5335,19 +4290,13 @@ class _PostCardPalette {
           commentsSectionBackground: const Color.fromRGBO(248, 250, 252, 0.6),
 
           commentBubbleBorderColor: const Color(0xFFE2E8F0),
-
         );
-
     }
-
   }
-
 }
 
 class _CommentVoteButton extends StatelessWidget {
-
   const _CommentVoteButton({
-
     required this.iconAsset,
 
     required this.isActive,
@@ -5355,7 +4304,6 @@ class _CommentVoteButton extends StatelessWidget {
     required this.onTap,
 
     required this.activeColor,
-
   });
 
   final String iconAsset;
@@ -5367,39 +4315,30 @@ class _CommentVoteButton extends StatelessWidget {
   final Color activeColor;
 
   @override
-
   Widget build(BuildContext context) {
-
     final Color iconColor = isActive ? Colors.white : _commentReactionColor;
 
     return Material(
-
       color: Colors.transparent,
 
       child: InkWell(
-
         onTap: onTap,
 
         borderRadius: BorderRadius.circular(10),
 
         child: Container(
-
           width: 32,
 
           height: 32,
 
           decoration: BoxDecoration(
-
             color: isActive ? activeColor : Colors.transparent,
 
             borderRadius: BorderRadius.circular(10),
-
           ),
 
           child: Center(
-
             child: SvgPicture.asset(
-
               iconAsset,
 
               width: 14,
@@ -5407,17 +4346,10 @@ class _CommentVoteButton extends StatelessWidget {
               height: 14,
 
               colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-
             ),
-
           ),
-
         ),
-
       ),
-
     );
-
   }
-
 }

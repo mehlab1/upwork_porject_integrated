@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart' as svg;
+import 'package:image_picker/image_picker.dart';
 
 import 'your_posts_screen.dart';
 import 'community_guidelines_screen.dart';
@@ -956,12 +959,41 @@ class _UpdateProfilePhotoDialog extends StatefulWidget {
 }
 
 class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
-  bool _hasSelectedNewImage = false;
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
 
-  void _handleSelectImage() {
-    setState(() {
-      _hasSelectedNewImage = true;
-    });
+  Future<void> _handleSelectImage() async {
+    // Show bottom sheet with options
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ImageSourceBottomSheet(),
+    );
+
+    if (source == null || !mounted) return;
+
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (image != null && mounted) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: ${e.toString()}'),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1032,10 +1064,15 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                               Positioned.fill(
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(120),
-                                  child: Image.asset(
-                                    'assets/feedPage/profile.png',
-                                    fit: BoxFit.cover,
-                                  ),
+                                  child: _selectedImage != null
+                                      ? Image.file(
+                                          _selectedImage!,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Image.asset(
+                                          'assets/feedPage/profile.png',
+                                          fit: BoxFit.cover,
+                                        ),
                                 ),
                               ),
                               Positioned(
@@ -1147,7 +1184,7 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                   SizedBox(
                     height: 36,
                     child: ElevatedButton.icon(
-                      onPressed: _hasSelectedNewImage ? widget.onUpdate : null,
+                      onPressed: _selectedImage != null ? widget.onUpdate : null,
                       icon: const Icon(Icons.check_circle_outline, size: 18),
                       label: const Text(
                         'Update Picture',
@@ -1221,6 +1258,97 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                   size: 20,
                   color: Color(0xFF64748B),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageSourceBottomSheet extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          _ImageSourceOption(
+            icon: Icons.camera_alt_outlined,
+            label: 'Take Photo',
+            onTap: () => Navigator.pop(context, ImageSource.camera),
+          ),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          _ImageSourceOption(
+            icon: Icons.photo_library_outlined,
+            label: 'Choose from Gallery',
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF0F172B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageSourceOption extends StatelessWidget {
+  const _ImageSourceOption({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: const Color(0xFF0F172B),
+            ),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF0F172B),
               ),
             ),
           ],
