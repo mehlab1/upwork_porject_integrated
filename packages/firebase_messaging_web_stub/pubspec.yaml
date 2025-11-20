@@ -1,0 +1,12 @@
+name: firebase_messaging_web
+description: Stub package to replace firebase_messaging_web for web builds (avoids compilation errors)
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter_web_plugins:
+    sdk: flutter
+

@@ -1,0 +1,186 @@
+workflows:
+  ios_app_store:
+    name: iOS App Store (.ipa)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        # Detected from ios project
+        BUNDLE_ID: com.kobi.pal
+        # Optional: override build name/number from pubspec if needed
+        BUILD_NAME: 1.0.0
+        # Apple Developer Team ID
+        APPLE_DEVELOPER_TEAM_ID: BHBU67SZ4P
+        # App Store Connect API credentials
+        APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
+        APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
+        APP_STORE_CONNECT_PRIVATE_KEY: |
+          -----BEGIN PRIVATE KEY-----
+          MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgXz4V2zAScJ2jRWc8
+          h9ZQicjpxmUwDhQOdsQXoVssVaOgCgYIKoZIzj0DAQehRANCAAQ5j1CR7dC8oev0
+          RR7djgxADlFOEkypYRMid2nIb3oHuN1H5ZZcFgJE20MULJOKsdz7q4Tl5UPVm28p
+          IGbe1gFC
+          -----END PRIVATE KEY-----
+        CM_CERTIFICATE_PASSWORD: o9wP!2z@48A3rt
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $FLUTTER_ROOT/.pub-cache
+        - ios/Pods
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    scripts:
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Fetch iOS signing files from App Store Connect
+        script: |
+          # Export App Store Connect credentials explicitly
+          export APP_STORE_CONNECT_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID"
+          export APP_STORE_CONNECT_KEY_IDENTIFIER="$APP_STORE_CONNECT_KEY_IDENTIFIER"
+          export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
+          # Creates/updates signing assets for the bundle id and App Store distribution
+          # Note: CERTIFICATE_PRIVATE_KEY is only used by keychain commands, not fetch-signing-files
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Install signing certificates
+        script: |
+          # Set CERTIFICATE_PRIVATE_KEY for keychain commands
+          export CERTIFICATE_PRIVATE_KEY="$CM_CERTIFICATE_PASSWORD"
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Flutter clean and get
+        script: |
+          flutter --version
+          flutter clean
+          flutter pub get
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod repo update
+          pod install
+      - name: Build iOS .ipa (release)
+        script: |
+          # Extract version and build number from pubspec.yaml
+          # Format: version: 1.0.0+4 (version is 1.0.0, build number is 4)
+          VERSION_LINE=$(grep "^version:" pubspec.yaml | head -1)
+          BUILD_NAME=$(echo "$VERSION_LINE" | sed -E 's/version: ([0-9]+\.[0-9]+\.[0-9]+)\+[0-9]+/\1/')
+          BUILD_NUMBER=$(echo "$VERSION_LINE" | sed -E 's/version: [0-9]+\.[0-9]+\.[0-9]+\+([0-9]+)/\1/')
+          echo "Building with version: $BUILD_NAME, build number: $BUILD_NUMBER"
+          flutter build ipa --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/ipa/*.dSYM.zip
+      - build/ios/ipa/*.log
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        # Optionally auto-assign to groups
+        # beta_groups:
+        #   - Internal Testers
+      email:
+        recipients:
+          # TODO: Replace 'your-email@example.com' with your actual email address
+          # You can add multiple recipients by adding more lines:
+          # - email1@example.com
+          # - email2@example.com
+          # Or use an environment variable: set EMAIL_RECIPIENT in Codemagic UI and use $EMAIL_RECIPIENT here
+          - m.mehlab17@gmail.com
+        notify:
+          success: true
+          failure: true
+
+
+  ios_ipa_only:
+    name: iOS .ipa only (no upload)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: com.kobi.pal
+        BUILD_NAME: 1.0.0
+        # Apple Developer Team ID
+        APPLE_DEVELOPER_TEAM_ID: BHBU67SZ4P
+        # App Store Connect API credentials
+        APP_STORE_CONNECT_ISSUER_ID: c4fb74e3-47c2-4631-b9f7-479a287c8dd4
+        APP_STORE_CONNECT_KEY_IDENTIFIER: YH4466XJ3J
+        APP_STORE_CONNECT_PRIVATE_KEY: |
+          -----BEGIN PRIVATE KEY-----
+          MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgXz4V2zAScJ2jRWc8
+          h9ZQicjpxmUwDhQOdsQXoVssVaOgCgYIKoZIzj0DAQehRANCAAQ5j1CR7dC8oev0
+          RR7djgxADlFOEkypYRMid2nIb3oHuN1H5ZZcFgJE20MULJOKsdz7q4Tl5UPVm28p
+          IGbe1gFC
+          -----END PRIVATE KEY-----
+        CM_CERTIFICATE_PASSWORD: o9wP!2z@48A3rt
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $FLUTTER_ROOT/.pub-cache
+        - ios/Pods
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+    scripts:
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Fetch iOS signing files from App Store Connect
+        script: |
+          # Export App Store Connect credentials explicitly
+          export APP_STORE_CONNECT_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID"
+          export APP_STORE_CONNECT_KEY_IDENTIFIER="$APP_STORE_CONNECT_KEY_IDENTIFIER"
+          export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
+          # Creates/updates signing assets for the bundle id and App Store distribution
+          # Note: CERTIFICATE_PRIVATE_KEY is only used by keychain commands, not fetch-signing-files
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Install signing certificates
+        script: |
+          # Set CERTIFICATE_PRIVATE_KEY for keychain commands
+          export CERTIFICATE_PRIVATE_KEY="$CM_CERTIFICATE_PASSWORD"
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Flutter clean and get
+        script: |
+          flutter --version
+          flutter clean
+          flutter pub get
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod repo update
+          pod install
+      - name: Build iOS .ipa (release)
+        script: |
+          flutter build ipa --release \
+            --build-name="${BUILD_NAME:-}" \
+            --build-number="$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/ipa/*.dSYM.zip
+      - build/ios/ipa/*.log
+    publishing:
+      email:
+        recipients:
+          # TODO: Replace 'your-email@example.com' with your actual email address
+          # You can add multiple recipients by adding more lines:
+          # - email1@example.com
+          # - email2@example.com
+          # Or use an environment variable: set EMAIL_RECIPIENT in Codemagic UI and use $EMAIL_RECIPIENT here
+          - m.mehlab17@gmail.com
+        notify:
+          success: true
+          failure: true
+
