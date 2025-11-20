@@ -24,6 +24,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -39,17 +40,28 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
+        if (keystorePropertiesFile.exists()) {
+            val keyAlias = keystoreProperties["keyAlias"] as String?
+            val keyPassword = keystoreProperties["keyPassword"] as String?
+            val storeFile = keystoreProperties["storeFile"] as String?
+            val storePassword = keystoreProperties["storePassword"] as String?
+            
+            if (keyAlias != null && keyPassword != null && storeFile != null && storePassword != null) {
+                create("release") {
+                    this.keyAlias = keyAlias
+                    this.keyPassword = keyPassword
+                    this.storeFile = file(storeFile)
+                    this.storePassword = storePassword
+                }
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (keystorePropertiesFile.exists() && signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -73,6 +85,15 @@ dependencies {
     
     // FCM for push notifications
     implementation("com.google.firebase:firebase-messaging")
+    
+    // Play Core library (required for Flutter deferred components)
+    // Note: Flutter framework references these classes even if not using deferred components
+    implementation("com.google.android.play:core:1.10.3")
+    implementation("com.google.android.play:core-ktx:1.8.1")
+    
+    // Core library desugaring for Java 8+ features on older Android versions
+    // flutter_local_notifications 19.5.0 requires version 2.1.4 or above
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     
     // Add the dependencies for any other desired Firebase products
     // https://firebase.google.com/docs/android/setup#available-libraries
