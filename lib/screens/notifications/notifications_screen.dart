@@ -4,6 +4,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
+import 'package:pal/services/notification_service.dart';
+import 'package:pal/utils/notification_mapper.dart';
+import 'package:pal/models/notification_item.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -14,34 +18,186 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _isPageLoading = true;
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationItem> _notificationItems = [];
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 550));
+    // Mark all notifications as read when screen is opened
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markAllNotificationsAsRead();
+    });
+    _loadNotifications();
+    _setupRealtimeListener();
+  }
+
+  /// Mark all notifications as read when notifications tab is opened
+  Future<void> _markAllNotificationsAsRead() async {
+    try {
+      await _notificationService.markAllAsRead();
+      // Reload to update unread count
+      if (mounted) {
+        final unreadCount = await _notificationService.getUnreadCount();
+        setState(() {
+          _unreadCount = unreadCount;
+        });
+      }
+    } catch (e) {
+      debugPrint('[NotificationsScreen] Error marking all notifications as read: $e');
+    }
+  }
+
+  /// Set up real-time listener for new notifications
+  void _setupRealtimeListener() {
+    final supabase = Supabase.instance.client;
+    final userId = supabase.auth.currentUser?.id;
+    
+    if (userId == null) return;
+
+    // Listen for new notifications
+    supabase
+        .from('notifications_history')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .listen((data) {
+      // Reload notifications when new one arrives
+      if (mounted) {
+        _loadNotifications();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // Cleanup is handled automatically by Supabase stream
+    super.dispose();
+  }
+
+  Future<void> _loadNotifications() async {
+    setState(() {
+      _isPageLoading = true;
+    });
+
+    try {
+      // Fetch notifications from database
+      final notifications = await _notificationService.getNotifications(limit: 50);
+      
+      // Convert to UI format
+      final items = notifications
+          .map((n) => NotificationMapper.mapToNotificationItem(n))
+          .whereType<NotificationItem>()
+          .toList();
+
+      // Get unread count
+      final unreadCount = await _notificationService.getUnreadCount();
+
+      if (!mounted) return;
+      
+      setState(() {
+        _notificationItems = items;
+        _unreadCount = unreadCount;
+        _isPageLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[NotificationsScreen] Error loading notifications: $e');
       if (!mounted) return;
       setState(() {
         _isPageLoading = false;
       });
-    });
+    }
   }
 
   Future<void> _refreshNotifications() async {
-    await Future<void>.delayed(const Duration(milliseconds: 750));
-    if (!mounted) return;
-    setState(() {});
+    await _loadNotifications();
+  }
+
+  /// Handle notification tap and navigate
+  Future<void> _handleNotificationTap(NotificationItem item, Map<String, dynamic>? notificationData) async {
+    if (notificationData == null) return;
+
+    final notificationId = notificationData['id']?.toString();
+    if (notificationId != null) {
+      // Mark as read and clicked
+      await _notificationService.markAsRead(notificationId);
+      await _notificationService.markAsClicked(notificationId);
+    }
+
+    // Extract navigation data
+    final notificationType = notificationData['notification_type']?.toString() ?? '';
+    final data = notificationData['data'] as Map<String, dynamic>? ?? {};
+    final postId = data['post_id']?.toString() ?? notificationData['post_id']?.toString();
+    final commentId = data['comment_id']?.toString() ?? notificationData['comment_id']?.toString();
+
+    // Navigate based on notification type
+    // Handle both new and legacy notification types
+    switch (notificationType) {
+      case 'new_comment':
+      case 'post_reply': // Legacy support
+      case 'reply_to_comment':
+      case 'comment_reply': // Legacy support
+      case 'post_upvote':
+      case 'post_hot':
+      case 'post_top':
+      case 'post_trending':
+        if (postId != null) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/home',
+            (route) => route.isFirst,
+            arguments: {'highlight_post_id': postId},
+          );
+        }
+        break;
+      case 'comment_upvote':
+      case 'mention_in_comment':
+      case 'mention_in_post':
+      case 'mention': // Legacy support
+        if (postId != null) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/home',
+            (route) => route.isFirst,
+            arguments: {
+              'highlight_post_id': postId,
+              'highlight_comment_id': commentId,
+            },
+          );
+        }
+        break;
+      case 'report_under_review':
+      case 'report_resolved':
+        // Already on notifications screen
+        break;
+      case 'account_suspended':
+      case 'account_warning':
+      case 'account_reactivated':
+        Navigator.of(context).pushNamed('/settings');
+        break;
+    }
+
+    // Refresh to update unread status
+    _loadNotifications();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Show loading overlay immediately while loading
+    if (_isPageLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: PalLoadingOverlay(),
+      );
+    }
+
     final scaffold = Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const _NotificationsHeader(),
+            _NotificationsHeader(unreadCount: _unreadCount),
             Expanded(
               child: PalRefreshIndicator(
                 onRefresh: _refreshNotifications,
@@ -57,8 +213,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     color: Color(0xFFE2E8F0),
                   ),
                   itemBuilder: (context, index) {
-                    final item = _notificationItems[index];
-                    return _NotificationTile(item: item);
+                    if (index == 0) {
+                      return const _WelcomeNotificationCard();
+                    }
+                    final item = _notificationItems[index - 1];
+                    // Get original notification data for navigation
+                    final notificationData = item.notificationData;
+                    return GestureDetector(
+                      onTap: () => _handleNotificationTap(item, notificationData),
+                      child: _NotificationTile(item: item),
+                    );
                   },
                 ),
               ),
@@ -78,14 +242,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       ),
     );
-    return Stack(
-      children: [scaffold, if (_isPageLoading) const PalLoadingOverlay()],
-    );
+    return scaffold;
   }
 }
 
 class _NotificationsHeader extends StatelessWidget {
-  const _NotificationsHeader();
+  const _NotificationsHeader({this.unreadCount = 0});
+
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -104,28 +268,29 @@ class _NotificationsHeader extends StatelessWidget {
               ),
             ),
           ),
-          Container(
-            width: 28.07,
-            height: 23.99,
-            decoration: const BoxDecoration(
-              color: Color(0xFFE7000B),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(25378200),
-                topRight: Radius.circular(25378200),
-                bottomLeft: Radius.circular(25378200),
-                bottomRight: Radius.circular(25378200),
+          if (unreadCount > 0)
+            Container(
+              width: 28.07,
+              height: 23.99,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE7000B),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(25378200),
+                  topRight: Radius.circular(25378200),
+                  bottomLeft: Radius.circular(25378200),
+                  bottomRight: Radius.circular(25378200),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                unreadCount > 99 ? '99+' : unreadCount.toString(),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
-            alignment: Alignment.center,
-            child: const Text(
-              '4',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -135,7 +300,7 @@ class _NotificationsHeader extends StatelessWidget {
 class _NotificationTile extends StatelessWidget {
   const _NotificationTile({required this.item});
 
-  final _NotificationItem item;
+  final NotificationItem item;
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +435,7 @@ class _NotificationTile extends StatelessWidget {
 class _NotificationHeadline extends StatelessWidget {
   const _NotificationHeadline({required this.item});
 
-  final _NotificationItem item;
+  final NotificationItem item;
 
   @override
   Widget build(BuildContext context) {
@@ -295,7 +460,7 @@ class _NotificationHeadline extends StatelessWidget {
 class _NotificationAvatar extends StatelessWidget {
   const _NotificationAvatar({required this.item});
 
-  final _NotificationItem item;
+  final NotificationItem item;
 
   @override
   Widget build(BuildContext context) {
@@ -369,191 +534,5 @@ class _NotificationAvatar extends StatelessWidget {
   }
 }
 
-class _NotificationItem {
-  const _NotificationItem({
-    required this.headlineParts,
-    required this.timestamp,
-    this.subtitle,
-    this.body,
-    this.bodyAsQuote = false,
-    this.avatarImageAsset,
-    this.avatarIcon,
-    this.avatarSvgAsset,
-    this.avatarBackground,
-    this.avatarGradient,
-    this.avatarIconColor,
-    this.ctaLabel,
-    this.unread = false,
-    this.hasAvatarBorder = false,
-    this.tileBackgroundColor,
-  });
-
-  final List<_HeadlinePart> headlineParts;
-  final String? subtitle;
-  final String? body;
-  final bool bodyAsQuote;
-  final String timestamp;
-  final String? avatarImageAsset;
-  final IconData? avatarIcon;
-  final String? avatarSvgAsset;
-  final Color? avatarBackground;
-  final Gradient? avatarGradient;
-  final Color? avatarIconColor;
-  final String? ctaLabel;
-  final bool unread;
-  final bool hasAvatarBorder;
-  final Color? tileBackgroundColor;
-}
-
-class _HeadlinePart {
-  const _HeadlinePart(this.text, {this.isEmphasized = false});
-
-  final String text;
-  final bool isEmphasized;
-}
-
-const _notificationItems = [
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('chefjade', isEmphasized: true),
-      _HeadlinePart(' mentioned you in a comment'),
-    ],
-    subtitle: 'Best shawarma spots in Lekki?',
-    timestamp: '2m ago',
-    avatarImageAsset: 'assets/feedPage/profile.png',
-    unread: true,
-    hasAvatarBorder: true,
-    tileBackgroundColor: Color.fromRGBO(254, 242, 242, 0.4),
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('tolu_chef', isEmphasized: true),
-      _HeadlinePart(' upvoted your post'),
-    ],
-    subtitle: 'Traffic update: Third Mainland Bridge',
-    timestamp: '15m ago',
-    avatarImageAsset: 'assets/feedPage/profile.png',
-    unread: true,
-    hasAvatarBorder: true,
-    tileBackgroundColor: Color.fromRGBO(254, 242, 242, 0.4),
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('Your post is the hottest in Victoria Island right now!'),
-    ],
-    subtitle: 'Best jollof rice spots in VI',
-    timestamp: '1h ago',
-    avatarSvgAsset: 'assets/images/hotIcon.svg',
-    avatarGradient: const LinearGradient(
-      colors: [Color(0xFFFF6900), Color(0xFFE7000B)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-    avatarIconColor: Colors.white,
-    unread: true,
-    tileBackgroundColor: Color.fromRGBO(254, 242, 242, 0.4),
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('lagosian_pro', isEmphasized: true),
-      _HeadlinePart(' upvoted your comment'),
-    ],
-    body: 'I totally agree! The traffic is insane during rush hour.',
-    subtitle: 'Traffic update: Third Mainland Bridge',
-    timestamp: '2h ago',
-    avatarImageAsset: 'assets/feedPage/profile.png',
-    hasAvatarBorder: true,
-    bodyAsQuote: true,
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart(
-        'Invite your friends to join Pal! Share your referral link and grow the community.',
-      ),
-    ],
-    timestamp: '3h ago',
-    avatarBackground: Color(0xFF00A63E),
-    avatarSvgAsset: 'assets/notifications/sharelink.svg',
-    avatarIconColor: Colors.white,
-    ctaLabel: 'Share Link',
-  ),
-  _NotificationItem(
-    headlineParts: [_HeadlinePart('Your post reached Top Posts this week!')],
-    subtitle: 'Power outage in Lekki Phase 1 - again!',
-    timestamp: '4h ago',
-    avatarBackground: Color(0xFF9810FA),
-    avatarSvgAsset: 'assets/notifications/topPost.svg',
-    avatarIconColor: Colors.white,
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('foodie_naija', isEmphasized: true),
-      _HeadlinePart(' mentioned you in a post'),
-    ],
-    subtitle: 'Where to get authentic suya in Lagos?',
-    timestamp: '5h ago',
-    avatarBackground: Color(0xFFEBF5FF),
-    avatarIcon: Icons.alternate_email_rounded,
-    avatarIconColor: Color(0xFF2563EB),
-    hasAvatarBorder: true,
-  ),
-  _NotificationItem(
-    headlineParts: [_HeadlinePart('Your report is under review')],
-    subtitle: 'Spam post about fake investment',
-    timestamp: '6h ago',
-    avatarBackground: Color(0xFF314158),
-    avatarSvgAsset: 'assets/notifications/underReview.svg',
-    avatarIconColor: Colors.white,
-  ),
-  _NotificationItem(
-    headlineParts: [_HeadlinePart('Your post is getting hot!')],
-    subtitle: 'Best shawarma spots in Lekki?',
-    timestamp: '8h ago',
-    avatarSvgAsset: 'assets/images/hotIcon.svg',
-    avatarGradient: const LinearGradient(
-      colors: [Color(0xFFFF6900), Color(0xFFE7000B)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ),
-    avatarIconColor: Colors.white,
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('ikoyi_babe', isEmphasized: true),
-      _HeadlinePart(' shared your post'),
-    ],
-    subtitle: 'Best gym in Victoria Island?',
-    timestamp: '12h ago',
-    avatarImageAsset: 'assets/feedPage/profile.png',
-    hasAvatarBorder: true,
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart('eko_boy', isEmphasized: true),
-      _HeadlinePart(' upvoted your post'),
-    ],
-    subtitle: 'New restaurant in Ikoyi - must try!',
-    timestamp: '1d ago',
-    avatarImageAsset: 'assets/feedPage/profile.png',
-    hasAvatarBorder: true,
-  ),
-  _NotificationItem(
-    headlineParts: [_HeadlinePart('Your post is trending in Lekki Phase 1')],
-    subtitle: 'Where to find good internet in Lagos',
-    timestamp: '1d ago',
-    avatarBackground: Color(0xFF9810FA),
-    avatarSvgAsset: 'assets/notifications/topPost.svg',
-    avatarIconColor: Colors.white,
-  ),
-  _NotificationItem(
-    headlineParts: [
-      _HeadlinePart(
-        'Your account has been temporarily suspended for violating community guidelines. Please review our policies.',
-      ),
-    ],
-    timestamp: '2d ago',
-    avatarBackground: Color(0xFFC10007),
-    avatarSvgAsset: 'assets/notifications/accountSuspended.svg',
-    avatarIconColor: Colors.white,
-  ),
-];
+// Old mock data removed - now using real data from database via NotificationService
+// NotificationItem and HeadlinePart classes are now in lib/models/notification_item.dart

@@ -341,10 +341,40 @@ class AuthService {
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/reset-password');
 
     try {
+      // Validate inputs
+      final trimmedEmail = email.toLowerCase().trim();
+      final trimmedOtpCode = otpCode.trim();
+      final trimmedNewPassword = newPassword.trim();
+      
+      if (trimmedEmail.isEmpty) {
+        throw AuthException('Email is required');
+      }
+      if (trimmedOtpCode.isEmpty) {
+        throw AuthException('OTP code is required');
+      }
+      if (trimmedOtpCode.length != 6) {
+        throw AuthException('OTP code must be 6 digits');
+      }
+      if (trimmedNewPassword.isEmpty) {
+        throw AuthException('New password is required');
+      }
+      
       // Use anon key for edge function calls
       final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
       final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
       
+      final requestBody = {
+        'email': trimmedEmail,
+        'otp_code': trimmedOtpCode,
+        'new_password': trimmedNewPassword,
+      };
+      
+      print('DEBUG resetPassword: Request body keys: ${requestBody.keys.toList()}');
+      print('DEBUG resetPassword: Email: ${requestBody['email']}');
+      print('DEBUG resetPassword: OTP code: ${requestBody['otp_code']} (length: ${trimmedOtpCode.length})');
+      print('DEBUG resetPassword: New password length: ${trimmedNewPassword.length}');
+      print('DEBUG resetPassword: Has session token: ${sessionToken != null}');
+
       final resp = await http.post(
         uri,
         headers: {
@@ -352,17 +382,21 @@ class AuthService {
           'apikey': anonKey,
           'Authorization': 'Bearer ${sessionToken ?? anonKey}',
         },
-        body: jsonEncode({
-          'email': email.toLowerCase().trim(),
-          'otp_code': otpCode.trim(),
-          'new_password': newPassword,
-        }),
+        body: jsonEncode(requestBody),
       );
+
+      print('=== RESPONSE FROM EDGE FUNCTION (reset-password) ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Response header keys: ${resp.headers.keys.toList()}');
+      print('Body: ${resp.body}');
+      print('===================================');
 
       final body = jsonDecode(resp.body ?? '{}');
 
       if (resp.statusCode >= 400) {
         final message = body['message'] ?? body['error'] ?? 'Failed to reset password';
+        print('ERROR: reset-password returned ${resp.statusCode}: $message');
+        print('ERROR: Full response body: $body');
         throw AuthException(message);
       }
 

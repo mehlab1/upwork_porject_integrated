@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../services/post_service.dart';
+import '../../widgets/pal_toast.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -945,15 +946,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final combinedContent =
         body.isEmpty ? title : '$title\n\n$body'.trim();
     if (combinedContent.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter post details.')),
-      );
+      PalToast.show(context, message: 'Please enter post details.');
       return;
     }
     if (combinedContent.length > 1000) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Post exceeds 1000 characters.')),
-      );
+      PalToast.show(context, message: 'Post exceeds 1000 characters.');
       return;
     }
     final categoryId = _categoryIdLookup[_activeCategory];
@@ -962,10 +959,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         ? _locationIdLookup[selectedLocationName]
         : null;
     if (locationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Selected location is unavailable right now.')),
-      );
+      PalToast.show(context, message: 'Selected location is unavailable right now.');
       return;
     }
     setState(() {
@@ -984,13 +978,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _isSubmitting = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response['message'] ?? 'Post created successfully',
-          ),
-        ),
-      );
+      PalToast.show(context, message: response['message'] ?? 'Post created successfully');
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) {
@@ -999,13 +987,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       setState(() {
         _isSubmitting = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
-        ),
-      );
+      PalToast.show(context, message: e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -1131,8 +1113,8 @@ class _InlineDropdown extends StatelessWidget {
   }
 }
 
-Future<void> showCreatePostModal(BuildContext context) {
-  return showDialog<void>(
+Future<bool?> showCreatePostModal(BuildContext context) {
+  return showDialog<bool>(
     context: context,
     barrierDismissible: true,
     barrierColor: const Color(0xFF0B1120).withOpacity(0.55),

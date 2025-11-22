@@ -10,16 +10,16 @@ const _headerTitleColor = Color(0xFF0F172B);
 const _headerSubtitleColor = Color(0xFF45556C);
 const _headerMetaColor = Color(0xFF62748E);
 
-class YourPostsScreen extends StatefulWidget {
-  const YourPostsScreen({super.key});
+class UpvotedPostsScreen extends StatefulWidget {
+  const UpvotedPostsScreen({super.key});
 
-  static const routeName = '/settings/your-posts';
+  static const routeName = '/settings/upvoted-posts';
 
   @override
-  State<YourPostsScreen> createState() => _YourPostsScreenState();
+  State<UpvotedPostsScreen> createState() => _UpvotedPostsScreenState();
 }
 
-class _YourPostsScreenState extends State<YourPostsScreen> {
+class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
   final PostService _postService = PostService();
   final ProfileService _profileService = ProfileService();
   
@@ -27,6 +27,7 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
   ProfileData? _profileData;
   bool _isLoading = true;
   String? _errorMessage;
+  int _totalUpvotedPosts = 0;
 
   @override
   void initState() {
@@ -41,9 +42,9 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
     });
 
     try {
-      // Fetch posts and profile in parallel
+      // Fetch upvoted posts and profile in parallel
       final results = await Future.wait([
-        _postService.getUserPosts(),
+        _postService.getUpvotedPosts(limit: 100, offset: 0),
         _profileService.getProfileData(),
       ]);
 
@@ -53,6 +54,7 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
       final profileData = results[1] as ProfileData?;
 
       final postsList = postsResponse['posts'] as List<dynamic>? ?? [];
+      final totalUpvoted = postsResponse['total_upvoted_posts'] as int? ?? postsList.length;
       final mappedPosts = postsList
           .map((post) => _mapPostToCardData(post as Map<String, dynamic>))
           .whereType<PostCardData>()
@@ -61,6 +63,7 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
       setState(() {
         _posts = mappedPosts;
         _profileData = profileData;
+        _totalUpvotedPosts = totalUpvoted;
         _isLoading = false;
       });
     } catch (e) {
@@ -191,8 +194,8 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
         bottom: false,
         child: Column(
           children: [
-            _YourPostsHeader(
-              totalPosts: _posts.length,
+            _UpvotedPostsHeader(
+              totalPosts: _totalUpvotedPosts,
               profileData: _profileData,
             ),
             Expanded(
@@ -221,7 +224,7 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
                           )
                         : _posts.isEmpty
                             ? const Center(
-                                child: Text('No posts yet'),
+                                child: Text('No upvoted posts yet'),
                               )
                             : ListView.builder(
                                 padding: const EdgeInsets.fromLTRB(15, 24, 15, 32),
@@ -230,7 +233,7 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
                                   final post = _posts[index];
                                   return Align(
                                     alignment: Alignment.center,
-                                    child: PostCard(data: post, isYourPosts: true),
+                                    child: PostCard(data: post, isYourPosts: false),
                                   );
                                 },
                               ),
@@ -243,8 +246,8 @@ class _YourPostsScreenState extends State<YourPostsScreen> {
   }
 }
 
-class _YourPostsHeader extends StatelessWidget {
-  const _YourPostsHeader({
+class _UpvotedPostsHeader extends StatelessWidget {
+  const _UpvotedPostsHeader({
     required this.totalPosts,
     this.profileData,
   });
@@ -309,7 +312,7 @@ class _YourPostsHeader extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Text(
-                            'Your Posts',
+                            'Posts You Upvoted',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -359,3 +362,4 @@ class _YourPostsHeader extends StatelessWidget {
     );
   }
 }
+

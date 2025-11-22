@@ -15,6 +15,7 @@ import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
 
 import '../../../services/post_service.dart';
+import '../../../services/profile_service.dart';
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 
@@ -73,6 +74,8 @@ class PostCardData {
     this.id,
 
     this.avatarAsset,
+    this.profilePictureUrl,
+    this.initials,
 
     this.comments,
 
@@ -99,6 +102,8 @@ class PostCardData {
   final String? id;
 
   final String? avatarAsset;
+  final String? profilePictureUrl;
+  final String? initials;
 
   final List<CommentData>? comments;
 
@@ -127,6 +132,8 @@ class PostCardData {
       id: id,
 
       avatarAsset: avatarAsset,
+      profilePictureUrl: profilePictureUrl,
+      initials: initials,
 
       comments: comments ?? this.comments,
 
@@ -153,7 +160,7 @@ class CommentData {
     required this.downvotes,
 
     this.avatarAsset,
-
+    this.profilePictureUrl,
     this.initials,
 
     this.replies = const [],
@@ -175,7 +182,7 @@ class CommentData {
   final int downvotes;
 
   final String? avatarAsset;
-
+  final String? profilePictureUrl;
   final String? initials;
 
   final List<CommentData> replies;
@@ -197,7 +204,7 @@ class CommentData {
     int? downvotes,
 
     String? avatarAsset,
-
+    String? profilePictureUrl,
     String? initials,
 
     List<CommentData>? replies,
@@ -221,6 +228,7 @@ class CommentData {
       downvotes: downvotes ?? this.downvotes,
 
       avatarAsset: avatarAsset ?? this.avatarAsset,
+      profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
 
       initials: initials ?? this.initials,
 
@@ -273,6 +281,8 @@ class _PostCardState extends State<PostCard> {
   final List<String> _recentCommentErrors = [];
 
   final PostService _postService = PostService();
+  final ProfileService _profileService = ProfileService();
+  final Map<String, ProfileData> _commentProfileCache = {};
 
   String? _currentUsername;
 
@@ -414,6 +424,31 @@ class _PostCardState extends State<PostCard> {
       if (!mounted) return;
       
       final commentsList = response['comments'] as List<dynamic>? ?? [];
+      
+      // Extract unique user IDs from comments for profile fetching
+      final Set<String> userIds = {};
+      for (final comment in commentsList) {
+        if (comment is Map<String, dynamic>) {
+          final userId = comment['user_id']?.toString();
+          if (userId != null && userId.isNotEmpty) {
+            userIds.add(userId);
+          }
+          // Also check replies
+          final replies = comment['replies'] as List<dynamic>? ?? [];
+          for (final reply in replies) {
+            if (reply is Map<String, dynamic>) {
+              final replyUserId = reply['user_id']?.toString();
+              if (replyUserId != null && replyUserId.isNotEmpty) {
+                userIds.add(replyUserId);
+              }
+            }
+          }
+        }
+      }
+
+      // Fetch profiles for comments that don't have profile picture in response
+      await _fetchProfilesForComments(userIds);
+
       final mappedComments = commentsList
           .map((comment) => _mapCommentFromResponse(comment))
           .whereType<CommentData>()
@@ -430,6 +465,24 @@ class _PostCardState extends State<PostCard> {
     } catch (e) {
       debugPrint('Failed to load comments: $e');
       // Don't show error to user - just log it
+    }
+  }
+
+  /// Fetch profiles for comment authors if not already cached
+  Future<void> _fetchProfilesForComments(Set<String> userIds) async {
+    for (final userId in userIds) {
+      // Skip if already cached
+      if (_commentProfileCache.containsKey(userId)) continue;
+
+      try {
+        final profileData = await _profileService.getProfileDataByUserId(userId);
+        if (profileData != null && mounted) {
+          _commentProfileCache[userId] = profileData;
+        }
+      } catch (e) {
+        debugPrint('ERROR: Failed to fetch profile for comment user $userId: $e');
+        // Continue fetching other profiles even if one fails
+      }
     }
   }
 
@@ -461,13 +514,44 @@ class _PostCardState extends State<PostCard> {
         .map((reply) => _mapCommentFromResponse(reply))
         .whereType<CommentData>()
         .toList();
-    
-    // Get initials from username
-    final sanitized = username.replaceAll(RegExp(r'[^A-Za-z]'), '');
-    final initial = sanitized.isNotEmpty
-        ? sanitized.substring(0, 1).toUpperCase()
-        : 'U';
-    
+
+    // Extract profile picture URL
+    String? profilePictureUrl = (commentData['profile_picture_url'] ?? 
+        profile?['profile_picture_url'] ?? 
+        commentData['avatar_url'] ?? 
+        profile?['avatar_url'])?.toString();
+
+    // Get user_id to fetch profile if picture not in comment data
+    final userId = commentData['user_id']?.toString();
+    String? initials;
+
+    // If no profile picture in comment data, try fetching from profile cache
+    if ((profilePictureUrl == null || profilePictureUrl.isEmpty) && 
+        userId != null && 
+        _commentProfileCache.containsKey(userId)) {
+      final cachedProfile = _commentProfileCache[userId]!;
+      profilePictureUrl = cachedProfile.pictureUrl;
+      initials = cachedProfile.initials;
+    }
+
+    // Get initials from username if not available from cached profile
+    if (initials == null || initials.isEmpty) {
+      String generateInitials(String name) {
+        final cleanName = name.replaceAll('@', '').trim();
+        if (cleanName.isEmpty) return 'U';
+        final parts = cleanName.split(RegExp(r'[\s_]+'));
+        if (parts.length >= 2) {
+          return (parts.first[0] + parts.last[0]).toUpperCase();
+        } else if (cleanName.length >= 2) {
+          return cleanName.substring(0, 2).toUpperCase();
+        } else {
+          return cleanName[0].toUpperCase();
+        }
+      }
+      final initial = generateInitials(username);
+      initials = initial;
+    }
+
     return CommentData(
       id: id,
       author: author,
@@ -475,7 +559,8 @@ class _PostCardState extends State<PostCard> {
       body: content,
       upvotes: upvotes,
       downvotes: downvotes,
-      initials: initial,
+      profilePictureUrl: profilePictureUrl,
+      initials: initials,
       replies: replies,
       status: status,
     );
@@ -2248,7 +2333,8 @@ class _PostHeader extends StatelessWidget {
         _Avatar(
 
           asset: data.avatarAsset,
-
+          profilePictureUrl: data.profilePictureUrl,
+          initials: data.initials,
           borderColor: palette.avatarBorderColor,
 
         ),
@@ -2716,41 +2802,68 @@ Future<void> _showDeleteDialog(BuildContext context, String title) async {
 }
 
 class _Avatar extends StatelessWidget {
-
-  const _Avatar({this.asset, required this.borderColor});
+  const _Avatar({
+    this.asset, 
+    this.profilePictureUrl,
+    this.initials,
+    required this.borderColor,
+  });
 
   final String? asset;
-
+  final String? profilePictureUrl;
+  final String? initials;
   final Color borderColor;
 
   @override
 
   Widget build(BuildContext context) {
+    // Prefer network image (profilePictureUrl), then asset, then initials
+    final hasNetworkImage = profilePictureUrl != null && profilePictureUrl!.isNotEmpty;
+    final hasAsset = asset != null;
+    final displayInitials = initials ?? 'U';
 
     return Container(
 
       width: 47,
-
       height: 47,
-
       decoration: BoxDecoration(
 
         shape: BoxShape.circle,
-
         color: Colors.white,
-
         border: Border.all(color: borderColor, width: 3),
 
       ),
-
       clipBehavior: Clip.antiAlias,
+      child: hasNetworkImage
+          ? Image.network(
+              profilePictureUrl!,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return _buildInitialsPlaceholder(displayInitials);
+              },
+              errorBuilder: (context, error, stackTrace) => _buildInitialsPlaceholder(displayInitials),
+            )
+          : hasAsset
+              ? _Avatar._buildImage(asset!)
+              : _buildInitialsPlaceholder(displayInitials),
+    );
+  }
 
-      child: asset != null
-
-          ? _Avatar._buildImage(asset!)
-
-          : _Avatar._buildDefaultImage(),
-
+  Widget _buildInitialsPlaceholder(String initials) {
+    return Container(
+      color: const Color(0xFF155DFC),
+      child: Center(
+        child: Text(
+          initials,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Inter',
+          ),
+        ),
+      ),
     );
 
   }
@@ -2762,9 +2875,7 @@ class _Avatar extends StatelessWidget {
       return SvgPicture.asset(
 
         path,
-
         fit: BoxFit.cover,
-
         placeholderBuilder: (_) =>
 
             Image.asset('assets/feedPage/profile.png', fit: BoxFit.cover),
@@ -2776,25 +2887,7 @@ class _Avatar extends StatelessWidget {
     return Image.asset(
 
       path,
-
       fit: BoxFit.cover,
-
-      errorBuilder: (_, __, ___) =>
-
-          SvgPicture.asset('assets/feedPage/profile.svg', fit: BoxFit.cover),
-
-    );
-
-  }
-
-  static Widget _buildDefaultImage() {
-
-    return Image.asset(
-
-      'assets/feedPage/profile.png',
-
-      fit: BoxFit.cover,
-
       errorBuilder: (_, __, ___) =>
 
           SvgPicture.asset('assets/feedPage/profile.svg', fit: BoxFit.cover),
@@ -4403,7 +4496,7 @@ class _CommentCardState extends State<_CommentCard> {
               _CommentAvatar(
 
                 asset: comment.avatarAsset,
-
+                profilePictureUrl: comment.profilePictureUrl,
                 initials: comment.initials,
 
               ),
@@ -4789,16 +4882,23 @@ class _CommentActionsPopover extends StatelessWidget {
 }
 
 class _CommentAvatar extends StatelessWidget {
-
-  const _CommentAvatar({this.asset, this.initials});
+  const _CommentAvatar({
+    this.asset, 
+    this.profilePictureUrl,
+    this.initials,
+  });
 
   final String? asset;
-
+  final String? profilePictureUrl;
   final String? initials;
 
   @override
 
   Widget build(BuildContext context) {
+    // Prefer network image (profilePictureUrl), then asset, then initials
+    final hasNetworkImage = profilePictureUrl != null && profilePictureUrl!.isNotEmpty;
+    final hasAsset = asset != null && asset!.isNotEmpty;
+    final displayInitials = initials ?? 'U';
 
     Widget buildImageWidget(String path) {
 
@@ -4813,21 +4913,14 @@ class _CommentAvatar extends StatelessWidget {
         child: Image.asset(
 
           path,
-
           width: 32,
-
           height: 32,
-
           fit: BoxFit.cover,
-
           errorBuilder: (_, __, ___) => SvgPicture.asset(
 
             'assets/feedPage/profile.svg',
-
             width: 32,
-
             height: 32,
-
             fit: BoxFit.cover,
 
           ),
@@ -4838,94 +4931,53 @@ class _CommentAvatar extends StatelessWidget {
 
     }
 
-    if (asset != null && asset!.isNotEmpty) {
+    return ClipOval(
+      child: hasNetworkImage
+          ? Image.network(
+              profilePictureUrl!,
+              width: 32,
+              height: 32,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return _buildInitialsPlaceholder(displayInitials);
+              },
+              errorBuilder: (context, error, stackTrace) => _buildInitialsPlaceholder(displayInitials),
+            )
+          : hasAsset && asset!.startsWith('http')
+              ? CircleAvatar(
+                  radius: 16,
+                  backgroundImage: NetworkImage(asset!),
+                  onBackgroundImageError: (_, __) {},
+                  child: _buildInitialsPlaceholder(displayInitials),
+                )
+              : hasAsset
+                  ? ClipOval(child: buildImageWidget(asset!))
+                  : _buildInitialsPlaceholder(displayInitials),
+    );
+  }
 
-      if (asset!.startsWith('http')) {
-
-        return Container(
-
-          width: 32,
-
-          height: 32,
-
-          decoration: BoxDecoration(
-
-            shape: BoxShape.circle,
-
-            color: _commentAvatarBackground,
-
-            border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
-
-          ),
-
-          clipBehavior: Clip.antiAlias,
-
-          child: CircleAvatar(
-
-            radius: 16,
-
-            backgroundImage: NetworkImage(asset!),
-
-          ),
-
-        );
-
-      }
-
-      return Container(
-
-        width: 32,
-
-        height: 32,
-
-        decoration: BoxDecoration(
-
-          shape: BoxShape.circle,
-
-          color: _commentAvatarBackground,
-
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
-
-        ),
-
-        clipBehavior: Clip.antiAlias,
-
-        child: ClipOval(child: buildImageWidget(asset!)),
-
-      );
-
-    }
-
+  Widget _buildInitialsPlaceholder(String initials) {
     return Container(
 
       width: 32,
-
       height: 32,
-
       decoration: BoxDecoration(
 
         shape: BoxShape.circle,
-
         color: _commentAvatarBackground,
-
         border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
 
       ),
-
       child: Center(
 
         child: Text(
-
-          initials ?? '',
-
+          initials,
           style: const TextStyle(
 
             fontSize: 12,
-
             fontWeight: FontWeight.w600,
-
             color: Color(0xFF314158),
-
             fontFamily: 'Inter',
 
           ),

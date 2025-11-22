@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../services/post_service.dart';
+import '../../services/auth_remember_me_service.dart';
+import '../../services/fcm_service.dart';
 import '../signup/signup_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
 
@@ -21,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _passwordError;
   bool _isLoading = false;
   final AuthService _authService = AuthService();
+  final AuthRememberMeService _rememberMeService = AuthRememberMeService();
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -549,6 +552,17 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.signIn(email: email, password: password);
 
       if (!mounted) return;
+
+      // Save Remember Me preference after successful login
+      await _rememberMeService.setRememberMe(_rememberMe);
+
+      // Initialize FCM for push notifications
+      try {
+        await FCMService().initialize();
+      } catch (e) {
+        // FCM initialization failure shouldn't block login
+        debugPrint('[LoginScreen] FCM initialization failed: $e');
+      }
 
       // After successful sign-in, fetch profile to decide whether to
       // show the welcome modal / first-post card. This ensures all

@@ -75,6 +75,7 @@ class PostService {
   }
 
   /// Fetch feed with pagination and sorting
+  /// Supports filtering by category, location, or both together
   Future<Map<String, dynamic>> getFeed({
     String? sort,
     int limit = 20,
@@ -84,8 +85,35 @@ class PostService {
   }) async {
     final body = <String, dynamic>{'limit': limit, 'offset': offset};
     if (sort != null) body['sort'] = sort;
-    if (categoryId != null) body['category_id'] = categoryId;
-    if (locationId != null) body['location_id'] = locationId;
+    
+    // Add category filter if provided
+    if (categoryId != null) {
+      body['category_id'] = categoryId;
+      print('DEBUG getFeed: Adding category_id to request: $categoryId');
+    } else {
+      print('DEBUG getFeed: No category_id provided (categoryId is null)');
+    }
+    
+    // Add location filter if provided
+    if (locationId != null) {
+      body['location_id'] = locationId;
+      print('DEBUG getFeed: Adding location_id to request: $locationId');
+    } else {
+      print('DEBUG getFeed: No location_id provided (locationId is null)');
+    }
+    
+    // Log filter combination
+    if (categoryId != null && locationId != null) {
+      print('DEBUG getFeed: BOTH filters will be applied - category_id: $categoryId, location_id: $locationId');
+    } else if (categoryId != null) {
+      print('DEBUG getFeed: Only category filter will be applied');
+    } else if (locationId != null) {
+      print('DEBUG getFeed: Only location filter will be applied');
+    } else {
+      print('DEBUG getFeed: No filters - showing all posts');
+    }
+    
+    print('DEBUG getFeed: Request body keys: ${body.keys.toList()}');
     return await _callFunction('get-feed', body: body);
   }
 
@@ -287,5 +315,63 @@ class PostService {
   /// Returns: Map with posts and pagination info
   Future<Map<String, dynamic>> getMonthlySpotlightPosts({int limit = 50, int offset = 0}) async {
     return await _callFunction('get-monthly-spotlight-posts', body: {'limit': limit, 'offset': offset});
+  }
+
+  /// Get user's posts using the get-user-posts edge function
+  ///
+  /// Returns: Map with success (bool) and posts (List<Map<String, dynamic>>)
+  Future<Map<String, dynamic>> getUserPosts() async {
+    // Get current user ID from session
+    final currentUser = _supabaseClient.auth.currentUser;
+    if (currentUser == null) {
+      throw Exception('User not authenticated');
+    }
+    
+    return await _callFunction('get-user-posts', body: {'user_id': currentUser.id});
+  }
+
+  /// Get upvoted posts using the get-upvoted-posts edge function
+  ///
+  /// Parameters: limit (int, default 20), offset (int, default 0)
+  /// Returns: Map with success (bool), total_upvoted_posts (int), and posts (List<Map<String, dynamic>>)
+  Future<Map<String, dynamic>> getUpvotedPosts({int limit = 20, int offset = 0}) async {
+    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-upvoted-posts');
+    try {
+      print('=== DEBUG: Getting upvoted posts ===');
+      final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
+      final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      };
+      if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
+
+      final queryParams = <String, String>{
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      };
+      final uriWithParams = uri.replace(queryParameters: queryParams);
+
+      final resp = await http.get(uriWithParams, headers: headers);
+
+      print('=== RESPONSE FROM EDGE FUNCTION (get-upvoted-posts) ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Body: ${resp.body}');
+      print('===================================');
+
+      final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
+
+      if (resp.statusCode >= 400) {
+        final errorMessage = parsed['error'] ?? parsed['message'] ?? 'Server error';
+        print('ERROR: get-upvoted-posts returned ${resp.statusCode}: $errorMessage');
+        throw Exception(errorMessage);
+      }
+
+      return parsed;
+    } catch (e) {
+      print('ERROR: Failed to get upvoted posts: $e');
+      rethrow;
+    }
   }
 }

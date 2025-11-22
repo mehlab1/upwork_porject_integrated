@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
 import 'package:pal/widgets/pal_push_notification.dart';
+import 'package:pal/widgets/pal_toast.dart';
 
 import '../../services/post_service.dart';
+import '../../services/profile_service.dart';
 import 'create_post_screen.dart';
 import 'widgets/post_card.dart';
 
@@ -121,7 +124,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   bool _shouldShowFirstPostCard = false;
   bool _isPageLoading = true;
   bool _isInitialPostsLoading = true;
+  bool _isFirstLoad = true; // Track if this is the very first load
   final PostService _postService = PostService();
+  final ProfileService _profileService = ProfileService();
+  
+  // Profile cache: user_id -> ProfileData
+  final Map<String, ProfileData> _profileCache = {};
   late final List<PostCardData> _seedPosts = _buildSeedPosts().take(3).toList();
   final List<PostCardData> _remotePosts = [];
   bool _isFeedFetching = false;
@@ -247,14 +255,21 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       
       debugPrint('User post check: userId=$userId, hasPosts=$hasPosts, postsFound=${postsList.length}');
 
-      // If user has 0 posts, show welcome modal and first post card
-      // If user has posts, don't show them
+      // Check if welcome modal has already been shown for this user
+      final prefs = await SharedPreferences.getInstance();
+      final welcomeModalKey = 'welcome_modal_shown_$userId';
+      final hasShownWelcomeModal = prefs.getBool(welcomeModalKey) ?? false;
+
+      // If user has 0 posts and hasn't seen welcome modal, show welcome modal and first post card
+      // If user has posts or has already seen the modal, don't show them
+      final shouldShowWelcome = !hasPosts && !hasShownWelcomeModal;
+      
       setState(() {
-        _shouldShowWelcomeModal = !hasPosts;
+        _shouldShowWelcomeModal = shouldShowWelcome;
         _shouldShowFirstPostCard = !hasPosts;
       });
 
-      // Show welcome modal if user has 0 posts (based on SQL query result)
+      // Show welcome modal if user has 0 posts and hasn't seen it before
       // Use the SQL logic result directly, not widget.showWelcomeModal
       if (_shouldShowWelcomeModal) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeModal());
@@ -316,13 +331,15 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       final categories = await _postService.getCategories();
       final locations = await _postService.getLocations();
       if (!mounted) return;
+      debugPrint('DEBUG: Loaded ${categories.length} categories and ${locations.length} locations');
+      debugPrint('DEBUG: Location map keys: ${locations.keys.toList()}');
       setState(() {
         _categoryMap = categories;
         _locationMap = locations;
       });
     } catch (e) {
       // Silently handle error - filters will work with names if IDs not available
-      print('Failed to fetch category/location mappings: $e');
+      debugPrint('ERROR: Failed to fetch category/location mappings: $e');
     }
   }
 
@@ -346,21 +363,27 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       print('DEBUG: Number of posts returned from spotlight function: ${respPostsList.length}');
 
       final posts = respPostsList;
-      final variant = PostCardVariant.newPost; // Use newPost variant for spotlight posts
-      
-      final mappedPosts = posts
+      final postsList = posts
           .map((post) {
             if (post is Map<String, dynamic>) {
-              return _mapPostToCardData(post, variant);
+              return post;
             }
             if (post is Map) {
-              return _mapPostToCardData(
-                Map<String, dynamic>.from(post as Map),
-                variant,
-              );
+              return Map<String, dynamic>.from(post as Map);
             }
             return null;
           })
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      
+      // Fetch profiles for unique user IDs from posts (via get-profile edge function)
+      await _fetchProfilesForPosts(postsList);
+      
+      final variant =
+          PostCardVariant.newPost; // Use newPost variant for spotlight posts
+
+      final mappedPosts = postsList
+          .map((post) => _mapPostToCardData(post, variant))
           .whereType<PostCardData>()
           .toList();
 
@@ -375,9 +398,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       print('DEBUG: Exception in _fetchSpotlightPosts: ${e.runtimeType} ${e.toString()}');
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message.isEmpty ? 'Failed to load spotlight posts.' : message)),
-      );
+      PalToast.show(context, message: message.isEmpty ? 'Failed to load spotlight posts.' : message);
       setState(() {
         _isLoadingSpotlightPosts = false;
         _spotlightPosts = [];
@@ -403,11 +424,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _initializeVisibleLimit(),
     );
+    
+    // Seed posts are always available, so we can show content immediately
+    // Only show full loading screen on very first app load
+    // For subsequent navigations, show content with overlay
     Future.microtask(() async {
       await Future<void>.delayed(const Duration(milliseconds: 650));
       if (!mounted) return;
       setState(() {
         _isPageLoading = false;
+        _isFirstLoad = false;
       });
       // Show a demo push notification once the page finishes initial load (testing only)
       // You can remove this after integrating with real notifications.
@@ -559,7 +585,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () {
-                          showCreatePostModal(context);
+                          showCreatePostModal(context).then((postCreated) {
+                            if (postCreated == true && mounted) {
+                              _refreshFeed();
+                              _scrollToTop();
+                            }
+                          });
                         },
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
@@ -634,14 +665,45 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         showNotificationDot: true,
       ),
     );
-    return Stack(
-      children: [scaffold, if (_isPageLoading) const PalLoadingOverlay()],
-    );
+    
+    // Seed posts are always available, so we always have content to show
+    // Show content immediately with loading overlay on top when loading (prevents white screen flash)
+    // Only show full loading screen on very first app load when truly no content exists
+    final hasContent = _seedPosts.isNotEmpty || _remotePosts.isNotEmpty;
+    final shouldShowFullLoading = (_isPageLoading || _isInitialPostsLoading) && _isFirstLoad && !hasContent;
+    
+    if (shouldShowFullLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: PalLoadingOverlay(),
+      );
+    }
+    
+    // Always show content with loading overlay on top if still loading (for smooth navigation)
+    // This prevents white screen when returning to home tab
+    if (_isPageLoading || _isInitialPostsLoading) {
+      return Stack(
+        children: [
+          scaffold,
+          const PalLoadingOverlay(),
+        ],
+      );
+    }
+    
+    return scaffold;
   }
 
   Future<void> _showWelcomeModal() async {
     if (!_shouldShowWelcomeModal || !mounted) return;
     _shouldShowWelcomeModal = false;
+
+    // Save flag to SharedPreferences that welcome modal has been shown
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final welcomeModalKey = 'welcome_modal_shown_${user.id}';
+      await prefs.setBool(welcomeModalKey, true);
+    }
 
     final shouldCreatePost = await showDialog<bool>(
       context: context,
@@ -661,7 +723,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     );
 
     if (shouldCreatePost == true && mounted) {
-      showCreatePostModal(context);
+      showCreatePostModal(context).then((postCreated) {
+        if (postCreated == true && mounted) {
+          _refreshFeed();
+          _scrollToTop();
+        }
+      });
     }
   }
 
@@ -829,6 +896,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         
         List<PostCardData> mappedPosts = [];
         if (hottestPost != null) {
+          // Fetch profile for this post's user
+          await _fetchProfilesForPosts([hottestPost]);
+          
           final mappedPost = _mapPostToCardData(hottestPost, variant);
           if (mappedPost != null) {
             mappedPosts = [mappedPost];
@@ -859,9 +929,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message.isEmpty ? 'Failed to load hottest post.' : message)),
-        );
+        PalToast.show(context, message: message.isEmpty ? 'Failed to load hottest post.' : message);
       } finally {
         if (!mounted) return;
         setState(() {
@@ -894,6 +962,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         
         List<PostCardData> mappedPosts = [];
         if (topPost != null) {
+          // Fetch profile for this post's user
+          await _fetchProfilesForPosts([topPost]);
+          
           final mappedPost = _mapPostToCardData(topPost, variant);
           if (mappedPost != null) {
             mappedPosts = [mappedPost];
@@ -924,9 +995,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message.isEmpty ? 'Failed to load top post.' : message)),
-        );
+        PalToast.show(context, message: message.isEmpty ? 'Failed to load top post.' : message);
       } finally {
         if (!mounted) return;
         setState(() {
@@ -964,8 +1033,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         categoryId = _categoryMap[_selectedCategory];
         // If categoryId is null, the mapping might not be loaded yet - log for debugging
         if (categoryId == null) {
-          debugPrint('WARNING: Category filter selected but ID not found in mapping: $_selectedCategory');
+          debugPrint(
+            'WARNING: Category filter selected but ID not found in mapping: $_selectedCategory',
+          );
+        } else {
+          debugPrint('DEBUG: Category filter active - Selected: "$_selectedCategory" -> ID: "$categoryId"');
         }
+      } else {
+        debugPrint('DEBUG: No category filter - hasCategoryFilter: $hasCategoryFilter, _selectedCategory: $_selectedCategory');
       }
       
       // Only filter by location if a specific location is selected (not "All Areas") and exists in the map
@@ -973,8 +1048,27 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         locationId = _locationMap[_selectedLocation];
         // If locationId is null, the mapping might not be loaded yet - log for debugging
         if (locationId == null) {
-          debugPrint('WARNING: Location filter selected but ID not found in mapping: $_selectedLocation');
+          debugPrint(
+            'WARNING: Location filter selected but ID not found in mapping: $_selectedLocation',
+          );
+          debugPrint('WARNING: Available location keys: ${_locationMap.keys.toList()}');
+          debugPrint('WARNING: Location map size: ${_locationMap.length}');
+        } else {
+          debugPrint('DEBUG: Location filter active - Selected: "$_selectedLocation" -> ID: "$locationId"');
         }
+      } else {
+        debugPrint('DEBUG: No location filter - hasLocationFilter: $hasLocationFilter, _selectedLocation: $_selectedLocation');
+      }
+
+      // Log filter combination status
+      if (categoryId != null && locationId != null) {
+        debugPrint('DEBUG: BOTH filters active - Category ID: $categoryId, Location ID: $locationId');
+      } else if (categoryId != null) {
+        debugPrint('DEBUG: Only category filter active - Category ID: $categoryId');
+      } else if (locationId != null) {
+        debugPrint('DEBUG: Only location filter active - Location ID: $locationId');
+      } else {
+        debugPrint('DEBUG: No filters active - showing all posts');
       }
       
       debugPrint('Fetching feed with filters: sort=$sortParam, categoryId=$categoryId, locationId=$locationId');
@@ -992,20 +1086,25 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       );
 
       final posts = (response['posts'] as List?) ?? const [];
-      final variant = _variantForFilter(_selectedFilter);
-      final mappedPosts = posts
+      final postsList = posts
           .map((post) {
             if (post is Map<String, dynamic>) {
-              return _mapPostToCardData(post, variant);
+              return post;
             }
             if (post is Map) {
-              return _mapPostToCardData(
-                Map<String, dynamic>.from(post as Map),
-                variant,
-              );
+              return Map<String, dynamic>.from(post as Map);
             }
             return null;
           })
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      
+      // Fetch profiles for unique user IDs from posts (via get-profile edge function)
+      await _fetchProfilesForPosts(postsList);
+      
+      final variant = _variantForFilter(_selectedFilter);
+      final mappedPosts = postsList
+          .map((post) => _mapPostToCardData(post, variant))
           .whereType<PostCardData>()
           .toList();
 
@@ -1031,9 +1130,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     } catch (e) {
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message.isEmpty ? 'Failed to load feed.' : message)),
-      );
+      PalToast.show(context, message: message.isEmpty ? 'Failed to load feed.' : message);
     } finally {
       if (!mounted) return;
       setState(() {
@@ -1064,6 +1161,33 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       case 'New':
       default:
         return PostCardVariant.newPost;
+    }
+  }
+
+  /// Fetch profiles for unique user IDs from posts
+  Future<void> _fetchProfilesForPosts(List<Map<String, dynamic>> posts) async {
+    // Extract unique user IDs from posts
+    final Set<String> userIds = {};
+    for (final post in posts) {
+      final userId = post['user_id']?.toString();
+      if (userId != null && userId.isNotEmpty && !_profileCache.containsKey(userId)) {
+        userIds.add(userId);
+      }
+    }
+
+    // Fetch profiles for unique user IDs
+    for (final userId in userIds) {
+      try {
+        final profileData = await _profileService.getProfileDataByUserId(userId);
+        if (profileData != null && mounted) {
+          setState(() {
+            _profileCache[userId] = profileData;
+          });
+        }
+      } catch (e) {
+        debugPrint('ERROR: Failed to fetch profile for user $userId: $e');
+        // Continue fetching other profiles even if one fails
+      }
     }
   }
 
@@ -1109,8 +1233,45 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     final location =
         (post['location_name'] ?? locationMap?['name'] ?? '').toString();
 
-    final createdAt =
-        DateTime.tryParse(post['created_at']?.toString() ?? '');
+    // Get user_id from post
+    final userId = post['user_id']?.toString();
+    
+    // Fetch profile picture URL from cached profile data (via get-profile edge function)
+    String? profilePictureUrl;
+    String? initials;
+    
+    if (userId != null && _profileCache.containsKey(userId)) {
+      final cachedProfile = _profileCache[userId]!;
+      profilePictureUrl = cachedProfile.pictureUrl; // Uses profile_picture_url or avatar_url
+      initials = cachedProfile.initials;
+    }
+    
+    // Fallback to post data if cache doesn't have profile yet
+    if (profilePictureUrl == null || profilePictureUrl.isEmpty) {
+      profilePictureUrl = (post['profile_picture_url'] ?? 
+          profile?['profile_picture_url'] ?? 
+          post['avatar_url'] ?? 
+          profile?['avatar_url'])?.toString();
+    }
+    
+    // Generate initials from username if not available from cached profile
+    if (initials == null || initials.isEmpty) {
+      String generateInitials(String name) {
+        final cleanName = name.replaceAll('@', '').trim();
+        if (cleanName.isEmpty) return 'U';
+        final parts = cleanName.split(RegExp(r'[\s_]+'));
+        if (parts.length >= 2) {
+          return (parts.first[0] + parts.last[0]).toUpperCase();
+        } else if (cleanName.length >= 2) {
+          return cleanName.substring(0, 2).toUpperCase();
+        } else {
+          return cleanName[0].toUpperCase();
+        }
+      }
+      initials = generateInitials(username);
+    }
+
+    final createdAt = DateTime.tryParse(post['created_at']?.toString() ?? '');
 
     final commentsCount = _parseInt(
       post['comments_count'] ?? post['comment_count'] ?? post['replies_count'],
@@ -1134,6 +1295,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       commentsCount: commentsCount,
       votes: votes,
       avatarAsset: 'assets/feedPage/profile.png',
+      profilePictureUrl: profilePictureUrl,
+      initials: initials,
     );
   }
 
@@ -1508,10 +1671,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             borderColor: _slate200,
             showHeader: false,
             onSelected: (value) {
+              final isAllAreas = value == locationOptions.first;
+              debugPrint('DEBUG: Location selected: "$value" (isAllAreas: $isAllAreas)');
               setState(() {
                 // If "All Areas" is selected, set to null to clear filter
                 // Otherwise, set the selected location
-                _selectedLocation = (value == locationOptions.first) ? null : value;
+                _selectedLocation = isAllAreas ? null : value;
                 _isLocationDropdownOpen = false;
                 // Reset feed state and fetch with new filter
                 _remotePosts.clear();
@@ -1519,6 +1684,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 _hasMoreRemotePosts = true;
                 _isLoadingMore = false;
               });
+              debugPrint('DEBUG: Selected location set to: $_selectedLocation');
+              debugPrint('DEBUG: Location map contains key: ${_locationMap.containsKey(_selectedLocation)}');
               // Fetch feed with location filter applied
               _fetchFeed(reset: true);
             },
@@ -2054,7 +2221,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: _buildFirstPostButton(() {
-              showCreatePostModal(context);
+              showCreatePostModal(context).then((postCreated) {
+                if (postCreated == true && mounted) {
+                  _refreshFeed();
+                  _scrollToTop();
+                }
+              });
             }),
           ),
         ],

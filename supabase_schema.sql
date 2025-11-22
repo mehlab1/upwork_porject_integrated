@@ -12,6 +12,22 @@ CREATE TABLE public.account_deactivations (
   CONSTRAINT account_deactivations_pkey PRIMARY KEY (id),
   CONSTRAINT account_deactivations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.blocked_content_attempts (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  content_type text NOT NULL CHECK (content_type = ANY (ARRAY['post'::text, 'comment'::text])),
+  content_text text NOT NULL,
+  moderation_score numeric NOT NULL CHECK (moderation_score >= 0::numeric AND moderation_score <= 1::numeric),
+  moderation_attributes jsonb NOT NULL DEFAULT '{}'::jsonb,
+  blocked_reason text NOT NULL,
+  ip_address text,
+  user_agent text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  violation_categories ARRAY DEFAULT ARRAY[]::violation_category[],
+  primary_violation USER-DEFINED,
+  CONSTRAINT blocked_content_attempts_pkey PRIMARY KEY (id),
+  CONSTRAINT blocked_content_attempts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
 CREATE TABLE public.categories (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   name character varying NOT NULL UNIQUE,
@@ -65,6 +81,12 @@ CREATE TABLE public.comments (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   report_count integer NOT NULL DEFAULT 0,
+  moderation_score numeric DEFAULT 0 CHECK (moderation_score >= 0::numeric AND moderation_score <= 1::numeric),
+  moderation_attributes jsonb DEFAULT '{}'::jsonb,
+  moderation_flagged boolean DEFAULT false,
+  moderation_checked_at timestamp with time zone,
+  violation_categories ARRAY DEFAULT ARRAY[]::violation_category[],
+  primary_violation USER-DEFINED,
   CONSTRAINT comments_pkey PRIMARY KEY (id),
   CONSTRAINT comments_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
   CONSTRAINT comments_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
@@ -98,6 +120,7 @@ CREATE TABLE public.locations (
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  display_order integer DEFAULT 0,
   CONSTRAINT locations_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.mentions (
@@ -114,6 +137,22 @@ CREATE TABLE public.mentions (
   CONSTRAINT mentions_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id),
   CONSTRAINT mentions_mentioned_user_id_fkey FOREIGN KEY (mentioned_user_id) REFERENCES public.profiles(id),
   CONSTRAINT mentions_mentioner_user_id_fkey FOREIGN KEY (mentioner_user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.notifications_history (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  notification_type USER-DEFINED NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  data jsonb,
+  sent_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_read boolean NOT NULL DEFAULT false,
+  read_at timestamp with time zone,
+  clicked boolean NOT NULL DEFAULT false,
+  clicked_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT notifications_history_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_history_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.otp_verifications (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -177,6 +216,12 @@ CREATE TABLE public.posts (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   hot_topic_id uuid,
   is_monthly_spotlight boolean DEFAULT false,
+  moderation_score numeric DEFAULT 0 CHECK (moderation_score >= 0::numeric AND moderation_score <= 1::numeric),
+  moderation_attributes jsonb DEFAULT '{}'::jsonb,
+  moderation_flagged boolean DEFAULT false,
+  moderation_checked_at timestamp with time zone,
+  violation_categories ARRAY DEFAULT ARRAY[]::violation_category[],
+  primary_violation USER-DEFINED,
   CONSTRAINT posts_pkey PRIMARY KEY (id),
   CONSTRAINT posts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
   CONSTRAINT posts_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id),
@@ -207,8 +252,28 @@ CREATE TABLE public.profiles (
   is_early_adopter boolean DEFAULT false,
   early_adopter_number integer,
   badge_assigned_at timestamp with time zone,
+  display_name text,
+  avatar_url text,
+  location_id uuid,
+  account_type text DEFAULT 'personal'::text CHECK (account_type = ANY (ARRAY['personal'::text, 'business'::text])),
+  badges jsonb DEFAULT '[]'::jsonb,
+  is_new_user boolean DEFAULT true,
+  reward_points integer DEFAULT 0,
+  total_hot_posts integer DEFAULT 0,
+  total_top_posts integer DEFAULT 0,
+  reports_on_posts_count integer DEFAULT 0,
+  reports_on_comments_count integer DEFAULT 0,
+  interests jsonb DEFAULT '[]'::jsonb,
+  terms_version_accepted integer DEFAULT 1,
+  privacy_version_accepted integer DEFAULT 1,
+  last_seen timestamp with time zone DEFAULT now(),
+  warnings_count integer DEFAULT 0,
+  last_synced_at timestamp with time zone,
+  referral_code text UNIQUE,
+  referred_by text,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
-  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT profiles_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id)
 );
 CREATE TABLE public.user_feedback (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
