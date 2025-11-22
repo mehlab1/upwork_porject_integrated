@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
 import 'package:pal/widgets/pal_push_notification.dart';
+import 'package:pal/widgets/pal_toast.dart';
 
 import '../../services/post_service.dart';
 import '../../services/profile_service.dart';
@@ -129,6 +131,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   bool _shouldShowFirstPostCard = false;
   bool _isPageLoading = true;
   bool _isInitialPostsLoading = true;
+  bool _isFirstLoad = true; // Track if this is the very first load
   final PostService _postService = PostService();
   final ProfileService _profileService = ProfileService();
   
@@ -262,14 +265,21 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         'User post check: userId=$userId, hasPosts=$hasPosts, postsFound=${postsList.length}',
       );
 
-      // If user has 0 posts, show welcome modal and first post card
-      // If user has posts, don't show them
+      // Check if welcome modal has already been shown for this user
+      final prefs = await SharedPreferences.getInstance();
+      final welcomeModalKey = 'welcome_modal_shown_$userId';
+      final hasShownWelcomeModal = prefs.getBool(welcomeModalKey) ?? false;
+
+      // If user has 0 posts and hasn't seen welcome modal, show welcome modal and first post card
+      // If user has posts or has already seen the modal, don't show them
+      final shouldShowWelcome = !hasPosts && !hasShownWelcomeModal;
+      
       setState(() {
-        _shouldShowWelcomeModal = !hasPosts;
+        _shouldShowWelcomeModal = shouldShowWelcome;
         _shouldShowFirstPostCard = !hasPosts;
       });
 
-      // Show welcome modal if user has 0 posts (based on SQL query result)
+      // Show welcome modal if user has 0 posts and hasn't seen it before
       // Use the SQL logic result directly, not widget.showWelcomeModal
       if (_shouldShowWelcomeModal) {
         WidgetsBinding.instance.addPostFrameCallback(
@@ -411,13 +421,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       );
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            message.isEmpty ? 'Failed to load spotlight posts.' : message,
-          ),
-        ),
-      );
+      PalToast.show(context, message: message.isEmpty ? 'Failed to load spotlight posts.' : message);
       setState(() {
         _isLoadingSpotlightPosts = false;
         _spotlightPosts = [];
@@ -443,11 +447,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _initializeVisibleLimit(),
     );
+    
+    // Seed posts are always available, so we can show content immediately
+    // Only show full loading screen on very first app load
+    // For subsequent navigations, show content with overlay
     Future.microtask(() async {
       await Future<void>.delayed(const Duration(milliseconds: 650));
       if (!mounted) return;
       setState(() {
         _isPageLoading = false;
+        _isFirstLoad = false;
       });
       // Show a demo push notification once the page finishes initial load (testing only)
       // You can remove this after integrating with real notifications.
@@ -599,7 +608,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () {
-                          showCreatePostModal(context);
+                          showCreatePostModal(context).then((postCreated) {
+                            if (postCreated == true && mounted) {
+                              _refreshFeed();
+                              _scrollToTop();
+                            }
+                          });
                         },
                         borderRadius: BorderRadius.circular(14),
                         child: Padding(
@@ -675,11 +689,27 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       ),
     );
     
-    // Show loading overlay immediately while loading
-    if (_isPageLoading || _isInitialPostsLoading) {
+    // Seed posts are always available, so we always have content to show
+    // Show content immediately with loading overlay on top when loading (prevents white screen flash)
+    // Only show full loading screen on very first app load when truly no content exists
+    final hasContent = _seedPosts.isNotEmpty || _remotePosts.isNotEmpty;
+    final shouldShowFullLoading = (_isPageLoading || _isInitialPostsLoading) && _isFirstLoad && !hasContent;
+    
+    if (shouldShowFullLoading) {
       return const Scaffold(
         backgroundColor: Colors.white,
         body: PalLoadingOverlay(),
+      );
+    }
+    
+    // Always show content with loading overlay on top if still loading (for smooth navigation)
+    // This prevents white screen when returning to home tab
+    if (_isPageLoading || _isInitialPostsLoading) {
+      return Stack(
+        children: [
+          scaffold,
+          const PalLoadingOverlay(),
+        ],
       );
     }
     
@@ -689,6 +719,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   Future<void> _showWelcomeModal() async {
     if (!_shouldShowWelcomeModal || !mounted) return;
     _shouldShowWelcomeModal = false;
+
+    // Save flag to SharedPreferences that welcome modal has been shown
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final welcomeModalKey = 'welcome_modal_shown_${user.id}';
+      await prefs.setBool(welcomeModalKey, true);
+    }
 
     final shouldCreatePost = await showDialog<bool>(
       context: context,
@@ -708,7 +746,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     );
 
     if (shouldCreatePost == true && mounted) {
-      showCreatePostModal(context);
+      showCreatePostModal(context).then((postCreated) {
+        if (postCreated == true && mounted) {
+          _refreshFeed();
+          _scrollToTop();
+        }
+      });
     }
   }
 
@@ -918,13 +961,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              message.isEmpty ? 'Failed to load hottest post.' : message,
-            ),
-          ),
-        );
+        PalToast.show(context, message: message.isEmpty ? 'Failed to load hottest post.' : message);
       } finally {
         if (!mounted) return;
         setState(() {
@@ -993,13 +1030,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       } catch (e) {
         if (!mounted) return;
         final message = e.toString().replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              message.isEmpty ? 'Failed to load top post.' : message,
-            ),
-          ),
-        );
+        PalToast.show(context, message: message.isEmpty ? 'Failed to load top post.' : message);
       } finally {
         if (!mounted) return;
         setState(() {
@@ -1140,11 +1171,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     } catch (e) {
       if (!mounted) return;
       final message = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message.isEmpty ? 'Failed to load feed.' : message),
-        ),
-      );
+      PalToast.show(context, message: message.isEmpty ? 'Failed to load feed.' : message);
     } finally {
       if (!mounted) return;
       setState(() {
@@ -2243,7 +2270,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: _buildFirstPostButton(() {
-              showCreatePostModal(context);
+              showCreatePostModal(context).then((postCreated) {
+                if (postCreated == true && mounted) {
+                  _refreshFeed();
+                  _scrollToTop();
+                }
+              });
             }),
           ),
         ],

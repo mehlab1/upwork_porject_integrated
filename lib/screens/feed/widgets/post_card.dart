@@ -15,6 +15,7 @@ import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
 
 import '../../../services/post_service.dart';
+import '../../../services/profile_service.dart';
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 
@@ -265,6 +266,8 @@ class _PostCardState extends State<PostCard> {
   final List<String> _recentCommentErrors = [];
 
   final PostService _postService = PostService();
+  final ProfileService _profileService = ProfileService();
+  final Map<String, ProfileData> _commentProfileCache = {};
 
   String? _currentUsername;
 
@@ -376,6 +379,31 @@ class _PostCardState extends State<PostCard> {
       if (!mounted) return;
 
       final commentsList = response['comments'] as List<dynamic>? ?? [];
+      
+      // Extract unique user IDs from comments for profile fetching
+      final Set<String> userIds = {};
+      for (final comment in commentsList) {
+        if (comment is Map<String, dynamic>) {
+          final userId = comment['user_id']?.toString();
+          if (userId != null && userId.isNotEmpty) {
+            userIds.add(userId);
+          }
+          // Also check replies
+          final replies = comment['replies'] as List<dynamic>? ?? [];
+          for (final reply in replies) {
+            if (reply is Map<String, dynamic>) {
+              final replyUserId = reply['user_id']?.toString();
+              if (replyUserId != null && replyUserId.isNotEmpty) {
+                userIds.add(replyUserId);
+              }
+            }
+          }
+        }
+      }
+
+      // Fetch profiles for comments that don't have profile picture in response
+      await _fetchProfilesForComments(userIds);
+
       final mappedComments = commentsList
           .map((comment) => _mapCommentFromResponse(comment))
           .whereType<CommentData>()
@@ -392,6 +420,24 @@ class _PostCardState extends State<PostCard> {
     } catch (e) {
       debugPrint('Failed to load comments: $e');
       // Don't show error to user - just log it
+    }
+  }
+
+  /// Fetch profiles for comment authors if not already cached
+  Future<void> _fetchProfilesForComments(Set<String> userIds) async {
+    for (final userId in userIds) {
+      // Skip if already cached
+      if (_commentProfileCache.containsKey(userId)) continue;
+
+      try {
+        final profileData = await _profileService.getProfileDataByUserId(userId);
+        if (profileData != null && mounted) {
+          _commentProfileCache[userId] = profileData;
+        }
+      } catch (e) {
+        debugPrint('ERROR: Failed to fetch profile for comment user $userId: $e');
+        // Continue fetching other profiles even if one fails
+      }
     }
   }
 
@@ -424,25 +470,41 @@ class _PostCardState extends State<PostCard> {
         .toList();
 
     // Extract profile picture URL
-    final profilePictureUrl = (commentData['profile_picture_url'] ?? 
+    String? profilePictureUrl = (commentData['profile_picture_url'] ?? 
         profile?['profile_picture_url'] ?? 
         commentData['avatar_url'] ?? 
         profile?['avatar_url'])?.toString();
 
-    // Get initials from username
-    String generateInitials(String name) {
-      final cleanName = name.replaceAll('@', '').trim();
-      if (cleanName.isEmpty) return 'U';
-      final parts = cleanName.split(RegExp(r'[\s_]+'));
-      if (parts.length >= 2) {
-        return (parts.first[0] + parts.last[0]).toUpperCase();
-      } else if (cleanName.length >= 2) {
-        return cleanName.substring(0, 2).toUpperCase();
-      } else {
-        return cleanName[0].toUpperCase();
-      }
+    // Get user_id to fetch profile if picture not in comment data
+    final userId = commentData['user_id']?.toString();
+    String? initials;
+
+    // If no profile picture in comment data, try fetching from profile cache
+    if ((profilePictureUrl == null || profilePictureUrl.isEmpty) && 
+        userId != null && 
+        _commentProfileCache.containsKey(userId)) {
+      final cachedProfile = _commentProfileCache[userId]!;
+      profilePictureUrl = cachedProfile.pictureUrl;
+      initials = cachedProfile.initials;
     }
-    final initial = generateInitials(username);
+
+    // Get initials from username if not available from cached profile
+    if (initials == null || initials.isEmpty) {
+      String generateInitials(String name) {
+        final cleanName = name.replaceAll('@', '').trim();
+        if (cleanName.isEmpty) return 'U';
+        final parts = cleanName.split(RegExp(r'[\s_]+'));
+        if (parts.length >= 2) {
+          return (parts.first[0] + parts.last[0]).toUpperCase();
+        } else if (cleanName.length >= 2) {
+          return cleanName.substring(0, 2).toUpperCase();
+        } else {
+          return cleanName[0].toUpperCase();
+        }
+      }
+      final initial = generateInitials(username);
+      initials = initial;
+    }
 
     return CommentData(
       id: id,
@@ -452,7 +514,7 @@ class _PostCardState extends State<PostCard> {
       upvotes: upvotes,
       downvotes: downvotes,
       profilePictureUrl: profilePictureUrl,
-      initials: initial,
+      initials: initials,
       replies: replies,
       status: status,
     );

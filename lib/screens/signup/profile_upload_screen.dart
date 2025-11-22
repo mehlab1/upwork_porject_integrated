@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../otp/otp_verification_screen.dart';
+import '../../services/profile_picture_service.dart';
+import '../../widgets/pal_toast.dart';
 
 class ProfileUploadScreen extends StatefulWidget {
   const ProfileUploadScreen({super.key, required this.email});
@@ -22,8 +25,11 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
   static const Color _slate50 = Color(0xFFF8FAFC);
   static const Color _slate100 = Color(0xFFF1F5F9);
 
-  File? _selectedImage;
+  XFile? _selectedImageFile;
+  Uint8List? _selectedImageBytes;
   final ImagePicker _picker = ImagePicker();
+  final ProfilePictureService _profilePictureService = ProfilePictureService();
+  bool _isUploading = false;
 
   Future<void> _pickImage() async {
     try {
@@ -35,28 +41,93 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
       );
 
       if (image != null) {
+        // Read the image bytes directly from XFile
+        final Uint8List imageBytes = await image.readAsBytes();
         setState(() {
-          _selectedImage = File(image.path);
+          _selectedImageFile = image;
+          _selectedImageBytes = imageBytes;
         });
       }
     } catch (e) {
       // Handle error
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error picking image: $e')));
+        PalToast.show(context, message: 'Error picking image: $e');
       }
     }
   }
 
-  void _handleFinish() {
-    // Navigate to OTP verification screen
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => OtpVerificationScreen(email: widget.email),
-      ),
-    );
+  Future<void> _handleFinish() async {
+    // If no image selected, navigate directly
+    if (_selectedImageFile == null || _selectedImageBytes == null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OtpVerificationScreen(email: widget.email),
+        ),
+      );
+      return;
+    }
+
+    // Upload profile picture if image is selected
+    setState(() {
+      _isUploading = true;
+    });
+
+    try {
+      await _profilePictureService.uploadProfilePictureFromBytes(
+        _selectedImageBytes!,
+        _selectedImageFile!.name,
+        mimeType: _selectedImageFile!.mimeType,
+      );
+      
+      if (!mounted) return;
+
+      // Navigate to OTP verification screen on success
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OtpVerificationScreen(email: widget.email),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      
+      setState(() {
+        _isUploading = false;
+      });
+
+      // Show error but still allow navigation
+      PalToast.show(context, message: 'Failed to upload profile picture: ${e.toString().replaceFirst('Exception: ', '')}');
+      
+      // Show dialog to continue anyway
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Upload Failed'),
+            content: const Text('Would you like to continue without uploading a profile picture?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => OtpVerificationScreen(email: widget.email),
+                    ),
+                  );
+                },
+                child: const Text('Continue Anyway'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   void _handleSkip() {
@@ -131,10 +202,10 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                               shape: BoxShape.circle,
                               border: Border.all(color: _slate100, width: 4),
                             ),
-                            child: _selectedImage != null
+                            child: _selectedImageBytes != null
                                 ? ClipOval(
-                                    child: Image.file(
-                                      _selectedImage!,
+                                    child: Image.memory(
+                                      _selectedImageBytes!,
                                       fit: BoxFit.cover,
                                     ),
                                   )
@@ -299,7 +370,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                         width: 400,
                         height: 48,
                         child: ElevatedButton(
-                          onPressed: _handleFinish,
+                          onPressed: _isUploading ? null : _handleFinish,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _primaryBlue,
                             shape: RoundedRectangleBorder(
@@ -307,16 +378,27 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                             ),
                             elevation: 0,
                           ),
-                          child: Text(
-                            'Finish & Proceed',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500, // Rubik Medium
-                              color: Colors.white,
-                              fontFamily: 'Rubik',
-                              letterSpacing: 0,
-                            ),
-                          ),
+                          child: _isUploading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'Finish & Proceed',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500, // Rubik Medium
+                                    color: Colors.white,
+                                    fontFamily: 'Rubik',
+                                    letterSpacing: 0,
+                                  ),
+                                ),
                         ),
                       ),
 
@@ -327,7 +409,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                         width: 400,
                         height: 48,
                         child: OutlinedButton(
-                          onPressed: _handleSkip,
+                          onPressed: _isUploading ? null : _handleSkip,
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(
                               color: Colors.black,

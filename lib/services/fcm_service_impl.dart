@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// FCM Service for handling push notifications
@@ -209,39 +211,64 @@ class FCMService {
     }
   }
 
-  /// Save FCM token to Supabase
+  /// Register device token with Supabase via Edge Function
   /// 
-  /// Note: This requires a 'push_notification_devices' table in Supabase with:
-  /// - user_id (uuid, references auth.users)
-  /// - device_token (text)
-  /// - device_type (text: 'android' or 'ios')
-  /// - is_active (boolean)
-  /// - created_at, updated_at (timestamp)
+  /// Calls the register-device Edge Function to register the FCM token
   Future<void> _saveTokenToSupabase(String token) async {
     try {
       final supabase = Supabase.instance.client;
       final userId = supabase.auth.currentUser?.id;
 
       if (userId == null) {
-        debugPrint('[FCMService] No user logged in, skipping token save');
+        debugPrint('[FCMService] No user logged in, skipping token registration');
         return;
       }
 
-      // Save token to push_notification_devices table
-      // Upsert based on device_token to handle token refreshes
-      await supabase.from('push_notification_devices').upsert({
-        'user_id': userId,
-        'device_token': token,
-        'device_type': Platform.isAndroid ? 'android' : 'ios',
-        'is_active': true,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'device_token');
+      // Get session token and anon key
+      final sessionToken = supabase.auth.currentSession?.accessToken;
+      final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+      
+      // Determine device type and name
+      final deviceType = Platform.isAndroid ? 'android' : 'ios';
+      final deviceName = '${Platform.operatingSystem} Device';
 
-      debugPrint('[FCMService] Token saved to Supabase');
+      // Call register-device Edge Function
+      final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/register-device');
+      
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      };
+      
+      if (sessionToken != null) {
+        headers['Authorization'] = 'Bearer $sessionToken';
+      }
+
+      final body = jsonEncode({
+        'device_token': token,
+        'device_type': deviceType,
+        'device_name': deviceName,
+      });
+
+      debugPrint('[FCMService] Registering device token with Supabase...');
+      debugPrint('[FCMService] Device type: $deviceType, Device name: $deviceName');
+
+      final response = await http.post(
+        uri,
+        headers: headers,
+        body: body,
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('[FCMService] Device token registered successfully');
+      } else {
+        debugPrint('[FCMService] Failed to register device token. Status: ${response.statusCode}');
+        debugPrint('[FCMService] Response: ${response.body}');
+        // Don't throw - token registration failure shouldn't break the app
+      }
     } catch (e) {
-      debugPrint('[FCMService] Error saving token to Supabase: $e');
-      debugPrint('[FCMService] Make sure the push_notification_devices table exists in Supabase');
-      // Don't throw - token saving failure shouldn't break the app
+      debugPrint('[FCMService] Error registering device token: $e');
+      // Don't throw - token registration failure shouldn't break the app
     }
   }
 

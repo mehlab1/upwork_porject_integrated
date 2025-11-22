@@ -10,6 +10,7 @@ import 'screens/otp/otp_verification_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/settings/settings_screen.dart';
 import 'screens/settings/your_posts_screen.dart';
+import 'screens/settings/upvoted_posts_screen.dart';
 import 'screens/settings/community_guidelines_screen.dart';
 import 'services/auth_state_service.dart';
 import 'services/post_service.dart';
@@ -249,6 +250,7 @@ class _PalAppState extends State<PalApp> {
         '/notifications': (context) => const NotificationsScreen(),
         '/settings': (context) => const SettingsScreen(),
         YourPostsScreen.routeName: (context) => const YourPostsScreen(),
+        UpvotedPostsScreen.routeName: (context) => const UpvotedPostsScreen(),
         CommunityGuidelinesScreen.routeName: (context) =>
             const CommunityGuidelinesScreen(),
       },

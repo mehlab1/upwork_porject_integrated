@@ -125,6 +125,91 @@ class ProfileService {
       return null;
     }
   }
+
+  /// Update username using the update-username edge function
+  /// 
+  /// Parameters: username (String) - new username (3-50 chars, alphanumeric and underscore only)
+  /// Returns: Map with success (bool), message (String), and username (String)
+  /// Throws Exception on error (including 30-day cooldown)
+  Future<Map<String, dynamic>> updateUsername(String username) async {
+    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/update-username');
+    try {
+      print('=== DEBUG: Updating username ===');
+      final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
+      final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      };
+      if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
+
+      final body = jsonEncode({'username': username});
+      final resp = await http.post(uri, headers: headers, body: body);
+
+      print('=== RESPONSE FROM EDGE FUNCTION (update-username) ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Body: ${resp.body}');
+      print('===================================');
+
+      final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
+
+      if (resp.statusCode >= 400) {
+        final errorMessage = parsed['error'] ?? parsed['message'] ?? 'Server error';
+        print('ERROR: update-username returned ${resp.statusCode}: $errorMessage');
+        // Store status code in the parsed response for error handling
+        parsed['_statusCode'] = resp.statusCode;
+        parsed['_error'] = errorMessage;
+        throw Exception(errorMessage);
+      }
+
+      return parsed;
+    } catch (e) {
+      print('ERROR: Failed to update username: $e');
+      rethrow;
+    }
+  }
+
+  /// Update birthday using the update-birthday edge function
+  /// 
+  /// Parameters: birthday (String) - birthday in YYYY-MM-DD format
+  /// Returns: Map with success (bool), message (String), and birthday (String)
+  /// Throws Exception on error
+  Future<Map<String, dynamic>> updateBirthday(String birthday) async {
+    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/update-birthday');
+    try {
+      print('=== DEBUG: Updating birthday ===');
+      final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
+      final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      };
+      if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
+
+      final body = jsonEncode({'birthday': birthday});
+      final resp = await http.post(uri, headers: headers, body: body);
+
+      print('=== RESPONSE FROM EDGE FUNCTION (update-birthday) ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Body: ${resp.body}');
+      print('===================================');
+
+      final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
+
+      if (resp.statusCode >= 400) {
+        final errorMessage = parsed['error'] ?? parsed['message'] ?? 'Server error';
+        print('ERROR: update-birthday returned ${resp.statusCode}: $errorMessage');
+        throw Exception(errorMessage);
+      }
+
+      return parsed;
+    } catch (e) {
+      print('ERROR: Failed to update birthday: $e');
+      rethrow;
+    }
+  }
 }
 
 /// Structured profile data model

@@ -50,17 +50,31 @@ android {
                 create("release") {
                     this.keyAlias = keyAlias
                     this.keyPassword = keyPassword
-                    this.storeFile = file(storeFile)
+                    // Resolve keystore file path - try relative to app module first, then root
+                    var keystoreFile = file(storeFile)
+                    if (!keystoreFile.exists()) {
+                        keystoreFile = rootProject.file("app/$storeFile")
+                    }
+                    if (!keystoreFile.exists()) {
+                        throw GradleException("Keystore file not found. Tried:\n  - ${file(storeFile).absolutePath}\n  - ${rootProject.file("app/$storeFile").absolutePath}\n\nMake sure upload-keystore.jks exists in android/app/ directory.")
+                    }
+                    this.storeFile = keystoreFile
                     this.storePassword = storePassword
                 }
+            } else {
+                throw GradleException("Missing keystore properties in key.properties. Required: keyAlias, keyPassword, storeFile, storePassword")
             }
         }
     }
 
     buildTypes {
         release {
-            if (keystorePropertiesFile.exists() && signingConfigs.findByName("release") != null) {
-                signingConfig = signingConfigs.getByName("release")
+            // Use release signing config if it exists (when key.properties is present)
+            val releaseSigningConfig = signingConfigs.findByName("release")
+            if (releaseSigningConfig != null) {
+                signingConfig = releaseSigningConfig
+            } else {
+                throw GradleException("Release signing config not found! Make sure android/key.properties exists with valid keystore information.")
             }
             isMinifyEnabled = true
             isShrinkResources = true
@@ -86,10 +100,8 @@ dependencies {
     // FCM for push notifications
     implementation("com.google.firebase:firebase-messaging")
     
-    // Play Core library (required for Flutter deferred components)
-    // Note: Flutter framework references these classes even if not using deferred components
-    implementation("com.google.android.play:core:1.10.3")
-    implementation("com.google.android.play:core-ktx:1.8.1")
+    // Note: Play Core libraries removed - they are incompatible with Android 14 (SDK 34)
+    // They were only needed for Flutter deferred components, which this app doesn't use
     
     // Core library desugaring for Java 8+ features on older Android versions
     // flutter_local_notifications 19.5.0 requires version 2.1.4 or above

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart' as svg;
@@ -16,8 +17,12 @@ import 'package:pal/services/auth_remember_me_service.dart';
 import 'package:pal/services/auth_deactivate_service.dart';
 import 'package:pal/services/fcm_service.dart';
 import 'package:pal/services/profile_service.dart';
+import 'package:pal/services/profile_picture_service.dart';
+import 'package:pal/services/post_service.dart';
+import 'package:pal/services/auth_service.dart';
 import 'package:pal/widgets/profile_avatar_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'upvoted_posts_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -33,13 +38,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
   final AuthDeactivateService _deactivateService = AuthDeactivateService();
   final ProfileService _profileService = ProfileService();
+  final PostService _postService = PostService();
+  final AuthService _authService = AuthService();
   ProfileData? _profileData;
   bool _isLoadingProfile = false;
+  bool _hasUpvotedPosts = false;
+  bool _isCheckingUpvotedPosts = false;
 
   @override
   void initState() {
     super.initState();
     _loadProfileData();
+    _checkUpvotedPosts();
     Future.microtask(() async {
       await Future<void>.delayed(const Duration(milliseconds: 600));
       if (!mounted) return;
@@ -198,10 +208,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-    controller.dispose();
+    
     if (result == true && mounted) {
-      PalToast.show(context, message: 'Username updated');
+      final username = controller.text.trim();
+      if (username.isEmpty) {
+        controller.dispose();
+        return;
+      }
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      try {
+        final response = await _profileService.updateUsername(username);
+        
+        if (!mounted) {
+          controller.dispose();
+          return;
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        if (response['success'] == true) {
+          // Reload profile data to get updated username
+          await _loadProfileData();
+          
+          PalToast.show(context, message: response['message'] ?? 'Username updated successfully');
+        } else {
+          final errorMessage = response['error'] ?? 'Failed to update username';
+          PalToast.show(context, message: errorMessage);
+        }
+      } catch (e) {
+        if (!mounted) {
+          controller.dispose();
+          return;
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        // Handle specific error cases
+        final errorMessage = e.toString().replaceFirst('Exception: ', '');
+        String displayMessage = errorMessage;
+        
+        // Check for specific error messages from the API
+        final lowerError = errorMessage.toLowerCase();
+        if (lowerError.contains('30') || lowerError.contains('cooldown') || lowerError.contains('days')) {
+          displayMessage = 'You can only change your username once every 30 days. Please try again later.';
+        } else if (lowerError.contains('already taken') || lowerError.contains('taken')) {
+          displayMessage = 'This username is already taken. Please choose another one.';
+        } else if (lowerError.contains('between 3 and 50') || lowerError.contains('3 and 50')) {
+          displayMessage = 'Username must be between 3 and 50 characters.';
+        } else if (lowerError.contains('letters, numbers') || lowerError.contains('alphanumeric')) {
+          displayMessage = 'Username can only contain letters, numbers, and underscores.';
+        } else if (lowerError.contains('missing') || lowerError.contains('required')) {
+          displayMessage = 'Please enter a username.';
+        }
+
+        PalToast.show(context, message: displayMessage);
+      }
     }
+    
+    controller.dispose();
   }
 
   Future<void> _showEditBirthdayDialog(BuildContext context) async {
@@ -223,10 +298,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-    controller.dispose();
+    
     if (result == true && mounted) {
-      PalToast.show(context, message: 'Birthday updated');
+      final birthday = controller.text.trim();
+      if (birthday.isEmpty) {
+        controller.dispose();
+        return;
+      }
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      try {
+        final response = await _profileService.updateBirthday(birthday);
+        
+        if (!mounted) {
+          controller.dispose();
+          return;
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        if (response['success'] == true) {
+          // Reload profile data to get updated birthday
+          await _loadProfileData();
+          
+          PalToast.show(context, message: response['message'] ?? 'Birthday updated successfully');
+        } else {
+          final errorMessage = response['error'] ?? 'Failed to update birthday';
+          PalToast.show(context, message: errorMessage);
+        }
+      } catch (e) {
+        if (!mounted) {
+          controller.dispose();
+          return;
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        // Handle specific error cases
+        final errorMessage = e.toString().replaceFirst('Exception: ', '');
+        String displayMessage = errorMessage;
+        
+        // Check for specific error messages from the API
+        final lowerError = errorMessage.toLowerCase();
+        if (lowerError.contains('yyyy-mm-dd') || lowerError.contains('format')) {
+          displayMessage = 'Birthday must be in YYYY-MM-DD format.';
+        } else if (lowerError.contains('future')) {
+          displayMessage = 'Birthday cannot be in the future.';
+        } else if (lowerError.contains('13 years') || lowerError.contains('at least 13')) {
+          displayMessage = 'You must be at least 13 years old.';
+        } else if (lowerError.contains('120 years') || lowerError.contains('120')) {
+          displayMessage = 'Birthday must be within the last 120 years.';
+        } else if (lowerError.contains('missing') || lowerError.contains('required')) {
+          displayMessage = 'Please select a birthday.';
+        }
+
+        PalToast.show(context, message: displayMessage);
+      }
     }
+    
+    controller.dispose();
   }
 
   Future<void> _showChangePasswordDialog(BuildContext context) async {
@@ -250,12 +390,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
+    
+    if (result == true && mounted) {
+      final currentPassword = currentController.text.trim();
+      final newPassword = newController.text.trim();
+      final confirmPassword = confirmController.text.trim();
+
+      // Validate passwords
+      if (currentPassword.isEmpty) {
+        PalToast.show(context, message: 'Please enter your current password');
+        currentController.dispose();
+        newController.dispose();
+        confirmController.dispose();
+        return;
+      }
+
+      if (newPassword.isEmpty) {
+        PalToast.show(context, message: 'Please enter a new password');
+        currentController.dispose();
+        newController.dispose();
+        confirmController.dispose();
+        return;
+      }
+
+      if (newPassword != confirmPassword) {
+        PalToast.show(context, message: 'New passwords do not match');
+        currentController.dispose();
+        newController.dispose();
+        confirmController.dispose();
+        return;
+      }
+
+      // Get current user's email
+      final currentUser = _authService.currentUser;
+      if (currentUser?.email == null) {
+        PalToast.show(context, message: 'Unable to get user email. Please try again.');
+        currentController.dispose();
+        newController.dispose();
+        confirmController.dispose();
+        return;
+      }
+
+      final userEmail = currentUser!.email!;
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      try {
+        // Verify current password by attempting sign-in
+        // This ensures the user knows their current password
+        final signInResponse = await _authService.signIn(email: userEmail, password: currentPassword);
+        
+        // Ensure we have a valid session after sign-in
+        if (signInResponse.session == null) {
+          PalToast.show(context, message: 'Failed to verify current password. Please try again.');
+          Navigator.of(context).pop(); // Close loading
+          currentController.dispose();
+          newController.dispose();
+          confirmController.dispose();
+          return;
+        }
+        
+        // Small delay to ensure session is fully established
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        // Send OTP to user's email
+        await _authService.forgotPassword(email: userEmail);
+        
+        if (!mounted) {
+          currentController.dispose();
+          newController.dispose();
+          confirmController.dispose();
+          return;
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        // Show OTP input dialog
+        final otpResult = await _showOtpInputDialog(context, userEmail, newPassword);
+        
+        if (otpResult == true && mounted) {
+          PalToast.show(context, message: 'Password reset successfully');
+        }
+      } catch (e) {
+        if (!mounted) {
+          currentController.dispose();
+          newController.dispose();
+          confirmController.dispose();
+          return;
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        final errorMessage = e.toString().replaceFirst('Exception: ', '').replaceFirst('AuthException: ', '');
+        PalToast.show(context, message: errorMessage.isNotEmpty ? errorMessage : 'Failed to send password reset code');
+      }
+    }
+    
     currentController.dispose();
     newController.dispose();
     confirmController.dispose();
-    if (result == true && mounted) {
-      PalToast.show(context, message: 'Password reset code sent');
-    }
+  }
+
+  Future<bool?> _showOtpInputDialog(BuildContext context, String email, String newPassword) async {
+    final otpController = TextEditingController();
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: _OtpInputDialog(
+            controller: otpController,
+            onConfirm: () async {
+              final otpCode = otpController.text.trim();
+              if (otpCode.isEmpty || otpCode.length != 6) {
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('Please enter a valid 6-digit OTP code')),
+                  );
+                }
+                return;
+              }
+
+              // Show loading
+              showDialog(
+                context: dialogContext,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+
+              try {
+                await _authService.resetPassword(
+                  email: email,
+                  otpCode: otpCode,
+                  newPassword: newPassword,
+                );
+
+                if (!dialogContext.mounted) return;
+
+                // Close loading and OTP dialog
+                Navigator.of(dialogContext).pop(); // Close loading
+                Navigator.of(dialogContext).pop(true); // Close OTP dialog with success
+              } catch (e) {
+                if (!dialogContext.mounted) return;
+
+                // Close loading
+                Navigator.of(dialogContext).pop();
+
+                final errorMessage = e.toString().replaceFirst('Exception: ', '').replaceFirst('AuthException: ', '');
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(errorMessage.isNotEmpty ? errorMessage : 'Failed to reset password'),
+                  ),
+                );
+              }
+            },
+            onCancel: () => Navigator.of(dialogContext).pop(false),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showShareFeedbackDialog(BuildContext context) async {
@@ -295,6 +601,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (result == true && mounted) {
+      // Reload profile data after successful update
+      _loadProfileData();
       PalToast.show(context, message: 'Profile picture updated');
     }
   }
@@ -398,12 +706,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _checkUpvotedPosts() async {
+    setState(() {
+      _isCheckingUpvotedPosts = true;
+    });
+
+    try {
+      final response = await _postService.getUpvotedPosts(limit: 1, offset: 0);
+      if (!mounted) return;
+      
+      final posts = response['posts'] as List<dynamic>? ?? [];
+      final totalUpvoted = response['total_upvoted_posts'] as int? ?? 0;
+      
+      setState(() {
+        _hasUpvotedPosts = totalUpvoted > 0 || posts.isNotEmpty;
+        _isCheckingUpvotedPosts = false;
+      });
+    } catch (e) {
+      print('Error checking upvoted posts: $e');
+      if (!mounted) return;
+      setState(() {
+        _hasUpvotedPosts = false;
+        _isCheckingUpvotedPosts = false;
+      });
+    }
+  }
+
   Future<void> _refreshSettings() async {
-    // Reload profile data on refresh
-    await _loadProfileData();
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    setState(() {});
+    // Reload profile data on refresh to get latest values
+    await Future.wait([
+      _loadProfileData(),
+      _checkUpvotedPosts(),
+    ]);
   }
 
   @override
@@ -461,8 +795,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               subtitle: 'View your liked posts',
                               iconAsset: 'assets/settings/upvotedPost.svg',
                               iconBackground: const Color(0xFFF1F5F9),
-                              iconTint: const Color(0xFF314158),
-                              isDisabled: true,
+                              iconTint: _hasUpvotedPosts
+                                  ? const Color(0xFF314158)
+                                  : const Color(0xFF94A3B8),
+                              isDisabled: !_hasUpvotedPosts,
+                              onTap: _hasUpvotedPosts
+                                  ? () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        UpvotedPostsScreen.routeName,
+                                      );
+                                    }
+                                  : null,
                             ),
                           ],
                         ),
@@ -994,7 +1338,9 @@ class _SettingsTile extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: data.iconBackground,
+                color: isDisabled
+                    ? const Color(0xFFF1F5F9)
+                    : data.iconBackground,
                 shape: BoxShape.circle,
               ),
               child: Center(
@@ -1003,8 +1349,12 @@ class _SettingsTile extends StatelessWidget {
                   width: 20,
                   height: 20,
                   colorFilter: data.iconTint == null
-                      ? null
-                      : ColorFilter.mode(data.iconTint!, BlendMode.srcIn),
+                      ? (isDisabled
+                          ? const ColorFilter.mode(Color(0xFF94A3B8), BlendMode.srcIn)
+                          : null)
+                      : ColorFilter.mode(
+                          isDisabled ? const Color(0xFF94A3B8) : data.iconTint!,
+                          BlendMode.srcIn),
                 ),
               ),
             ),
@@ -1190,8 +1540,39 @@ class _UpdateProfilePhotoDialog extends StatefulWidget {
 }
 
 class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
-  File? _selectedImage;
+  XFile? _selectedImageFile;
+  Uint8List? _selectedImageBytes;
   final ImagePicker _picker = ImagePicker();
+  final ProfilePictureService _profilePictureService = ProfilePictureService();
+  final ProfileService _profileService = ProfileService();
+  ProfileData? _currentProfile;
+  bool _isLoadingProfile = true;
+  bool _isUploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentProfile();
+  }
+
+  Future<void> _loadCurrentProfile() async {
+    try {
+      final profileData = await _profileService.getProfileData();
+      if (mounted) {
+        setState(() {
+          _currentProfile = profileData;
+          _isLoadingProfile = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading current profile: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingProfile = false;
+        });
+      }
+    }
+  }
 
   Future<void> _handleSelectImage() async {
     // Show bottom sheet with options
@@ -1212,8 +1593,11 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
       );
 
       if (image != null && mounted) {
+        // Read the image bytes directly from XFile
+        final Uint8List imageBytes = await image.readAsBytes();
         setState(() {
-          _selectedImage = File(image.path);
+          _selectedImageFile = image;
+          _selectedImageBytes = imageBytes;
         });
       }
     } catch (e) {
@@ -1224,6 +1608,41 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _handleUpdate() async {
+    if (_selectedImageFile == null || _selectedImageBytes == null) return;
+
+    setState(() {
+      _isUploading = true;
+    });
+
+    try {
+      await _profilePictureService.uploadProfilePictureFromBytes(
+        _selectedImageBytes!,
+        _selectedImageFile!.name,
+        mimeType: _selectedImageFile!.mimeType,
+      );
+      
+      if (!mounted) return;
+
+      // Close dialog and trigger callback
+      widget.onUpdate();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isUploading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to upload profile picture: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
+      );
     }
   }
 
@@ -1295,15 +1714,38 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                               Positioned.fill(
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(120),
-                                  child: _selectedImage != null
-                                      ? Image.file(
-                                          _selectedImage!,
+                                  child: _selectedImageBytes != null
+                                      ? Image.memory(
+                                          _selectedImageBytes!,
                                           fit: BoxFit.cover,
                                         )
-                                      : Image.asset(
-                                          'assets/feedPage/profile.png',
-                                          fit: BoxFit.cover,
-                                        ),
+                                      : _isLoadingProfile
+                                          ? const Center(
+                                              child: SizedBox(
+                                                width: 24,
+                                                height: 24,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
+                                              ),
+                                            )
+                                          : _currentProfile != null &&
+                                                  _currentProfile!.hasPicture
+                                              ? Image.network(
+                                                  _currentProfile!.pictureUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stackTrace) =>
+                                                      ProfileAvatarWidget(
+                                                    imageUrl: null,
+                                                    initials: _currentProfile!.initials,
+                                                    size: 128,
+                                                  ),
+                                                )
+                                              : ProfileAvatarWidget(
+                                                  imageUrl: null,
+                                                  initials: _currentProfile?.initials ?? 'U',
+                                                  size: 128,
+                                                ),
                                 ),
                               ),
                               Positioned(
@@ -1336,9 +1778,9 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          '@lagosian_pro',
-                          style: TextStyle(
+                        Text(
+                          _currentProfile?.formattedUsername ?? '@user',
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             color: Color(0xFF0F172B),
@@ -1415,11 +1857,24 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                   SizedBox(
                     height: 36,
                     child: ElevatedButton.icon(
-                      onPressed: _selectedImage != null ? widget.onUpdate : null,
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: const Text(
-                        'Update Picture',
-                        style: TextStyle(
+                      onPressed: (_selectedImageBytes != null && !_isUploading) 
+                          ? _handleUpdate 
+                          : null,
+                      icon: _isUploading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.check_circle_outline, size: 18),
+                      label: Text(
+                        _isUploading ? 'Uploading...' : 'Update Picture',
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                           letterSpacing: -0.15,
@@ -1453,8 +1908,8 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 36,
-                    child: OutlinedButton(
-                      onPressed: widget.onCancel,
+                      child: OutlinedButton(
+                      onPressed: _isUploading ? null : widget.onCancel,
                       style: OutlinedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: const Color(0xFF0F172B),
@@ -1893,6 +2348,70 @@ class _ChangePasswordDialog extends StatelessWidget {
       ),
       primaryLabel: 'Send Code',
       onPrimary: onSendCode,
+      secondaryLabel: 'Cancel',
+      onSecondary: onCancel,
+    );
+  }
+}
+
+class _OtpInputDialog extends StatelessWidget {
+  const _OtpInputDialog({
+    required this.controller,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsDialogShell(
+      title: 'Enter OTP Code',
+      description: 'Please enter the 6-digit code sent to your email.',
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'OTP Code',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF0A0A0A),
+              letterSpacing: -0.15,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 4,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF3F3F5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+              counterText: '',
+            ),
+          ),
+        ],
+      ),
+      primaryLabel: 'Confirm',
+      onPrimary: onConfirm,
       secondaryLabel: 'Cancel',
       onSecondary: onCancel,
     );

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import '../../services/auth_service.dart';
+import '../../services/fcm_service.dart';
+import '../../widgets/pal_toast.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String email;
@@ -437,56 +439,43 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     try {
       // Verify OTP using the edge function
-      await _authService.verifyOtp(
+      final response = await _authService.verifyOtp(
         email: widget.email,
         token: otp,
       );
 
       if (!mounted) return;
 
-      // OTP verified successfully - navigate to login page
-      // User needs to sign in with their email and password to get a valid session
       setState(() {
         _isLoading = false;
       });
 
-      // Show success message before redirecting
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('OTP verified successfully! Please sign in with your email and password.'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
-      
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/login',
-        (route) => false,
-        arguments: {'showWelcomeModal': true, 'showFirstPostCard': true},
-      );
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      // Only show error if it's not about session creation (OTP verification failed)
-      final errorMessage = e.message.toLowerCase();
-      if (!errorMessage.contains('createSession') && 
-          !errorMessage.contains('session creation failed')) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = e.message;
-        });
-      } else {
-        // OTP was verified, just session creation failed - redirect to login
-        setState(() {
-          _isLoading = false;
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('OTP verified successfully! Please sign in with your email and password.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
+      // Check if session was created after OTP verification
+      final session = Supabase.instance.client.auth.currentSession;
+      final user = Supabase.instance.client.auth.currentUser;
+
+      if (session != null && user != null) {
+        // Session exists - user is logged in, initialize FCM and go to home
+        try {
+          await FCMService().initialize();
+        } catch (e) {
+          // FCM initialization failure shouldn't block navigation
+          debugPrint('[OtpVerificationScreen] FCM initialization failed: $e');
+        }
+
+        // Show success message
+        PalToast.show(context, message: 'Account created successfully!');
+
+        // Navigate to home feed with welcome modal
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/home',
+          (route) => false,
+          arguments: {'showWelcomeModal': true, 'showFirstPostCard': true},
         );
+      } else {
+        // No session - OTP verified but session creation failed
+        // This shouldn't happen in normal flow, but handle gracefully
+        PalToast.show(context, message: 'OTP verified successfully! Please sign in with your email and password.');
         
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/login',
@@ -494,12 +483,40 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           arguments: {'showWelcomeModal': true, 'showFirstPostCard': true},
         );
       }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      final errorMessage = e.message.toLowerCase();
+      
+      // Check if it's about session creation (OTP was verified but session failed)
+      if (errorMessage.contains('createsession') || 
+          errorMessage.contains('session creation failed')) {
+        // OTP was verified, just session creation failed
+        setState(() {
+          _isLoading = false;
+        });
+        
+        PalToast.show(context, message: 'OTP verified successfully! Please sign in with your email and password.');
+        
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/login',
+          (route) => false,
+          arguments: {'showWelcomeModal': true, 'showFirstPostCard': true},
+        );
+      } else {
+        // OTP verification actually failed
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.message;
+        });
+        PalToast.show(context, message: e.message);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'An unexpected error occurred. Please try again.';
       });
+      PalToast.show(context, message: 'An unexpected error occurred. Please try again.');
     }
   }
 
@@ -540,14 +557,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       _startResendTimer();
 
       // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(widget.isPasswordReset 
-              ? 'Password reset code resent successfully'
-              : 'OTP resent successfully'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
+      PalToast.show(
+        context,
+        message: widget.isPasswordReset 
+            ? 'Password reset code resent successfully'
+            : 'OTP resent successfully',
       );
     } catch (e) {
       if (!mounted) return;
