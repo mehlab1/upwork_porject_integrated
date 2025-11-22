@@ -28,8 +28,8 @@ class PalLoadingOverlay extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 75,
-                  height: 75,
+                  width: 96,
+                  height: 96,
                   decoration: BoxDecoration(
                     color: const Color(0xFF155DFC),
                     borderRadius: BorderRadius.circular(30),
@@ -44,8 +44,8 @@ class PalLoadingOverlay extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   child: SvgPicture.asset(
                     'assets/images/icon.svg',
-                    width: 64,
-                    height: 64,
+                    width: 72,
+                    height: 72,
                   ),
                 ),
                 const SizedBox(height: 44),

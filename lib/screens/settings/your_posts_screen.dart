@@ -85,7 +85,7 @@ class YourPostsScreen extends StatelessWidget {
                     final post = _yourPosts[index];
                     return Align(
                       alignment: Alignment.center,
-                      child: PostCard(data: post, isYourPosts: true),
+                      child: PostCard(data: post),
                     );
                   },
                 ),

@@ -46,26 +46,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               child: PalRefreshIndicator(
                 onRefresh: _refreshNotifications,
                 child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
                   ),
-                  itemCount: _notificationItems.length + 1,
-                  separatorBuilder: (_, index) {
-                    if (index == 0) {
-                      return const SizedBox(height: 0);
-                    }
-                    return const Divider(
-                      height: 1,
-                      thickness: 1,
-                      color: Color(0xFFE2E8F0),
-                    );
-                  },
+                  itemCount: _notificationItems.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Color(0xFFE2E8F0),
+                  ),
                   itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return const _WelcomeNotificationCard();
-                    }
-                    final item = _notificationItems[index - 1];
+                    final item = _notificationItems[index];
                     return _NotificationTile(item: item);
                   },
                 ),
@@ -88,94 +80,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
     return Stack(
       children: [scaffold, if (_isPageLoading) const PalLoadingOverlay()],
-    );
-  }
-}
-
-class _WelcomeNotificationCard extends StatelessWidget {
-  const _WelcomeNotificationCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color.fromRGBO(254, 242, 242, 0.4),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 47,
-                height: 47,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  '🎉',
-                  style: TextStyle(fontSize: 24),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    RichText(
-                      text: const TextSpan(
-                        style: TextStyle(
-                          fontSize: 16,
-                          height: 1.4,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xFF0F172A),
-                        ),
-                        children: [
-                          TextSpan(text: 'Welcome to '),
-                          TextSpan(
-                            text: 'Pal',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          TextSpan(
-                            text:
-                                '! A chill spot to vibe, swap ideas, learn, and grow together',
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '2m ago',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE7000B),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
