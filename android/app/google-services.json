@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "470219640234",
+    "project_id": "kobipal-d8628",
+    "storage_bucket": "kobipal-d8628.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:470219640234:android:18db620654714c7dcf6fd3",
+        "android_client_info": {
+          "package_name": "com.kobi.pal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcpwObrrXPyPbPYmZbf_7Ih6Vy5ofpDC8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
