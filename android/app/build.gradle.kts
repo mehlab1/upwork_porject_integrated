@@ -19,7 +19,15 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.kobi.pal"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // NDK version - only set if Flutter provides it (allows automatic download if missing)
+    if (flutter.ndkVersion != null) {
+        ndkVersion = flutter.ndkVersion
+    }
+    
+    // Use a stable build tools version (34.0.0 is widely available and compatible)
+    // This prevents download failures with newer versions that may not be available yet
+    // If 34.0.0 is not available, Gradle will try to download it automatically
+    buildToolsVersion = "34.0.0"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -40,41 +48,44 @@ android {
     }
 
     signingConfigs {
+        // Only create release signing config if key.properties exists AND keystore file exists
+        // This allows debug builds to work without a keystore
         if (keystorePropertiesFile.exists()) {
             val keyAlias = keystoreProperties["keyAlias"] as String?
             val keyPassword = keystoreProperties["keyPassword"] as String?
             val storeFile = keystoreProperties["storeFile"] as String?
             val storePassword = keystoreProperties["storePassword"] as String?
             
+            // Only proceed if all properties are present
             if (keyAlias != null && keyPassword != null && storeFile != null && storePassword != null) {
-                create("release") {
-                    this.keyAlias = keyAlias
-                    this.keyPassword = keyPassword
-                    // Resolve keystore file path - try relative to app module first, then root
-                    var keystoreFile = file(storeFile)
-                    if (!keystoreFile.exists()) {
-                        keystoreFile = rootProject.file("app/$storeFile")
-                    }
-                    if (!keystoreFile.exists()) {
-                        throw GradleException("Keystore file not found. Tried:\n  - ${file(storeFile).absolutePath}\n  - ${rootProject.file("app/$storeFile").absolutePath}\n\nMake sure upload-keystore.jks exists in android/app/ directory.")
-                    }
-                    this.storeFile = keystoreFile
-                    this.storePassword = storePassword
+                // Resolve keystore file path - try relative to app module first, then root
+                var keystoreFile = file(storeFile)
+                if (!keystoreFile.exists()) {
+                    keystoreFile = rootProject.file("app/$storeFile")
                 }
-            } else {
-                throw GradleException("Missing keystore properties in key.properties. Required: keyAlias, keyPassword, storeFile, storePassword")
+                
+                // Only create release signing config if keystore file actually exists
+                // This prevents errors during debug builds when keystore is missing
+                if (keystoreFile.exists()) {
+                    create("release") {
+                        this.keyAlias = keyAlias
+                        this.keyPassword = keyPassword
+                        this.storeFile = keystoreFile
+                        this.storePassword = storePassword
+                    }
+                }
+                // If keystore file doesn't exist, we silently skip creating the config
+                // The release buildType will catch this and throw a helpful error
             }
         }
     }
 
     buildTypes {
         release {
-            // Use release signing config if it exists (when key.properties is present)
-            val releaseSigningConfig = signingConfigs.findByName("release")
-            if (releaseSigningConfig != null) {
-                signingConfig = releaseSigningConfig
-            } else {
-                throw GradleException("Release signing config not found! Make sure android/key.properties exists with valid keystore information.")
+            // Only set signing config if it exists (don't throw during configuration phase)
+            // Validation will happen when release tasks are actually executed
+            signingConfigs.findByName("release")?.let {
+                signingConfig = it
             }
             isMinifyEnabled = true
             isShrinkResources = true
@@ -84,7 +95,40 @@ android {
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("debug")
+            // Debug builds use auto-generated debug keystore (no configuration needed)
+            // Android automatically uses ~/.android/debug.keystore if no signing config is set
+        }
+    }
+}
+
+// Validate release signing config only when release tasks are executed (not during configuration)
+afterEvaluate {
+    tasks.matching { 
+        it.name.contains("Release", ignoreCase = true) && 
+        (it.name.contains("Bundle") || it.name.contains("Apk") || it.name.contains("Assemble"))
+    }.configureEach {
+        doFirst {
+            val releaseSigningConfig = android.signingConfigs.findByName("release")
+            if (releaseSigningConfig == null) {
+                throw GradleException(
+                    """
+                    Release signing configuration not found!
+                    
+                    To build a release APK/AAB, you need:
+                    1. Create a keystore file: android/app/upload-keystore.jks
+                    2. Ensure android/key.properties exists with:
+                       - storeFile=upload-keystore.jks
+                       - keyAlias=upload
+                       - storePassword=<your-password>
+                       - keyPassword=<your-password>
+                    
+                    For debug builds, this is not required (uses auto-generated debug keystore).
+                    
+                    To create the keystore, run:
+                    keytool -genkey -v -keystore android/app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+                    """.trimIndent()
+                )
+            }
         }
     }
 }

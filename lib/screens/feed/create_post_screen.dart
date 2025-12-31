@@ -212,12 +212,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   bool get _isBodyOverLimit => _bodyController.text.length > 500;
   bool get _isLocationSelected => _selectedLocation != null;
   bool get _isOverLimit => _isTitleOverLimit || _isBodyOverLimit;
-  bool get _canPost =>
-      !_isOverLimit &&
-      _isTitleFilled &&
-      _isBodyFilled &&
-      _isLocationSelected &&
-      _activeCategory != null;
+  bool get _canPost {
+    if (_isAdmin) {
+      // Admin can post with just title and body (no category/location required)
+      return !_isOverLimit && _isTitleFilled && _isBodyFilled;
+    }
+    // Regular user needs all fields
+    return !_isOverLimit &&
+        _isTitleFilled &&
+        _isBodyFilled &&
+        _isLocationSelected &&
+        _activeCategory != null;
+  }
 
   void _onFormFieldChanged() {
     setState(() {});
@@ -258,6 +264,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   String _formStatusMessage() {
+    if (_isAdmin) {
+      // Admin-specific messages
+      if (!_isTitleFilled) {
+        return 'Add a title to get started';
+      }
+      if (_isTitleOverLimit) {
+        return 'Title exceeds 75 characters';
+      }
+      if (_isBodyOverLimit) {
+        return 'Content exceeds character limit';
+      }
+      return 'Please follow community guidelines';
+    }
+
+    // Regular user messages
     if (_isTitleOverLimit) {
       return 'Title exceeds 75 characters';
     }
@@ -282,6 +303,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   String? _statusIconAsset() {
     if (_isTitleOverLimit || _isBodyOverLimit) {
       return 'assets/images/askIcon.svg';
+    }
+    if (_isAdmin) {
+      // Admin: Only check title and body
+      if (!_isTitleFilled) {
+        return 'assets/adminIcons/adminpostMenu/announcementIcon.svg';
+      }
+      return null;
     }
     if (_activeCategory == null) {
       return null; // No icon for category selection
@@ -383,16 +411,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             ),
             const SizedBox(width: 6),
           ],
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w400,
-              color: _statusTextColor(),
-              fontFamily: 'Inter',
-              decoration: isActionable
-                  ? TextDecoration.underline
-                  : TextDecoration.none,
+          Flexible(
+            child: Text(
+              message,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: _statusTextColor(),
+                fontFamily: 'Inter',
+                decoration: isActionable
+                    ? TextDecoration.underline
+                    : TextDecoration.none,
+              ),
             ),
           ),
         ],
@@ -402,60 +434,210 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final minHeight = screenHeight * 0.6;
+    
     return Scaffold(
       backgroundColor: _overlay.withOpacity(0.55),
       body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Container(
-            width: 342,
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: _overlay.withOpacity(0.2),
-                  blurRadius: 30,
-                  offset: const Offset(0, 20),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeader(context),
-                      const SizedBox(height: 24),
-                      _buildCategorySelector(),
-                      const SizedBox(height: 24),
-                      _buildComposer(),
-                      const SizedBox(height: 20),
-                      _buildLocationCard(),
-                      const SizedBox(height: 12),
-                      _buildCharacterLimitIndicator(),
-                      const SizedBox(height: 12),
-                      _buildDettyDecemberCard(),
-                      const SizedBox(height: 12),
-                      _buildWodCard(),
-                      const SizedBox(height: 18),
-                    ],
+        child: _isAdmin
+            ? Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: minHeight,
+                    maxHeight: minHeight,
+                    maxWidth: 360,
+                  ),
+                  child: Container(
+                    width: 360,
+                    height: minHeight,
+                    decoration: BoxDecoration(
+                      color: _surface,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _overlay.withOpacity(0.2),
+                          blurRadius: 30,
+                          offset: const Offset(0, 20),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Scrollable content area
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 24.49, 16, 0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildHeader(context),
+                                  const SizedBox(height: 24),
+                                  _buildComposer(),
+                                  const SizedBox(height: 12),
+                                  // Character limit indicator for admin
+                                  _buildAdminCharacterLimitIndicator(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Fixed footer at bottom
+                        _buildFooterActions(),
+                      ],
+                    ),
                   ),
                 ),
-                _buildFooterActions(),
-              ],
-            ),
-          ),
-        ),
+              )
+            : ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 342,
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+                  child: Container(
+                    width: 342,
+                    decoration: BoxDecoration(
+                      color: _surface,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _overlay.withOpacity(0.2),
+                          blurRadius: 30,
+                          offset: const Offset(0, 20),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(context),
+                              const SizedBox(height: 24),
+                              _buildCategorySelector(),
+                              const SizedBox(height: 24),
+                              _buildComposer(),
+                              const SizedBox(height: 20),
+                              _buildLocationCard(),
+                              const SizedBox(height: 12),
+                              _buildCharacterLimitIndicator(),
+                              const SizedBox(height: 12),
+                              _buildDettyDecemberCard(),
+                              const SizedBox(height: 12),
+                              _buildWodCard(),
+                              const SizedBox(height: 18),
+                            ],
+                          ),
+                        ),
+                        _buildFooterActions(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
       ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
+    if (_isAdmin) {
+      // Admin header: "New Announcement"
+      return Stack(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172B),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      offset: const Offset(0, 1),
+                      blurRadius: 3,
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      offset: const Offset(0, 1),
+                      blurRadius: 2,
+                      spreadRadius: -1,
+                    ),
+                  ],
+                ),
+                child: SvgPicture.asset(
+                  'assets/adminIcons/adminpostMenu/announcementIcon.svg',
+                  fit: BoxFit.none,
+                  alignment: Alignment.center,
+                  colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'New Announcement',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _textPrimary,
+                        fontFamily: 'Inter',
+                        letterSpacing: -0.1504,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Important update shared.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: _muted,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: const Icon(
+                  Icons.close,
+                  size: 16,
+                  color: Color(0xFF0A0A0A),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Regular user header: "New Post"
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -615,6 +797,82 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildComposer() {
+    if (_isAdmin) {
+      // Admin composer: Simplified with just title and update content
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title field
+          TextField(
+            controller: _titleController,
+            focusNode: _titleFocusNode,
+            textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(
+              fontSize: 18,
+              height: 24.75 / 18,
+              fontWeight: FontWeight.w400,
+              color: _titleController.text.isNotEmpty
+                  ? const Color(0xFF0F172B)
+                  : const Color(0xFF90A1B9),
+              fontFamily: 'Inter',
+              letterSpacing: -0.4395,
+            ),
+            decoration: const InputDecoration(
+              hintText: 'Title',
+              hintStyle: TextStyle(
+                fontSize: 18,
+                height: 24.75 / 18,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF90A1B9),
+                fontFamily: 'Inter',
+                letterSpacing: -0.4395,
+              ),
+              border: InputBorder.none,
+            ),
+          ),
+          Container(width: double.infinity, height: 0.993, color: _outline),
+          const SizedBox(height: 15),
+          // Update content field
+          TextField(
+            controller: _bodyController,
+            focusNode: _bodyFocusNode,
+            textCapitalization: TextCapitalization.sentences,
+            keyboardType: TextInputType.multiline,
+            minLines: 5,
+            maxLines: null,
+            maxLength: 500,
+            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(
+              fontSize: 14,
+              height: 20 / 14,
+              color: _bodyController.text.isNotEmpty
+                  ? const Color(0xFF0F172B)
+                  : const Color(0xFF90A1B9),
+              fontWeight: FontWeight.w400,
+              fontFamily: 'Inter',
+              letterSpacing: -0.1504,
+            ),
+            decoration: const InputDecoration(
+              hintText: "What's the Update?",
+              hintStyle: TextStyle(
+                fontSize: 14,
+                height: 20 / 14,
+                color: Color(0xFF90A1B9),
+                fontWeight: FontWeight.w400,
+                fontFamily: 'Inter',
+                letterSpacing: -0.1504,
+              ),
+              border: InputBorder.none,
+              counterText: '', // Hide default counter, we'll show custom one below
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Regular user composer
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -911,6 +1169,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 
+  Widget _buildAdminCharacterLimitIndicator() {
+    final bodyLength = _bodyController.text.length;
+    final isOverLimit = bodyLength > 500;
+    
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Text(
+        '$bodyLength/500 characters',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: isOverLimit
+              ? const Color(0xFFFB2C36)
+              : _textSecondary,
+          fontFamily: 'Inter',
+        ),
+      ),
+    );
+  }
+
   Widget _buildDettyDecemberCard() {
     return Container(
       height: 61,
@@ -1111,6 +1389,78 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildFooterActions() {
+    if (_isAdmin) {
+      // Admin footer: Simplified with disabled button styling - fixed at bottom
+      return Container(
+        width: double.infinity,
+        height: 64,
+        decoration: BoxDecoration(
+          color: const Color(0x80F8FAFC),
+          border: Border(
+            top: BorderSide(color: const Color(0xFFE2E8F0), width: 0.756),
+          ),
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(24),
+            bottomRight: Radius.circular(24),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Community guidelines link - expanded to prevent collapsing
+            Expanded(
+              child: _buildStatusPrompt(),
+            ),
+            const SizedBox(width: 12),
+            // Post button - fixed minimum width to prevent collapsing
+            ElevatedButton(
+              onPressed: (_canPost && !_isSubmitting)
+                  ? () {
+                      _handleSubmit();
+                    }
+                  : null,
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.disabled)) {
+                    return const Color(0xFFCAD5E2).withOpacity(0.5);
+                  }
+                  return const Color(0xFF155DFC); // Logo Blue
+                }),
+                foregroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.disabled)) {
+                    return const Color(0xFF62748E);
+                  }
+                  return Colors.white;
+                }),
+                elevation: WidgetStateProperty.all(0),
+                padding: WidgetStateProperty.all(
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                minimumSize: WidgetStateProperty.all(const Size(80, 36)),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25378200),
+                  ),
+                ),
+              ),
+              child: const Text(
+                'Post',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Inter',
+                  letterSpacing: -0.1504,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Regular user footer - responsive to prevent collapsing
     return Container(
       width: 360,
       height: 64,
@@ -1127,7 +1477,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _buildStatusPrompt(),
+          // Community guidelines link - expanded to prevent collapsing
+          Expanded(
+            child: _buildStatusPrompt(),
+          ),
+          const SizedBox(width: 12),
+          // Post button - fixed minimum width to prevent collapsing
           ElevatedButton(
             onPressed: (_canPost && !_isSubmitting)
                 ? () {
@@ -1157,8 +1512,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               }),
               elevation: WidgetStateProperty.all(0),
               padding: WidgetStateProperty.all(
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
+              minimumSize: WidgetStateProperty.all(const Size(80, 36)),
               shape: WidgetStateProperty.all(
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
@@ -1330,21 +1686,41 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
       return;
     }
-    final categoryId = _categoryIdLookup[_activeCategory];
-    final selectedLocationName = _selectedLocation;
-    final locationId = selectedLocationName != null
-        ? _locationIdLookup[selectedLocationName]
-        : null;
-    if (locationId == null) {
-      // Wait a bit for keyboard to dismiss before showing toast
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (mounted) {
-        PalToast.show(
-          context,
-          message: 'Selected location is unavailable right now.',
-        );
+
+    // For admin, use default category/location or skip if not required
+    String? categoryId;
+    String? locationId;
+    
+    if (_isAdmin) {
+      // Admin posts: Use default category (Gist) or fallback
+      final usedCategories = _categoryIdLookup.isNotEmpty
+          ? _categoryIdLookup
+          : _fallbackCategoryIdLookup;
+      categoryId = usedCategories['Gist'] ?? usedCategories.values.first;
+      
+      // Use default location or fallback
+      final usedLocations = _locationIdLookup.isNotEmpty
+          ? _locationIdLookup
+          : _fallbackLocationIdLookup;
+      locationId = usedLocations.values.first;
+    } else {
+      // Regular user: Require category and location
+      categoryId = _categoryIdLookup[_activeCategory];
+      final selectedLocationName = _selectedLocation;
+      locationId = selectedLocationName != null
+          ? _locationIdLookup[selectedLocationName]
+          : null;
+      if (locationId == null) {
+        // Wait a bit for keyboard to dismiss before showing toast
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          PalToast.show(
+            context,
+            message: 'Selected location is unavailable right now.',
+          );
+        }
+        return;
       }
-      return;
     }
     setState(() {
       _isSubmitting = true;

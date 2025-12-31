@@ -3,6 +3,12 @@ import 'package:flutter_svg/flutter_svg.dart' as svg;
 import '../../widgets/pal_bottom_nav_bar.dart';
 import '../../widgets/pal_loading_widgets.dart';
 import '../../services/profile_service.dart';
+import '../../services/auth_logout_service.dart';
+import '../../services/auth_remember_me_service.dart';
+import '../../services/admin_service.dart';
+import '../../services/fcm_service.dart';
+import '../../screens/login/login_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'moderator_queue_screen.dart';
 import 'junior_moderator_queue_screen.dart';
 import 'content_curator_queue_screen.dart';
@@ -17,6 +23,9 @@ class AdminSettingsScreen extends StatefulWidget {
 class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _isPageLoading = true;
   final ProfileService _profileService = ProfileService();
+  final AuthLogoutService _logoutService = AuthLogoutService();
+  final AuthRememberMeService _rememberMeService = AuthRememberMeService();
+  final AdminService _adminService = AdminService();
   ProfileData? _profileData;
   bool _isLoadingProfile = false;
 
@@ -77,6 +86,102 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     final year = date.year;
 
     return 'Admin since $month $year';
+  }
+
+  Future<void> _showLogoutDialog(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: _LogoutDialog(
+            onConfirm: () => Navigator.of(dialogContext).pop(true),
+            onCancel: () => Navigator.of(dialogContext).pop(false),
+          ),
+        );
+      },
+    );
+
+    if (result == true && mounted) {
+      // Show loading indicator while logging out
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        // Call the logout edge function to invalidate session on server
+        await _logoutService.logout();
+
+        // Clear Remember Me preference on logout
+        await _rememberMeService.clearRememberMe();
+
+        // Clear admin status on logout
+        await _adminService.clearAdminStatus();
+
+        // Unregister FCM device token
+        try {
+          await FCMService().unregisterDevice();
+        } catch (e) {
+          // FCM unregister failure shouldn't block logout
+          print('Note: FCM unregister had an issue (non-critical): $e');
+        }
+
+        // Also clear local session to ensure complete logout
+        try {
+          await Supabase.instance.client.auth.signOut();
+        } catch (e) {
+          // Ignore local signOut errors - server logout is more important
+          print('Note: Local signOut had an issue (non-critical): $e');
+        }
+
+        if (!mounted) return;
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        // Navigate to login and clear navigation stack
+        // Always navigate even if API returned failure, to prevent stuck state
+        // This matches the backend's graceful error handling
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      } catch (e) {
+        if (!mounted) return;
+
+        // Clear Remember Me preference even if logout API failed
+        await _rememberMeService.clearRememberMe();
+
+        // Unregister FCM device token even if logout API failed
+        try {
+          await FCMService().unregisterDevice();
+        } catch (e) {
+          print('Note: FCM unregister had an issue (non-critical): $e');
+        }
+
+        // Try to clear local session even if API call failed
+        try {
+          await Supabase.instance.client.auth.signOut();
+        } catch (localError) {
+          // Ignore local signOut errors
+          print('Note: Local signOut had an issue (non-critical): $localError');
+        }
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        // Even on error, navigate to login to prevent users from being stuck
+        // This matches the backend's behavior of treating logout as successful even on errors
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 
   @override
@@ -268,6 +373,20 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             onTap: () {
                               // TODO: Implement Duplicated Conversations functionality
                             },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      _SettingsSection(
+                        title: 'ACCOUNT',
+                        tiles: [
+                          _SettingsTileData(
+                            title: 'Logout',
+                            subtitle: 'Sign out of your account',
+                            iconAsset: 'assets/settings/logout.svg',
+                            iconBackground: const Color(0xFFF1F5F9),
+                            iconTint: const Color(0xFF314158),
+                            onTap: () => _showLogoutDialog(context),
                           ),
                         ],
                       ),
@@ -712,6 +831,114 @@ class _SettingsTile extends StatelessWidget {
                         ),
                       ),
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LogoutDialog extends StatelessWidget {
+  const _LogoutDialog({required this.onConfirm, required this.onCancel});
+
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 240,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0x4D0F172B), width: 0.756),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14101828),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Are you sure you want to log out?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF4B4B4B),
+                letterSpacing: -0.15,
+                height: 22 / 16,
+              ),
+            ),
+            const SizedBox(height: 30),
+            Container(
+              width: 200,
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE2E8F0), width: 0.756),
+                ),
+              ),
+              padding: const EdgeInsets.only(top: 12.75),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 36,
+                    child: ElevatedButton(
+                      onPressed: onConfirm,
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: const Color(0xFF0F172B),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
+                      child: const Text(
+                        'Log out',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -0.15,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 36,
+                    child: OutlinedButton(
+                      onPressed: onCancel,
+                      style: OutlinedButton.styleFrom(
+                        elevation: 0,
+                        side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.756),
+                        foregroundColor: const Color(0xFF4B4B4B),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -0.15,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
