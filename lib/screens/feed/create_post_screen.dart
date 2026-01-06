@@ -442,7 +442,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       body: Center(
         child: _isAdmin
             ? Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: minHeight,
@@ -479,6 +479,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                   const SizedBox(height: 24),
                                   _buildComposer(),
                                   const SizedBox(height: 12),
+                                  // Separator above character limit
+                                  Container(
+                                    width: double.infinity,
+                                    height: 1,
+                                    color: _outline,
+                                  ),
+                                  const SizedBox(height: 12),
                                   // Character limit indicator for admin
                                   _buildAdminCharacterLimitIndicator(),
                                 ],
@@ -498,7 +505,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   maxWidth: 342,
                 ),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
                   child: Container(
                     width: 342,
                     decoration: BoxDecoration(

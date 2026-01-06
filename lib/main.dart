@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/login/login_screen.dart';
@@ -60,8 +61,35 @@ void main() async {
       // Don't run app if Supabase fails - it's critical
       rethrow;
     }
-    
-    runApp(const PalApp());
+
+    try {
+      await GoogleFonts.pendingFonts([GoogleFonts.inter()]);
+    } catch (e) {
+      debugPrint('[main] GoogleFonts preload skipped: $e');
+    }
+
+
+    // Preload Inter font
+    final fontFuture = GoogleFonts.pendingFonts([GoogleFonts.inter()]);
+
+    runApp(
+      FutureBuilder(
+        future: fontFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            return const PalApp(); // Font ready → show app
+          } else {
+            return const MaterialApp(
+              debugShowCheckedModeBanner: false,
+              home: Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              ),
+            );
+          }
+        },
+      ),
+    );
+
   } catch (e, stackTrace) {
     debugPrint('[main] Critical error during initialization: $e');
     debugPrint('[main] Stack trace: $stackTrace');
