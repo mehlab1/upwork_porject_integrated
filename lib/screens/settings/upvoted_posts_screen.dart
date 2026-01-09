@@ -22,7 +22,7 @@ class UpvotedPostsScreen extends StatefulWidget {
 class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
   final PostService _postService = PostService();
   final ProfileService _profileService = ProfileService();
-  
+
   List<PostCardData> _posts = [];
   ProfileData? _profileData;
   bool _isLoading = true;
@@ -54,7 +54,8 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
       final profileData = results[1] as ProfileData?;
 
       final postsList = postsResponse['posts'] as List<dynamic>? ?? [];
-      final totalUpvoted = postsResponse['total_upvoted_posts'] as int? ?? postsList.length;
+      final totalUpvoted =
+          postsResponse['total_upvoted_posts'] as int? ?? postsList.length;
       final mappedPosts = postsList
           .map((post) => _mapPostToCardData(post as Map<String, dynamic>))
           .whereType<PostCardData>()
@@ -113,10 +114,12 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
         .toString();
 
     // Extract profile picture URL
-    String? profilePictureUrl = (post['profile_picture_url'] ?? 
-        profile?['profile_picture_url'] ?? 
-        post['avatar_url'] ?? 
-        profile?['avatar_url'])?.toString();
+    String? profilePictureUrl =
+        (post['profile_picture_url'] ??
+                profile?['profile_picture_url'] ??
+                post['avatar_url'] ??
+                profile?['avatar_url'])
+            ?.toString();
 
     // Generate initials from username
     String generateInitials(String name) {
@@ -131,6 +134,7 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
         return cleanName[0].toUpperCase();
       }
     }
+
     final initials = generateInitials(username);
 
     final createdAt = DateTime.tryParse(post['created_at']?.toString() ?? '');
@@ -202,45 +206,42 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
               child: Container(
                 color: _pageBackground,
                 child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(),
-                      )
+                    ? const Center(child: CircularProgressIndicator())
                     : _errorMessage != null
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Error: $_errorMessage',
-                                  style: const TextStyle(color: Colors.red),
-                                ),
-                                const SizedBox(height: 16),
-                                ElevatedButton(
-                                  onPressed: _loadData,
-                                  child: const Text('Retry'),
-                                ),
-                              ],
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Error: $_errorMessage',
+                              style: const TextStyle(color: Colors.red),
                             ),
-                          )
-                        : _posts.isEmpty
-                            ? const Center(
-                                child: Text('No upvoted posts yet'),
-                              )
-                            : ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(15, 24, 15, 32),
-                                itemCount: _posts.length,
-                                itemBuilder: (context, index) {
-                                  final post = _posts[index];
-                                  return Align(
-                                    alignment: Alignment.center,
-                                    child: PostCard(
-                                      data: post,
-                                      isYourPosts: false,
-                                      showOverflowMenu: false,
-                                    ),
-                                  );
-                                },
-                              ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _loadData,
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _posts.isEmpty
+                    ? const Center(child: Text('No upvoted posts yet'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(15, 24, 15, 32),
+                        itemCount: _posts.length,
+                        itemBuilder: (context, index) {
+                          final post = _posts[index];
+                          return Align(
+                            alignment: Alignment.center,
+                            child: PostCard(
+                              data: post,
+                              isYourPosts: false,
+                              showOverflowMenu: false,
+                              isUpvotedPostsScreen: true,
+                            ),
+                          );
+                        },
+                      ),
               ),
             ),
           ],
@@ -251,10 +252,7 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
 }
 
 class _UpvotedPostsHeader extends StatelessWidget {
-  const _UpvotedPostsHeader({
-    required this.totalPosts,
-    this.profileData,
-  });
+  const _UpvotedPostsHeader({required this.totalPosts, this.profileData});
 
   final int totalPosts;
   final ProfileData? profileData;
@@ -272,6 +270,17 @@ class _UpvotedPostsHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Icon(
+                Icons.chevron_left,
+                size: 24,
+                color: Color(0xFF45556C),
+              ),
+            ),
+          ),
           Expanded(
             child: Row(
               children: [
@@ -295,10 +304,10 @@ class _UpvotedPostsHeader extends StatelessWidget {
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>
                                 ProfileAvatarWidget(
-                              imageUrl: null,
-                              initials: profileData!.initials,
-                              size: 32,
-                            ),
+                                  imageUrl: null,
+                                  initials: profileData!.initials,
+                                  size: 32,
+                                ),
                           )
                         : ProfileAvatarWidget(
                             imageUrl: null,
@@ -345,7 +354,7 @@ class _UpvotedPostsHeader extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         profileData?.formattedUsername ?? '@user',
                         style: const TextStyle(
@@ -366,4 +375,3 @@ class _UpvotedPostsHeader extends StatelessWidget {
     );
   }
 }
-

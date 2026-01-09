@@ -296,7 +296,7 @@ Widget build(BuildContext context) {
                                       Container(
                                         width: 65, // FIXED ratio
                                         height: 65, // FIXED ratio
-                                        transform: Matrix4.translationValues(0, 93, 0), // Use transform to move visually without affecting layout flow
+                                        transform: Matrix4.translationValues(0, 90, 0), // Use transform to move visually without affecting layout flow
                                         decoration: BoxDecoration(
                                           color: const Color(0xFF155DFC),
                                           borderRadius: BorderRadius.circular(18),

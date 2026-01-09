@@ -12,6 +12,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'moderator_queue_screen.dart';
 import 'junior_moderator_queue_screen.dart';
 import 'content_curator_queue_screen.dart';
+import 'postTypeScreens/hidden_posts_screen.dart';
+import 'postTypeScreens/warned_posts_screen.dart';
+import 'postTypeScreens/muted_posts_screen.dart';
+import 'postTypeScreens/duplicated_posts_screen.dart';
+import 'postTypeScreens/reported_posts_screen.dart';
+import 'postTypeScreens/flagged_posts_screen.dart';
+import 'accountScreens/suspended_account_screen.dart';
+import 'accountScreens/banned_account_screen.dart';
+import 'accountScreens/shadow_ban_screen.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
   const AdminSettingsScreen({super.key});
@@ -338,7 +347,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
-                              // TODO: Implement Hidden Conversations functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const HiddenPostsScreen(),
+                                ),
+                              );
                             },
                           ),
                           _SettingsTileData(
@@ -349,7 +362,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
-                              // TODO: Implement Warned Conversations functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const WarnedPostsScreen(),
+                                ),
+                              );
                             },
                           ),
                           _SettingsTileData(
@@ -360,7 +377,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
-                              // TODO: Implement Muted Conversations functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const MutedPostsScreen(),
+                                ),
+                              );
                             },
                           ),
                           _SettingsTileData(
@@ -371,7 +392,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
-                              // TODO: Implement Duplicated Conversations functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const DuplicatedPostsScreen(),
+                                ),
+                              );
                             },
                           ),
                         ],
@@ -402,7 +427,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
-                              // TODO: Implement Reported Conversations functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ReportedPostsScreen(),
+                                ),
+                              );
                             },
                           ),
                           _SettingsTileData(
@@ -425,7 +454,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
-                              // TODO: Implement Shadow Ban functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ShadowBanScreen(),
+                                ),
+                              );
                             },
                           ),
                           _SettingsTileData(
@@ -437,7 +470,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconTint: const Color(0xFFE7000B),
                             titleColor: const Color(0xFFE7000B),
                             onTap: () {
-                              // TODO: Implement Suspended Account functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const SuspendedAccountScreen(),
+                                ),
+                              );
                             },
                           ),
                           _SettingsTileData(
@@ -449,7 +486,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconTint: const Color(0xFFE7000B),
                             titleColor: const Color(0xFFE7000B),
                             onTap: () {
-                              // TODO: Implement Banned Account functionality
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const BannedAccountScreen(),
+                                ),
+                              );
                             },
                           ),
                         ],

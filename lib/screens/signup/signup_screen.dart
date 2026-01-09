@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -459,6 +460,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     String? prefixText,
     String? errorText,
     Function(String)? onChanged,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -508,6 +510,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   controller: controller,
                   obscureText: obscureText,
                   onChanged: onChanged,
+                  inputFormatters: inputFormatters,
                   style: TextStyle(
                     fontSize: 16,
                     color: _primary900,
@@ -987,6 +990,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         hintText: 'Username',
                         icon: Icons.alternate_email,
                         controller: _usernameController,
+                        inputFormatters: [
+                          TextInputFormatter.withFunction((oldValue, newValue) {
+                            return newValue.copyWith(
+                              text: newValue.text.toLowerCase(),
+                            );
+                          }),
+                        ],
                         errorText: _usernameError,
                         onChanged: (value) {
                           setState(() {

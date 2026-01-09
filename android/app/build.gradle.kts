@@ -27,7 +27,7 @@ android {
     // Use a stable build tools version (34.0.0 is widely available and compatible)
     // This prevents download failures with newer versions that may not be available yet
     // If 34.0.0 is not available, Gradle will try to download it automatically
-    buildToolsVersion = "34.0.0"
+    //buildToolsVersion = "34.0.0"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -139,7 +139,7 @@ flutter {
 
 dependencies {
     // Import the Firebase BoM
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.7.0"))
     
     // FCM for push notifications
     implementation("com.google.firebase:firebase-messaging")
@@ -149,7 +149,7 @@ dependencies {
     
     // Core library desugaring for Java 8+ features on older Android versions
     // flutter_local_notifications 19.5.0 requires version 2.1.4 or above
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     
     // Add the dependencies for any other desired Firebase products
     // https://firebase.google.com/docs/android/setup#available-libraries

@@ -250,6 +250,7 @@ class PostCard extends StatefulWidget {
     this.isPinnedAdmin = false,
     this.isYourPosts = false,
     this.showOverflowMenu = true,
+    this.isUpvotedPostsScreen = false,
   });
 
   final PostCardData data;
@@ -259,6 +260,8 @@ class PostCard extends StatefulWidget {
   final bool isYourPosts;
 
   final bool showOverflowMenu;
+
+  final bool isUpvotedPostsScreen;
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -359,8 +362,9 @@ class _PostCardState extends State<PostCard> {
 
       if (profile != null && mounted) {
         final username = profile['username']?.toString();
-        final profilePictureUrl = (profile['profile_picture_url'] ?? 
-                                   profile['avatar_url'])?.toString();
+        final profilePictureUrl =
+            (profile['profile_picture_url'] ?? profile['avatar_url'])
+                ?.toString();
         final displayName = profile['display_name']?.toString();
         final firstName = profile['first_name']?.toString();
         final lastName = profile['last_name']?.toString();
@@ -381,7 +385,9 @@ class _PostCardState extends State<PostCard> {
             }
           }
         } else if (username != null && username.isNotEmpty) {
-          final cleanUsername = username.startsWith('@') ? username.substring(1) : username;
+          final cleanUsername = username.startsWith('@')
+              ? username.substring(1)
+              : username;
           if (cleanUsername.isNotEmpty) {
             initials = cleanUsername[0].toUpperCase();
           }
@@ -715,7 +721,7 @@ class _PostCardState extends State<PostCard> {
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
 
     final username = _currentUsername ?? '@user';
-    
+
     // Use current user's profile picture and initials
     final initials = _currentUserInitials ?? 'U';
 
@@ -935,7 +941,7 @@ class _PostCardState extends State<PostCard> {
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
 
     final username = _currentUsername ?? '@user';
-    
+
     // Use current user's profile picture and initials
     final initials = _currentUserInitials ?? 'U';
 
@@ -1388,7 +1394,8 @@ class _PostCardState extends State<PostCard> {
             // Calculate responsive width with small margins
             // Use constraints.maxWidth which accounts for parent padding
             final availableWidth = constraints.maxWidth;
-            final maxWidth = 600.0; // Max width to prevent posts from being too wide
+            final maxWidth =
+                600.0; // Max width to prevent posts from being too wide
             // Use available width but clamp between min (360) and max (600)
             // The parent already has 16px padding on each side, so we use the available width
             final cardWidth = availableWidth.clamp(360.0, maxWidth);
@@ -1397,158 +1404,165 @@ class _PostCardState extends State<PostCard> {
               width: cardWidth,
 
               child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
 
-              border: Border.all(
-                color: palette.outerBorderColor,
+                  border: Border.all(
+                    color: palette.outerBorderColor,
 
-                width: data.variant == PostCardVariant.wod ? 1 : 1.51027,
-              ),
-            ),
-
-            child: Container(
-              margin: const EdgeInsets.only(top: 2),
-
-              decoration: BoxDecoration(
-                color: data.variant == PostCardVariant.wod
-                    ? null
-                    : Colors.white,
-                gradient: data.variant == PostCardVariant.wod
-                    ? LinearGradient(
-                        colors: palette.headerGradient,
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      )
-                    : null,
-                borderRadius: BorderRadius.circular(24),
-              ),
-
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-                  if (palette.showHeader)
-                    _HighlightHeader(palette: palette, variant: data.variant),
-
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        _PostHeader(
-                          data: data,
-
-                          palette: palette,
-
-                          votes: _currentVotes,
-
-                          isUpvoted: _userVote == 1,
-
-                          isDownvoted: _userVote == -1,
-
-                          onUpvote: _handleUpvote,
-
-                          onDownvote: _handleDownvote,
-
-                          showMetaBadges: !isAdminPinned,
-
-                          customBadge: isAdminPinned ? _AdminBadge() : null,
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        _PostTitle(
-                          title: data.title,
-
-                          color: palette.titleColor,
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        _PostBody(body: data.body),
-
-                        const SizedBox(height: 24),
-
-                        _PostFooter(
-                          data: data.copyWith(comments: _currentComments),
-
-                          palette: palette,
-
-                          onMoreTap: shouldShowMoreButton
-                              ? () => _toggleMenu(context)
-                              : null,
-
-                          moreButtonKey: shouldShowMoreButton ? _menuKey : null,
-
-                          onToggleComments: () {
-                            setState(() {
-                              _showComments = !_showComments;
-                            });
-                            // Load comments from API when expanding comments section
-                            // Also reload if we don't have an accurate count yet
-                            if (_showComments &&
-                                (_comments.isEmpty ||
-                                    _actualCommentCount == null) &&
-                                data.id != null) {
-                              _loadComments();
-                            }
-                          },
-
-                          commentsExpanded: _showComments,
-
-                          showMoreButton: shouldShowMoreButton,
-
-                          isYourPosts: widget.isYourPosts,
-
-                          commentCount:
-                              _actualCommentCount ??
-                              (_currentComments.isNotEmpty
-                                  ? _totalCommentCount(_currentComments)
-                                  : data.commentsCount),
-                        ),
-
-                        if (_showComments) ...[
-                          const _PostCommentsDivider(),
-
-                          _CommentsSection(
-                            palette: palette,
-
-                            data: data.copyWith(comments: _currentComments),
-
-                            controller: _commentController,
-
-                            onSubmitComment: _addComment,
-
-                            onReplyToComment: _toggleInlineReply,
-
-                            activeReplyIndex: _activeReplyIndex,
-
-                            replyController: _replyController,
-
-                            onSubmitReply: _addReply,
-
-                            onReportComment: (comment) =>
-                                _showReportCommentSheet(context, comment),
-
-                            onDeleteComment: (comment) =>
-                                _showDeleteCommentDialog(context, comment),
-
-                            onBlockComment: (comment) =>
-                                _handleBlockCommentUser(context, comment),
-                          ),
-                        ],
-                      ],
-                    ),
+                    width: data.variant == PostCardVariant.wod ? 1 : 1.51027,
                   ),
-                ],
+                ),
+
+                child: Container(
+                  margin: const EdgeInsets.only(top: 2),
+
+                  decoration: BoxDecoration(
+                    color: data.variant == PostCardVariant.wod
+                        ? null
+                        : Colors.white,
+                    gradient: data.variant == PostCardVariant.wod
+                        ? LinearGradient(
+                            colors: palette.headerGradient,
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+
+                    crossAxisAlignment: CrossAxisAlignment.start,
+
+                    children: [
+                      if (palette.showHeader)
+                        _HighlightHeader(
+                          palette: palette,
+                          variant: data.variant,
+                        ),
+
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+
+                          children: [
+                            _PostHeader(
+                              data: data,
+
+                              palette: palette,
+
+                              votes: _currentVotes,
+
+                              isUpvoted: _userVote == 1,
+
+                              isDownvoted: _userVote == -1,
+
+                              onUpvote: _handleUpvote,
+
+                              onDownvote: _handleDownvote,
+
+                              showMetaBadges: !isAdminPinned,
+
+                              customBadge: isAdminPinned ? _AdminBadge() : null,
+
+                              isUpvotedPostsScreen: widget.isUpvotedPostsScreen,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            _PostTitle(
+                              title: data.title,
+
+                              color: palette.titleColor,
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            _PostBody(body: data.body),
+
+                            const SizedBox(height: 24),
+
+                            _PostFooter(
+                              data: data.copyWith(comments: _currentComments),
+
+                              palette: palette,
+
+                              onMoreTap: shouldShowMoreButton
+                                  ? () => _toggleMenu(context)
+                                  : null,
+
+                              moreButtonKey: shouldShowMoreButton
+                                  ? _menuKey
+                                  : null,
+
+                              onToggleComments: () {
+                                setState(() {
+                                  _showComments = !_showComments;
+                                });
+                                // Load comments from API when expanding comments section
+                                // Also reload if we don't have an accurate count yet
+                                if (_showComments &&
+                                    (_comments.isEmpty ||
+                                        _actualCommentCount == null) &&
+                                    data.id != null) {
+                                  _loadComments();
+                                }
+                              },
+
+                              commentsExpanded: _showComments,
+
+                              showMoreButton: shouldShowMoreButton,
+
+                              isYourPosts: widget.isYourPosts,
+
+                              commentCount:
+                                  _actualCommentCount ??
+                                  (_currentComments.isNotEmpty
+                                      ? _totalCommentCount(_currentComments)
+                                      : data.commentsCount),
+                            ),
+
+                            if (_showComments) ...[
+                              const _PostCommentsDivider(),
+
+                              _CommentsSection(
+                                palette: palette,
+
+                                data: data.copyWith(comments: _currentComments),
+
+                                controller: _commentController,
+
+                                onSubmitComment: _addComment,
+
+                                onReplyToComment: _toggleInlineReply,
+
+                                activeReplyIndex: _activeReplyIndex,
+
+                                replyController: _replyController,
+
+                                onSubmitReply: _addReply,
+
+                                onReportComment: (comment) =>
+                                    _showReportCommentSheet(context, comment),
+
+                                onDeleteComment: (comment) =>
+                                    _showDeleteCommentDialog(context, comment),
+
+                                onBlockComment: (comment) =>
+                                    _handleBlockCommentUser(context, comment),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
             );
           },
         ),
@@ -1976,7 +1990,8 @@ class _PostCardState extends State<PostCard> {
         if (mounted) {
           PalToast.show(
             context,
-            message: 'You\'ve blocked $username. You won\'t see each other\'s posts, except for official platform-pinned posts, which remain visible to all users.',
+            message:
+                'You\'ve blocked $username. You won\'t see each other\'s posts, except for official platform-pinned posts, which remain visible to all users.',
           );
         }
       } catch (e) {
@@ -2023,7 +2038,8 @@ class _PostCardState extends State<PostCard> {
         if (mounted) {
           PalToast.show(
             context,
-            message: 'You\'ve blocked $username. You won\'t see each other\'s posts, except for official platform-pinned posts, which remain visible to all users.',
+            message:
+                'You\'ve blocked $username. You won\'t see each other\'s posts, except for official platform-pinned posts, which remain visible to all users.',
           );
         }
       } catch (e) {
@@ -2226,6 +2242,8 @@ class _PostHeader extends StatelessWidget {
     this.showMetaBadges = true,
 
     this.customBadge,
+
+    this.isUpvotedPostsScreen = false,
   });
 
   final PostCardData data;
@@ -2245,6 +2263,8 @@ class _PostHeader extends StatelessWidget {
   final bool showMetaBadges;
 
   final Widget? customBadge;
+
+  final bool isUpvotedPostsScreen;
 
   @override
   Widget build(BuildContext context) {
@@ -2402,6 +2422,8 @@ class _PostHeader extends StatelessWidget {
           onUpvote: onUpvote,
 
           onDownvote: onDownvote,
+
+          isUpvotedPostsScreen: isUpvotedPostsScreen,
         ),
       ],
     );
@@ -2919,6 +2941,8 @@ class _VotePanel extends StatelessWidget {
     required this.onUpvote,
 
     required this.onDownvote,
+
+    this.isUpvotedPostsScreen = false,
   });
 
   final PostCardData data;
@@ -2935,6 +2959,8 @@ class _VotePanel extends StatelessWidget {
 
   final VoidCallback onDownvote;
 
+  final bool isUpvotedPostsScreen;
+
   @override
   Widget build(BuildContext context) {
     // Background color when arrow is clicked/highlighted - variant-specific
@@ -2944,7 +2970,8 @@ class _VotePanel extends StatelessWidget {
         voteBackgroundColor = const Color(0xFFF54900); // #F54900 for hot posts
         break;
       case PostCardVariant.top:
-        voteBackgroundColor = palette.voteButtonBackground; // Blue for top posts
+        voteBackgroundColor =
+            palette.voteButtonBackground; // Blue for top posts
         break;
       case PostCardVariant.newPost:
         voteBackgroundColor = const Color(0xFF0F172B); // Dark for new posts
@@ -2954,9 +2981,10 @@ class _VotePanel extends StatelessWidget {
         break;
     }
 
-    final Color upBackground = isUpvoted
-        ? voteBackgroundColor
-        : Colors.transparent;
+    // For upvoted posts screen, always show highlighted upvote with #314158
+    final Color upBackground = isUpvotedPostsScreen
+        ? const Color(0xFF314158) // Highlighted upvote for upvoted posts screen
+        : (isUpvoted ? voteBackgroundColor : Colors.transparent);
     final Color downBackground = isDownvoted
         ? voteBackgroundColor
         : Colors.transparent;
@@ -2982,7 +3010,10 @@ class _VotePanel extends StatelessWidget {
         break;
     }
 
-    final Color upIconColor = isUpvoted ? Colors.white : defaultIconColor;
+    // For upvoted posts screen, always show white icon since background is highlighted
+    final Color upIconColor = isUpvotedPostsScreen
+        ? Colors.white
+        : (isUpvoted ? Colors.white : defaultIconColor);
     final Color downIconColor = isDownvoted ? Colors.white : defaultIconColor;
 
     return Container(
@@ -3539,7 +3570,7 @@ class _CommentInputField extends StatefulWidget {
 
 class _CommentInputFieldState extends State<_CommentInputField> {
   final PostService _postService = PostService();
-  List<Map<String, dynamic>> _mentionSuggestions = [];
+  List<ProfileData> _mentionSuggestions = [];
   bool _showMentionSuggestions = false;
   int _mentionStartIndex = -1;
   String _mentionQuery = '';
@@ -3564,6 +3595,7 @@ class _CommentInputFieldState extends State<_CommentInputField> {
     final cursorPosition = selection.baseOffset;
 
     // Find the last @ symbol before cursor
+    if (cursorPosition < 0) return;
     final textBeforeCursor = text.substring(0, cursorPosition);
     final lastAtIndex = textBeforeCursor.lastIndexOf('@');
 
@@ -3598,15 +3630,17 @@ class _CommentInputFieldState extends State<_CommentInputField> {
 
   Future<void> _searchUsers(String query) async {
     try {
-      // Search with query (empty query should return popular/recent users)
+      // Search with query
       final response = await _postService.searchUsers(query: query, limit: 10);
+
       if (mounted) {
+        final usersList = response['users'] as List<dynamic>? ?? [];
+        final profileDataList = usersList
+            .map((u) => ProfileData.fromMap(u as Map<String, dynamic>))
+            .toList();
+
         setState(() {
-          _mentionSuggestions =
-              (response['users'] as List<dynamic>?)
-                  ?.map((u) => u as Map<String, dynamic>)
-                  .toList() ??
-              [];
+          _mentionSuggestions = profileDataList;
           // Show suggestions if we have results
           _showMentionSuggestions = _mentionSuggestions.isNotEmpty;
         });
@@ -3622,8 +3656,8 @@ class _CommentInputFieldState extends State<_CommentInputField> {
     }
   }
 
-  void _selectMention(Map<String, dynamic> user) {
-    final username = user['username']?.toString() ?? '';
+  void _selectMention(ProfileData user) {
+    final username = user.username;
     if (username.isEmpty) return;
 
     final text = widget.controller.text;
@@ -3744,16 +3778,10 @@ class _CommentInputFieldState extends State<_CommentInputField> {
                     itemCount: _mentionSuggestions.length,
                     itemBuilder: (context, index) {
                       final user = _mentionSuggestions[index];
-                      final username = user['username']?.toString() ?? '';
-                      final displayName =
-                          user['display_name']?.toString() ?? username;
-                      final profilePictureUrl = user['profile_picture_url']
-                          ?.toString();
-                      final initials =
-                          user['initials']?.toString() ??
-                          (username.isNotEmpty
-                              ? username[0].toUpperCase()
-                              : 'U');
+                      final username = user.username.replaceAll('@', '');
+                      final displayName = user.displayName ?? username;
+                      final profilePictureUrl = user.pictureUrl;
+                      final initials = user.initials;
 
                       return InkWell(
                         onTap: () => _selectMention(user),
@@ -3788,7 +3816,7 @@ class _CommentInputFieldState extends State<_CommentInputField> {
                                           profilePictureUrl.isNotEmpty
                                       ? DecorationImage(
                                           image: NetworkImage(
-                                            profilePictureUrl,
+                                            profilePictureUrl!,
                                           ),
                                           fit: BoxFit.cover,
                                         )
@@ -3796,7 +3824,7 @@ class _CommentInputFieldState extends State<_CommentInputField> {
                                 ),
                                 child:
                                     profilePictureUrl == null ||
-                                        profilePictureUrl.isEmpty
+                                        profilePictureUrl!.isEmpty
                                     ? Center(
                                         child: Text(
                                           initials,

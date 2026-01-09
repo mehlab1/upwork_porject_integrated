@@ -117,8 +117,7 @@ class _FaqScreenState extends State<FaqScreen> {
         },
         {
           'question': 'Is there a web app?',
-          'answer':
-              'Please visit kobipal.com for more information.',
+          'answer': 'Please visit kobipal.com for more information.',
         },
       ],
     },
@@ -155,7 +154,11 @@ class _FaqScreenState extends State<FaqScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (int sectionIndex = 0; sectionIndex < _faqSections.length; sectionIndex++) ...[
+                      for (
+                        int sectionIndex = 0;
+                        sectionIndex < _faqSections.length;
+                        sectionIndex++
+                      ) ...[
                         // Section heading
                         Padding(
                           padding: EdgeInsets.only(
@@ -176,14 +179,38 @@ class _FaqScreenState extends State<FaqScreen> {
                           ),
                         ),
                         // Section items
-                        for (int itemIndex = 0; itemIndex < (_faqSections[sectionIndex]['items'] as List).length; itemIndex++) ...[
+                        for (
+                          int itemIndex = 0;
+                          itemIndex <
+                              (_faqSections[sectionIndex]['items'] as List)
+                                  .length;
+                          itemIndex++
+                        ) ...[
                           _FaqItem(
-                            question: (_faqSections[sectionIndex]['items'] as List<Map<String, String>>)[itemIndex]['question']!,
-                            answer: (_faqSections[sectionIndex]['items'] as List<Map<String, String>>)[itemIndex]['answer']!,
-                            isExpanded: _expandedItems[_getGlobalIndex(sectionIndex, itemIndex)] ?? false,
-                            onTap: () => _toggleItem(_getGlobalIndex(sectionIndex, itemIndex)),
+                            question:
+                                (_faqSections[sectionIndex]['items']
+                                    as List<
+                                      Map<String, String>
+                                    >)[itemIndex]['question']!,
+                            answer:
+                                (_faqSections[sectionIndex]['items']
+                                    as List<
+                                      Map<String, String>
+                                    >)[itemIndex]['answer']!,
+                            isExpanded:
+                                _expandedItems[_getGlobalIndex(
+                                  sectionIndex,
+                                  itemIndex,
+                                )] ??
+                                false,
+                            onTap: () => _toggleItem(
+                              _getGlobalIndex(sectionIndex, itemIndex),
+                            ),
                           ),
-                          if (itemIndex < (_faqSections[sectionIndex]['items'] as List).length - 1)
+                          if (itemIndex <
+                              (_faqSections[sectionIndex]['items'] as List)
+                                      .length -
+                                  1)
                             const SizedBox(height: 12),
                         ],
                       ],
@@ -363,76 +390,104 @@ class _StillHaveQuestionsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border(
-          left: BorderSide(
-            color: const Color(0xFF155DFC).withOpacity(0.3),
-            width: 3,
-          ),
-          top: BorderSide(
-            color: Colors.black.withOpacity(0.1),
-            width: 0.5,
-          ),
-          right: BorderSide(
-            color: Colors.black.withOpacity(0.1),
-            width: 0.5,
-          ),
-          bottom: BorderSide(
-            color: Colors.black.withOpacity(0.1),
-            width: 0.5,
-          ),
-        ),
+        border: Border.all(color: const Color(0xFF3B82F6), width: 1.5),
       ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Still have questions?',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF0F172B),
-              letterSpacing: -0.15,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'If you can\'t find the answer you\'re looking for, reach out to our community support team. We\'re here to help!',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: Color(0xFF45556C),
-              letterSpacing: -0.15,
-              height: 1.43,
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _handleContactSupport,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF155DFC),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Contact Support',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: 'Inter',
-                  letterSpacing: -0.15,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(13),
+        child: Stack(
+          children: [
+            // Left vertical accent line
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 4,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF3B82F6),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    bottomLeft: Radius.circular(12),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Still have questions?',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172B),
+                      fontFamily: 'Inter',
+                      letterSpacing: -0.625,
+                      height: 24 / 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'If you can\'t find the answer you\'re looking for, reach out to our community support team. We\'re here to help!',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: Color(0xFF45556C),
+                      fontFamily: 'Inter',
+                      letterSpacing: -0.3008,
+                      height: 22.75 / 14,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: 150.55,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF155DFC),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1A000000),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                        BoxShadow(
+                          color: Color(0x1A000000),
+                          blurRadius: 2,
+                          offset: Offset(0, 1),
+                          spreadRadius: -1,
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _handleContactSupport,
+                        borderRadius: BorderRadius.circular(10),
+                        child: const Center(
+                          child: Text(
+                            'Contact Support',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              fontFamily: 'Inter',
+                              letterSpacing: -0.2266,
+                              height: 19.5 / 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

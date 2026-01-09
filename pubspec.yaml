@@ -62,6 +62,8 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   change_app_package_name: ^1.5.0
+  integration_test:
+    sdk: flutter
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -84,6 +86,7 @@ flutter:
     - assets/settings/
     - assets/adminIcons/adminpostMenu/
     - assets/adminIcons/adminSettings/
+    - assets/adminIcons/adminPostTypes/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

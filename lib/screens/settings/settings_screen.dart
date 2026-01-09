@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart' as svg;
 import 'package:image_picker/image_picker.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'your_posts_screen.dart';
 import 'community_guidelines_screen.dart';
@@ -88,18 +89,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       final profileData = await _profileService.getProfileData();
-      print('DEBUG _loadProfileData: profileData received: ${profileData != null}');
+      print(
+        'DEBUG _loadProfileData: profileData received: ${profileData != null}',
+      );
       if (profileData != null) {
         print('DEBUG _loadProfileData: username: ${profileData.username}');
         print('DEBUG _loadProfileData: postCount: ${profileData.postCount}');
-        print('DEBUG _loadProfileData: totalUpvotesReceived: ${profileData.totalUpvotesReceived}');
+        print(
+          'DEBUG _loadProfileData: totalUpvotesReceived: ${profileData.totalUpvotesReceived}',
+        );
       }
       if (!mounted) return;
       setState(() {
         _profileData = profileData;
         _isLoadingProfile = false;
       });
-      print('DEBUG _loadProfileData: _profileData set, totalUpvotesReceived: ${_profileData?.totalUpvotesReceived}');
+      print(
+        'DEBUG _loadProfileData: _profileData set, totalUpvotesReceived: ${_profileData?.totalUpvotesReceived}',
+      );
     } catch (e) {
       print('ERROR _loadProfileData: Exception - $e');
       if (!mounted) return;
@@ -856,7 +863,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _togglePushNotifications() async {
     final newValue = !_pushNotificationsEnabled;
-    
+
     // Optimistically update UI
     setState(() {
       _pushNotificationsEnabled = newValue;
@@ -882,7 +889,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _toggleWOD() async {
     final newValue = !_wodEnabled;
-    
+
     // Optimistically update UI
     setState(() {
       _wodEnabled = newValue;
@@ -898,10 +905,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _wodEnabled = !newValue;
         });
-        PalToast.show(
-          context,
-          message: 'Failed to update WOD settings',
-        );
+        PalToast.show(context, message: 'Failed to update WOD settings');
       }
     }
   }
@@ -958,7 +962,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           tiles: [
                             _SettingsTileData(
                               title: 'Edit Username',
-                              subtitle: _profileData?.formattedUsernameLastChanged ?? 'Last changed days ago',
+                              subtitle:
+                                  _profileData?.formattedUsernameLastChanged ??
+                                  'Last changed days ago',
                               iconAsset: 'assets/settings/username.svg',
                               iconBackground: const Color(0xFFF1F5F9),
                               iconTint: const Color(0xFF314158),
@@ -1018,10 +1024,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   decoration: BoxDecoration(
                                     color: _pushNotificationsEnabled
                                         ? const Color(0xFF030213)
-                                        : const Color.fromRGBO(21, 93, 252, 0.12),
+                                        : const Color.fromRGBO(
+                                            21,
+                                            93,
+                                            252,
+                                            0.12,
+                                          ),
                                     borderRadius: BorderRadius.circular(19),
                                     border: Border.all(
-                                        color: Colors.transparent, width: 0.756),
+                                      color: Colors.transparent,
+                                      width: 0.756,
+                                    ),
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 0.75586,
@@ -1057,10 +1070,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   decoration: BoxDecoration(
                                     color: _wodEnabled
                                         ? const Color(0xFF030213)
-                                        : const Color.fromRGBO(21, 93, 252, 0.12),
+                                        : const Color.fromRGBO(
+                                            21,
+                                            93,
+                                            252,
+                                            0.12,
+                                          ),
                                     borderRadius: BorderRadius.circular(19),
                                     border: Border.all(
-                                        color: Colors.transparent, width: 0.756),
+                                      color: Colors.transparent,
+                                      width: 0.756,
+                                    ),
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 0.75586,
@@ -1124,8 +1144,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     if (context.mounted) {
                                       PalToast.show(
                                         context,
-                                        message:
-                                            'link copied to clipboard',
+                                        message: 'link copied to clipboard',
                                       );
                                     }
                                   },
@@ -1255,7 +1274,7 @@ class _ProfileOverviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _borderColor, width: 1.5),
+        border: Border.all(color: _borderColor, width: 3),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1277,7 +1296,7 @@ class _ProfileOverviewCard extends StatelessWidget {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(34),
                           border: Border.all(
-                            color: const Color(0xFF314158),
+                            color: const Color(0xFF0F172B),
                             width: 3,
                           ),
                         ),
@@ -1294,8 +1313,8 @@ class _ProfileOverviewCard extends StatelessWidget {
                         imageUrl: profileData?.pictureUrl,
                         initials: profileData?.initials ?? 'U',
                         size: 68,
-                        borderWidth: 2,
-                        borderColor: const Color(0xFF314158),
+                        borderWidth: 3,
+                        borderColor: const Color(0xFF0F172B),
                       ),
                     Positioned(
                       bottom: -4,
@@ -1304,13 +1323,19 @@ class _ProfileOverviewCard extends StatelessWidget {
                         width: 28,
                         height: 28,
                         decoration: const BoxDecoration(
-                          color: Color(0xFF314158),
+                          color: Color(0xFF0F172B),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.camera_alt_outlined,
-                          size: 14,
-                          color: Colors.white,
+                        child: Center(
+                          child: svg.SvgPicture.asset(
+                            'assets/settings/cameraIcon.svg',
+                            width: 16,
+                            height: 16,
+                            colorFilter: const ColorFilter.mode(
+                              Colors.white,
+                              BlendMode.srcIn,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -1355,10 +1380,7 @@ class _ProfileOverviewCard extends StatelessWidget {
                             ),
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFF9810FA),
-                                  Color(0xFFE60076),
-                                ],
+                                colors: [Color(0xFF9810FA), Color(0xFFE60076)],
                                 begin: Alignment.centerLeft,
                                 end: Alignment.centerRight,
                               ),
@@ -1764,9 +1786,9 @@ class _SettingsTile extends StatelessWidget {
                 children: [
                   Text(
                     data.title,
-                    style: TextStyle(
+                    style: GoogleFonts.inter(
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: isDisabled ? const Color(0xFF94A3B8) : titleColor,
                       letterSpacing: -0.15,
                     ),
@@ -1774,9 +1796,9 @@ class _SettingsTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     data.subtitle,
-                    style: TextStyle(
+                    style: GoogleFonts.inter(
                       fontSize: 12,
-                      fontWeight: FontWeight.w400,
+                      fontWeight: FontWeight.w500,
                       color: subtitleColor,
                     ),
                   ),
@@ -1788,7 +1810,9 @@ class _SettingsTile extends StatelessWidget {
             else
               Padding(
                 padding: EdgeInsets.only(
-                  left: data.iconAsset == 'assets/settings/inviteFriends.svg' ? 8 : 0,
+                  left: data.iconAsset == 'assets/settings/inviteFriends.svg'
+                      ? 8
+                      : 0,
                 ),
                 child: SizedBox(
                   height: 24,
@@ -1799,13 +1823,11 @@ class _SettingsTile extends StatelessWidget {
                           ? 'assets/settings/copyIcon.svg'
                           : 'assets/settings/dropDownIcon.svg',
                       width:
-                          data.iconAsset ==
-                              'assets/settings/inviteFriends.svg'
+                          data.iconAsset == 'assets/settings/inviteFriends.svg'
                           ? 28 // Increased size for copy icon
                           : 18, // Keep dropdown icon size
                       height:
-                          data.iconAsset ==
-                              'assets/settings/inviteFriends.svg'
+                          data.iconAsset == 'assets/settings/inviteFriends.svg'
                           ? 28 // Increased size for copy icon
                           : 18, // Keep dropdown icon size
                       colorFilter: ColorFilter.mode(
@@ -2112,46 +2134,61 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                               clipBehavior: Clip.none,
                               children: [
                                 Positioned.fill(
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(
-                                      120.42 / 2,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(
+                                        120.42 / 2,
+                                      ),
+                                      border: Border.all(
+                                        color: const Color(0xFFF1F5F9),
+                                        width: 3.79,
+                                      ),
                                     ),
-                                    child: _selectedImageBytes != null
-                                        ? Image.memory(
-                                            _selectedImageBytes!,
-                                            fit: BoxFit.cover,
-                                          )
-                                        : _isLoadingProfile
-                                        ? const Center(
-                                            child: SizedBox(
-                                              width: 24,
-                                              height: 24,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            ),
-                                          )
-                                        : _currentProfile != null &&
-                                              _currentProfile!.hasPicture
-                                        ? Image.network(
-                                            _currentProfile!.pictureUrl!,
-                                            fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stackTrace) =>
-                                                    ProfileAvatarWidget(
-                                                      imageUrl: null,
-                                                      initials: _currentProfile!
-                                                          .initials,
-                                                      size: 120.42,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(
+                                        (120.42 / 2) - 3,
+                                      ),
+                                      child: _selectedImageBytes != null
+                                          ? Image.memory(
+                                              _selectedImageBytes!,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : _isLoadingProfile
+                                          ? const Center(
+                                              child: SizedBox(
+                                                width: 24,
+                                                height: 24,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
                                                     ),
-                                          )
-                                        : ProfileAvatarWidget(
-                                            imageUrl: null,
-                                            initials:
-                                                _currentProfile?.initials ??
-                                                'U',
-                                            size: 120.42,
-                                          ),
+                                              ),
+                                            )
+                                          : _currentProfile != null &&
+                                                _currentProfile!.hasPicture
+                                          ? Image.network(
+                                              _currentProfile!.pictureUrl!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder:
+                                                  (
+                                                    context,
+                                                    error,
+                                                    stackTrace,
+                                                  ) => ProfileAvatarWidget(
+                                                    imageUrl: null,
+                                                    initials: _currentProfile!
+                                                        .initials,
+                                                    size: 120.42 - 6,
+                                                  ),
+                                            )
+                                          : ProfileAvatarWidget(
+                                              imageUrl: null,
+                                              initials:
+                                                  _currentProfile?.initials ??
+                                                  'U',
+                                              size: 120.42 - 6,
+                                            ),
+                                    ),
                                   ),
                                 ),
                                 Positioned(
@@ -2175,10 +2212,16 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                                         ),
                                       ],
                                     ),
-                                    child: const Icon(
-                                      Icons.camera_alt_outlined,
-                                      size: 20,
-                                      color: Colors.white,
+                                    child: Center(
+                                      child: svg.SvgPicture.asset(
+                                        'assets/settings/cameraIcon.svg',
+                                        width: 20,
+                                        height: 20,
+                                        colorFilter: const ColorFilter.mode(
+                                          Colors.white,
+                                          BlendMode.srcIn,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2231,10 +2274,16 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
                             color: const Color(0xFF155DFC).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: Color(0xFF155DFC),
+                          child: Center(
+                            child: svg.SvgPicture.asset(
+                              'assets/settings/uploadIcon.svg',
+                              width: 16,
+                              height: 16,
+                              colorFilter: const ColorFilter.mode(
+                                Color(0xFF155DFC),
+                                BlendMode.srcIn,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -2467,10 +2516,7 @@ class _DeactivateAccountDialog extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: Colors.black.withOpacity(0.1),
-          width: 0.759,
-        ),
+        border: Border.all(color: Colors.black.withOpacity(0.1), width: 0.759),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -2573,7 +2619,10 @@ class _DeactivateAccountDialog extends StatelessWidget {
               ),
               filled: true,
               fillColor: const Color(0xFFF3F3F5),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(
@@ -2608,7 +2657,10 @@ class _DeactivateAccountDialog extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
               child: const Text(
                 'Deactivate',
@@ -2637,7 +2689,10 @@ class _DeactivateAccountDialog extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16.759, vertical: 8.759),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.759,
+                  vertical: 8.759,
+                ),
               ),
               child: const Text(
                 'Cancel',
@@ -3306,7 +3361,7 @@ class _ShareFeedbackDialogState extends State<_ShareFeedbackDialog> {
 
   Future<void> _submitFeedback() async {
     final message = _messageController.text.trim();
-    
+
     // Validate message
     if (message.length < 10) {
       setState(() {
@@ -3332,15 +3387,13 @@ class _ShareFeedbackDialogState extends State<_ShareFeedbackDialog> {
       if (response['success'] == true) {
         widget.onSubmit();
       } else {
-        final errorMsg = response['message']?.toString() ?? 'Failed to submit feedback';
+        final errorMsg =
+            response['message']?.toString() ?? 'Failed to submit feedback';
         setState(() {
           _errorMessage = errorMsg;
           _isSubmitting = false;
         });
-        PalToast.show(
-          context,
-          message: errorMsg,
-        );
+        PalToast.show(context, message: errorMsg);
       }
     } catch (e) {
       if (!mounted) return;
@@ -3558,10 +3611,7 @@ class _ShareFeedbackDialogState extends State<_ShareFeedbackDialog> {
             const SizedBox(height: 8),
             Text(
               _errorMessage!,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFFE7000B),
-              ),
+              style: const TextStyle(fontSize: 12, color: Color(0xFFE7000B)),
             ),
           ],
         ],

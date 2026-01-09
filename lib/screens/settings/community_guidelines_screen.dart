@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class CommunityGuidelinesScreen extends StatelessWidget {
   const CommunityGuidelinesScreen({super.key});
@@ -81,13 +82,13 @@ class _GuidelinesAppBar extends StatelessWidget {
             constraints: const BoxConstraints(),
           ),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
               'Community Guidelines',
-              style: TextStyle(
+              style: GoogleFonts.inter(
                 fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172B),
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF0F172B),
                 letterSpacing: 0.07,
               ),
             ),
@@ -143,23 +144,23 @@ class _WelcomeCard extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
                       'Welcome to Pal',
-                      style: TextStyle(
+                      style: GoogleFonts.inter(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F172B),
+                        color: const Color(0xFF0F172B),
                         letterSpacing: -0.31,
                       ),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
                       "Let's keep our community safe and friendly",
-                      style: TextStyle(
+                      style: GoogleFonts.inter(
                         fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF45556C),
+                        fontWeight: FontWeight.w400,
+                        color: const Color(0xFF45556C),
                         letterSpacing: -0.15,
                       ),
                     ),
@@ -169,12 +170,12 @@ class _WelcomeCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Our forum is built on mutual respect and the shared goal of making Lagos better for everyone. These guidelines help ensure everyone has a positive experience. By participating, you agree to follow these rules.',
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w400,
-              color: Color(0xFF45556C),
+              color: const Color(0xFF45556C),
               height: 1.62,
               letterSpacing: -0.15,
             ),
@@ -200,12 +201,12 @@ class _UnderstandingCategories extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Understanding Post Categories',
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF0F172B),
+              color: const Color(0xFF0F172B),
               letterSpacing: -0.31,
             ),
           ),
@@ -216,11 +217,12 @@ class _UnderstandingCategories extends StatelessWidget {
                 'Share news, updates, events, or interesting things happening in your neighborhood. Traffic alerts, power outages, new businesses, local events, or general community updates.',
             example:
                 '"New restaurant opening in Ikoyi next week" or "Traffic alert: Lekki-Epe Expressway"',
-            background: Color(0xFFF3E8FF),
+            background: Color(0xFFFAF5FF),
             borderColor: Color(0xFFE9D4FF),
             titleColor: Color(0xFF59168B),
             exampleColor: Color(0xFF8200DB),
             iconAsset: 'assets/images/gistIcon.svg',
+            iconColor: Color(0xFF8200DB),
           ),
           const SizedBox(height: 16),
           const _CategoryCard(
@@ -229,11 +231,12 @@ class _UnderstandingCategories extends StatelessWidget {
                 'Ask for recommendations, advice, or help from the community. Best for seeking information, suggestions, or local knowledge from your neighbors.',
             example:
                 '"Best barber in Lekki Phase 1?" or "Good mechanic around VI?"',
-            background: Color(0xFFF0FFF7),
+            background: Color(0xFFF0FDF4),
             borderColor: Color(0xFFB9F8CF),
             titleColor: Color(0xFF0D542B),
             exampleColor: Color(0xFF008236),
             iconAsset: 'assets/images/askIcon.svg',
+            iconColor: Color(0xFF008236),
           ),
           const SizedBox(height: 16),
           const _CategoryCard(
@@ -242,11 +245,12 @@ class _UnderstandingCategories extends StatelessWidget {
                 'Start conversations about local issues, community matters, or topics that affect your area. Engage in thoughtful dialogue about neighborhood concerns or improvements.',
             example:
                 '"Thoughts on the new security measures in Ikoyi?" or "How can we improve waste management?"',
-            background: Color(0xFFFFF1DB),
+            background: Color(0xFFFFFBEB),
             borderColor: Color(0xFFFEE685),
             titleColor: Color(0xFF7B3306),
             exampleColor: Color(0xFFBB4D00),
             iconAsset: 'assets/images/discussionIcon.svg',
+            iconColor: Color(0xFFBB4D00),
           ),
         ],
       ),
@@ -264,6 +268,7 @@ class _CategoryCard extends StatelessWidget {
     required this.titleColor,
     required this.exampleColor,
     required this.iconAsset,
+    required this.iconColor,
   });
 
   final String title;
@@ -274,6 +279,7 @@ class _CategoryCard extends StatelessWidget {
   final Color titleColor;
   final Color exampleColor;
   final String iconAsset;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -293,12 +299,12 @@ class _CategoryCard extends StatelessWidget {
                 iconAsset,
                 width: 20,
                 height: 20,
-                colorFilter: ColorFilter.mode(titleColor, BlendMode.srcIn),
+                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
               ),
               const SizedBox(width: 10),
               Text(
                 title,
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: titleColor,
@@ -310,10 +316,10 @@ class _CategoryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             description,
-            style: const TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w400,
-              color: Color(0xFF45556C),
+              color: const Color(0xFF45556C),
               height: 1.62,
               letterSpacing: -0.15,
             ),
@@ -321,9 +327,9 @@ class _CategoryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             example,
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 12,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w400,
               color: exampleColor,
               height: 1.4,
               letterSpacing: -0.1,
@@ -375,11 +381,11 @@ class _MonthlyTopicSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Monthly Topic',
-                style: TextStyle(
+              Text(
+                'Monthly Spotlight',
+                style: GoogleFonts.inter(
                   fontSize: 16,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w400,
                   color: Colors.white,
                   letterSpacing: -0.31,
                 ),
@@ -387,12 +393,12 @@ class _MonthlyTopicSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             "Each month, we feature a special topic for community discussion. This month's theme is highlighted across the feed to encourage focused conversation on relevant local holidays.",
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w400,
-              color: Color(0xE6FFFFFF),
+              color: const Color(0xE6FFFFFF),
               height: 1.62,
               letterSpacing: -0.15,
             ),
@@ -407,19 +413,19 @@ class _MonthlyTopicSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
                   'Current Topic:',
-                  style: TextStyle(
+                  style: GoogleFonts.inter(
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xCCFFFFFF),
+                    fontWeight: FontWeight.w400,
+                    color: const Color(0xCCFFFFFF),
                   ),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
                   '"Festive Season: Detty December"',
-                  style: TextStyle(
+                  style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
@@ -462,13 +468,13 @@ class _CommunityRules extends StatelessWidget {
           body:
               'Do not post anything illegal or that promotes illegal activity. This includes:',
           bulletPoints: [
-            '    Selling or promoting illegal goods or services',
-            '    Sharing pirated content or encouraging piracy',
-            '    Doxxing (sharing private information without consent)',
-            '    Scams, fraud, or financial schemes',
-            '    Content that violates Nigerian law',
+            'Selling or promoting illegal goods or services',
+            'Sharing pirated content or encouraging piracy',
+            'Doxxing (sharing private information without consent)',
+            'Scams, fraud, or financial schemes',
+            'Content that violates local laws',
           ],
-          extraNoteColor: Color(0xFFFFE5E7),
+          extraNoteColor: Color(0xFFE7000B),
           extraNoteText:
               'Violations will result in immediate account suspension and may be reported to authorities.',
         ),
@@ -617,41 +623,57 @@ class _RuleCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: GoogleFonts.inter(
                     fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172B),
+                    fontWeight: FontWeight.w400,
+                    color: const Color(0xFF0F172B),
                     letterSpacing: -0.31,
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   body,
-                  style: const TextStyle(
+                  style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
-                    color: Color(0xFF45556C),
+                    color: const Color(0xFF45556C),
                     height: 1.62,
                     letterSpacing: -0.15,
                   ),
                 ),
                 if (bulletPoints.isNotEmpty) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: bulletPoints
                         .map(
                           (point) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Text(
-                              point,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w400,
-                                color: Color(0xFF45556C),
-                                letterSpacing: -0.15,
-                                height: 1.55,
-                              ),
+                            padding: const EdgeInsets.only(bottom: 8, left: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ' ',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: const Color(0xFF45556C),
+                                    height: 1.55,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    point,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
+                                      color: const Color(0xFF45556C),
+                                      letterSpacing: -0.15,
+                                      height: 1.55,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         )
@@ -716,6 +738,9 @@ class _RuleCard extends StatelessWidget {
                         ),
                         backgroundColor: style.background,
                         side: BorderSide(color: style.border),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                       );
                     }).toList(),
                   ),
@@ -754,42 +779,42 @@ class _ConsequencesSection extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
             'Consequences',
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w400,
               color: Colors.white,
               letterSpacing: -0.31,
             ),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
             'Violations may result in:',
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFFCAD5E2),
+              fontWeight: FontWeight.w400,
+              color: const Color(0xFFCAD5E2),
               letterSpacing: -0.15,
             ),
           ),
-          SizedBox(height: 16),
-          _ConsequencesListItem(text: '    Warning and post removal'),
-          _ConsequencesListItem(text: '    Temporary suspension (3-30 days)'),
-          _ConsequencesListItem(
-            text: '    Permanent ban for severe or repeated violations',
+          const SizedBox(height: 16),
+          const _ConsequencesListItem(text: 'Warning and post removal'),
+          const _ConsequencesListItem(text: 'Temporary suspension (3-30 days)'),
+          const _ConsequencesListItem(
+            text: 'Permanent ban for severe or repeated violations',
           ),
-          _ConsequencesListItem(
-            text: '    Report to authorities for illegal content',
+          const _ConsequencesListItem(
+            text: 'Report to authorities for illegal content',
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 16),
           Text(
             'We want everyone to enjoy Pal, so please follow these guidelines and help us maintain a positive, welcoming community.',
-            style: TextStyle(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w400,
-              color: Color(0xFFCAD5E2),
+              color: const Color(0xFFCAD5E2),
               height: 1.62,
               letterSpacing: -0.15,
             ),
@@ -808,16 +833,32 @@ class _ConsequencesListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-          color: Color(0xFFCAD5E2),
-          letterSpacing: -0.15,
-          height: 1.4,
-        ),
+      padding: const EdgeInsets.only(bottom: 8, left: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ' ',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: const Color(0xFFCAD5E2),
+              height: 1.4,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: const Color(0xFFCAD5E2),
+                letterSpacing: -0.15,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -829,25 +870,38 @@ class _FooterSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: const [
-        Text(
-          'Questions about our guidelines? Contact us',
+      children: [
+        RichText(
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF45556C),
-            letterSpacing: -0.15,
+          text: TextSpan(
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: const Color(0xFF45556C),
+              letterSpacing: -0.15,
+            ),
+            children: [
+              const TextSpan(text: 'Questions about our guidelines? '),
+              TextSpan(
+                text: 'Contact us',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF45556C),
+                  letterSpacing: -0.15,
+                ),
+              ),
+            ],
           ),
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         Text(
           'Last updated: October 2025',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: GoogleFonts.inter(
             fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF62748E),
+            fontWeight: FontWeight.w400,
+            color: const Color(0xFF62748E),
             letterSpacing: -0.1,
           ),
         ),
