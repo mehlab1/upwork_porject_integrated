@@ -1,13 +1,41 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Service for post-related API calls
+/// Cached feed data with timestamp for expiration checking
+class _CachedFeedData {
+  final Map<String, dynamic> data;
+  final DateTime cachedAt;
+  
+  _CachedFeedData(this.data) : cachedAt = DateTime.now();
+  
+  bool isValid(Duration maxAge) {
+    return DateTime.now().difference(cachedAt) < maxAge;
+  }
+}
+
+/// Service for post-related API calls with client-side caching
 class PostService {
-  PostService();
+  // Singleton pattern for shared cache
+  static final PostService _instance = PostService._internal();
+  factory PostService() => _instance;
+  PostService._internal();
 
   final SupabaseClient _supabaseClient = Supabase.instance.client;
+  
+  // ============================================================================
+  // CLIENT-SIDE FEED CACHE CONFIGURATION
+  // ============================================================================
+  // Cache durations by filter type (industry best practice)
+  // - "New" filter: 30 seconds (content changes frequently)
+  // - "Hot"/"Top" filters: 2 minutes (trending content is more stable)
+  static const Duration _newFilterCacheDuration = Duration(seconds: 30);
+  static const Duration _hotTopFilterCacheDuration = Duration(minutes: 2);
+  
+  // Feed cache storage (cache key -> cached data)
+  static final Map<String, _CachedFeedData> _feedCache = {};
 
   // Internal helper to call Supabase Edge Functions with masked logging
   Future<Map<String, dynamic>> _callFunction(
@@ -105,7 +133,8 @@ class PostService {
   /// - sort: 'hot', 'top', 'latest' (default: 'hot')
   /// - time_filter: 'all', 'today', 'week', 'month' (default: 'all')
   /// - Filtering by category_id and/or location_id
-  /// - Caching via use_cache parameter
+  /// - Caching via use_cache parameter (backend) and client-side cache
+  /// - forceRefresh: bypass client-side cache (for pull-to-refresh)
   /// 
   /// Returns: Map with success, posts (List), pagination (Map), and cached (bool)
   Future<Map<String, dynamic>> getFeed({
@@ -116,7 +145,29 @@ class PostService {
     String? locationId,
     String? timeFilter,
     bool useCache = true,
+    bool forceRefresh = false,
   }) async {
+    // Generate cache key based on all parameters
+    final cacheKey = 'feed_${sort ?? 'latest'}_${limit}_${offset}_${categoryId ?? ''}_${locationId ?? ''}_${timeFilter ?? ''}';
+    
+    // Determine cache duration based on sort type
+    final sortType = sort ?? 'latest';
+    final cacheDuration = (sortType == 'hot' || sortType == 'top') 
+        ? _hotTopFilterCacheDuration 
+        : _newFilterCacheDuration;
+    
+    // Check client-side cache first (unless force refresh)
+    if (!forceRefresh && _feedCache.containsKey(cacheKey)) {
+      final cached = _feedCache[cacheKey]!;
+      if (cached.isValid(cacheDuration)) {
+        debugPrint('[PostService] Returning client-cached feed (key: $cacheKey, age: ${DateTime.now().difference(cached.cachedAt).inSeconds}s)');
+        return {...cached.data, 'client_cached': true};
+      } else {
+        // Cache expired, remove it
+        _feedCache.remove(cacheKey);
+      }
+    }
+    
     final body = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -128,13 +179,30 @@ class PostService {
     if (categoryId != null) body['category_id'] = categoryId;
     if (locationId != null) body['location_id'] = locationId;
     
-    print('DEBUG getFeed: sort=$sort, limit=$limit, offset=$offset, category=$categoryId, location=$locationId');
+    debugPrint('[PostService] getFeed: sort=$sort, limit=$limit, offset=$offset, category=$categoryId, location=$locationId');
     
     final response = await _callFunction('get-feed', body: body);
     
-    print('DEBUG getFeed: Received ${(response['posts'] as List?)?.length ?? 0} posts, cached: ${response['cached']}');
+    debugPrint('[PostService] getFeed: Received ${(response['posts'] as List?)?.length ?? 0} posts, server_cached: ${response['cached']}');
     
-    return response;
+    // Cache successful response on client-side
+    if (response['success'] == true || response['posts'] != null) {
+      _feedCache[cacheKey] = _CachedFeedData(response);
+    }
+    
+    return {...response, 'client_cached': false};
+  }
+  
+  /// Clear all client-side feed cache (call on pull-to-refresh or logout)
+  void clearFeedCache() {
+    _feedCache.clear();
+    debugPrint('[PostService] Client-side feed cache cleared');
+  }
+  
+  /// Clear cache entries for a specific sort type
+  void clearFeedCacheForSort(String sort) {
+    _feedCache.removeWhere((key, _) => key.contains('feed_$sort'));
+    debugPrint('[PostService] Feed cache cleared for sort: $sort');
   }
 
   /// Get the hottest post using the get-hottest-post edge function
@@ -162,9 +230,28 @@ class PostService {
       body['include_comparison'] = true;
     }
     
-    print('DEBUG getHottestPost: Fetching hottest post (timeframe: $timeframe)');
+    print('=== GET HOTTEST POST - REQUEST ===');
+    print('Timeframe: $timeframe');
+    print('Custom hours: $customHours');
+    print('Include comparison: $includeComparison');
+    print('Request body: ${jsonEncode(body)}');
     
-    return await _callFunction('get-hottest-post', body: body);
+    final response = await _callFunction('get-hottest-post', body: body);
+    
+    print('=== GET HOTTEST POST - RESPONSE ===');
+    print('Success: ${response['success']}');
+    print('Has hottest_post: ${response['hottest_post'] != null}');
+    if (response['hottest_post'] != null) {
+      final post = response['hottest_post'] as Map<String, dynamic>?;
+      print('Post ID: ${post?['id']}');
+      print('Post content length: ${post?['content']?.toString().length ?? 0}');
+    } else {
+      print('Message: ${response['message']}');
+    }
+    print('Full response: $response');
+    print('===================================');
+    
+    return response;
   }
 
   /// Get the top post using the get-top-post edge function
@@ -186,9 +273,65 @@ class PostService {
       body['include_stats'] = true;
     }
     
-    print('DEBUG getTopPost: Fetching top post (period: $period)');
+    print('=== GET TOP POST - REQUEST ===');
+    print('Period: $period');
+    print('Include stats: $includeStats');
+    print('Request body: ${jsonEncode(body)}');
     
-    return await _callFunction('get-top-post', body: body);
+    final response = await _callFunction('get-top-post', body: body);
+    
+    print('=== GET TOP POST - RESPONSE ===');
+    print('Success: ${response['success']}');
+    print('Has top_post: ${response['top_post'] != null}');
+    if (response['top_post'] != null) {
+      final post = response['top_post'] as Map<String, dynamic>?;
+      print('Post ID: ${post?['id']}');
+      print('Post content length: ${post?['content']?.toString().length ?? 0}');
+    } else {
+      print('Message: ${response['message']}');
+    }
+    print('Full response: $response');
+    print('==============================');
+    
+    return response;
+  }
+
+  /// Get a single post by ID using the get-post edge function
+  /// 
+  /// Returns: Map with success (bool) and post (Map<String, dynamic>) containing:
+  /// - id, user_id, username, profile_picture_url
+  /// - category_id, category_name, location_id, location_name
+  /// - content, image_url
+  /// - upvote_count, downvote_count, net_score, comment_count
+  /// - user_vote (current user's vote: 'upvote', 'downvote', or null)
+  /// - created_at, updated_at
+  Future<Map<String, dynamic>> getPost({required String postId}) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+    };
+    
+    print('DEBUG getPost: Fetching post: $postId');
+    
+    try {
+      final response = await _callFunction('get-post', body: body);
+      
+      // Check for success field
+      final success = response['success'] as bool? ?? true;
+      
+      if (!success) {
+        final errorMessage = response['error'] as String? ?? 
+                            response['message'] as String? ?? 
+                            'Failed to fetch post';
+        throw Exception(errorMessage);
+      }
+      
+      print('DEBUG getPost: Successfully retrieved post: ${response['post']?['id']}');
+      
+      return response;
+    } catch (e) {
+      print('ERROR getPost: Exception - $e');
+      rethrow;
+    }
   }
 
   /// Get comments for a post using the get-comments edge function

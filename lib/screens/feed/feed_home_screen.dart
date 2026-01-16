@@ -137,7 +137,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   bool _isPageLoading = true;
   bool _isInitialPostsLoading = true;
   bool _isFirstLoad = true; // Track if this is the very first load
-  bool _showWelcomeSection = true; // Track welcome section visibility - shown initially, hidden after refresh
+  bool _showWelcomeSection =
+      true; // Track welcome section visibility - shown initially, hidden after refresh
   final PostService _postService = PostService();
   final ProfileService _profileService = ProfileService();
 
@@ -169,6 +170,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   int _spotlightOffset = 0;
   bool _hasMoreSpotlightPosts = true;
   static const int _spotlightPageSize = 20;
+
+  // Track if first Hot/Top post UI has been shown (only show special UI once, not on loop)
+  bool _hasShownFirstHotPost = false;
+  bool _hasShownFirstTopPost = false;
 
   static const PostCardData _pinnedAdminPost = PostCardData(
     variant: PostCardVariant.newPost,
@@ -207,13 +212,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   List<PostCardData> _postsForFilter(String filter) {
     switch (filter) {
       case 'Hot':
-        return _allPosts
-            .where((post) => post.variant == PostCardVariant.hot)
-            .toList();
+        // For Hot filter, return all posts (first will have hot variant, rest newPost variant)
+        // Only filter if we specifically want hot variant posts (legacy behavior)
+        return _allPosts;
       case 'Top':
-        return _allPosts
-            .where((post) => post.variant == PostCardVariant.top)
-            .toList();
+        // For Top filter, return all posts (first will have top variant, rest newPost variant)
+        // Only filter if we specifically want top variant posts (legacy behavior)
+        return _allPosts;
       case 'New':
       default:
         return _allPosts;
@@ -347,7 +352,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
   Future<void> _fetchSpotlightStatus() async {
     if (_isLoadingSpotlightStatus) return;
-    
+
     setState(() {
       _isLoadingSpotlightStatus = true;
     });
@@ -431,7 +436,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       // Check for success
       final success = response['success'] as bool? ?? false;
       if (!success) {
-        final errorMessage = response['message'] as String? ?? 'Failed to load spotlight posts';
+        final errorMessage =
+            response['message'] as String? ?? 'Failed to load spotlight posts';
         throw Exception(errorMessage);
       }
 
@@ -466,13 +472,19 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         _spotlightOffset = nextOffset + postsList.length;
         _hasMoreSpotlightPosts = hasMore;
         _isLoadingSpotlightPosts = false;
-        
+
         // Update visible limit for spotlight posts
         final totalSpotlight = _spotlightPosts.length;
         if (reset) {
-          _visiblePostLimit = math.min(_initialVisiblePostCapacity, totalSpotlight);
+          _visiblePostLimit = math.min(
+            _initialVisiblePostCapacity,
+            totalSpotlight,
+          );
         } else {
-          _visiblePostLimit = math.min(totalSpotlight, _visiblePostLimit + mappedPosts.length);
+          _visiblePostLimit = math.min(
+            totalSpotlight,
+            _visiblePostLimit + mappedPosts.length,
+          );
         }
       });
     } catch (e) {
@@ -481,6 +493,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       PalToast.show(
         context,
         message: message.isEmpty ? 'Failed to load spotlight posts.' : message,
+        isError: true,
       );
       setState(() {
         _isLoadingSpotlightPosts = false;
@@ -514,23 +527,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     );
 
     // Seed posts are always available, so we can show content immediately
-    // Only show full loading screen on very first app load
-    // For subsequent navigations, show content with overlay
-    Future.microtask(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 650));
-      if (!mounted) return;
-      setState(() {
-        _isPageLoading = false;
-        _isFirstLoad = false;
-      });
+    // Page loading state is set to false immediately - no artificial delays
+    // _isInitialPostsLoading will be set to false by _fetchFeed when data arrives
+    setState(() {
+      _isPageLoading = false;
+      _isFirstLoad = false;
     });
-    Future.microtask(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
-      setState(() {
-        _isInitialPostsLoading = false;
-      });
-    });
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchFeed(reset: true);
     });
@@ -582,11 +585,11 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
     final size = renderBox.size;
     final dropdownHeight = (_trendingOptions.length * 90.0).clamp(0.0, 400.0);
-    
+
     _trendingDropdownOverlay = OverlayEntry(
       builder: (overlayContext) {
         final screenHeight = MediaQuery.of(overlayContext).size.height;
-        
+
         // Get current button position to determine if we should flip
         final buttonContext = _trendingDropdownKey.currentContext;
         if (buttonContext == null || !buttonContext.mounted) {
@@ -601,7 +604,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         final offset = renderBox.localToGlobal(Offset.zero);
         final spaceBelow = screenHeight - offset.dy - size.height;
         final spaceAbove = offset.dy;
-        final showBelow = spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove;
+        final showBelow =
+            spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove;
 
         return NotificationListener<ScrollNotification>(
           onNotification: (notification) {
@@ -622,8 +626,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                   CompositedTransformFollower(
                     link: _trendingDropdownLayerLink,
                     showWhenUnlinked: false,
-                    offset: showBelow 
-                        ? Offset(0, size.height) 
+                    offset: showBelow
+                        ? Offset(0, size.height)
                         : Offset(0, -dropdownHeight),
                     child: Material(
                       elevation: 24,
@@ -651,7 +655,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       },
     );
 
-    Overlay.of(buttonContext, rootOverlay: true).insert(_trendingDropdownOverlay!);
+    Overlay.of(
+      buttonContext,
+      rootOverlay: true,
+    ).insert(_trendingDropdownOverlay!);
   }
 
   @override
@@ -804,9 +811,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
-    
+
     // Handle load more posts
-    if (!_isLoadingMore && position.pixels >= position.maxScrollExtent - _loadMoreTriggerOffset) {
+    if (!_isLoadingMore &&
+        position.pixels >= position.maxScrollExtent - _loadMoreTriggerOffset) {
       _loadMorePosts();
     }
   }
@@ -825,7 +833,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         return;
       }
       // Show more already-loaded spotlight posts
-      final nextLimit = math.min(_visiblePostLimit + _spotlightPageSize, totalSpotlight);
+      final nextLimit = math.min(
+        _visiblePostLimit + _spotlightPageSize,
+        totalSpotlight,
+      );
       setState(() {
         _visiblePostLimit = nextLimit;
       });
@@ -835,7 +846,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     // Handle regular feed posts
     final totalPosts = _filteredPosts.length;
     if (_visiblePostLimit >= totalPosts) {
-      if (_hasMoreRemotePosts && !_isFeedFetching) {
+      // Check if we need to loop (for Hot/Top filters when no more posts)
+      if ((_selectedFilter == 'Hot' || _selectedFilter == 'Top') && 
+          _hasMoreRemotePosts && 
+          !_isFeedFetching) {
+        // Reset offset and fetch from beginning to implement looping
+        _remoteOffset = 0;
+        _fetchFeed(reset: false);
+      } else if (_hasMoreRemotePosts && !_isFeedFetching) {
         _fetchFeed();
       }
       return;
@@ -864,15 +882,19 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Future<void> _refreshFeed() async {
+    // Clear client-side feed cache on pull-to-refresh to ensure fresh data
+    _postService.clearFeedCache();
+    
     // Hide welcome section immediately when refresh starts - do this synchronously first
     if (_showWelcomeSection) {
       setState(() {
-        _showWelcomeSection = false; // Remove welcome section on pull to refresh
+        _showWelcomeSection =
+            false; // Remove welcome section on pull to refresh
       });
       // Ensure state update is processed before continuing
       await Future.microtask(() {});
     }
-    
+
     setState(() {
       _isInitialPostsLoading = true;
 
@@ -895,6 +917,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       _remoteOffset = 0;
       _hasMoreRemotePosts = true;
       _isLoadingMore = false;
+      
+      // Reset Hot/Top first post UI flags on refresh
+      _hasShownFirstHotPost = false;
+      _hasShownFirstTopPost = false;
     });
 
     _resetVisibleLimitForFilter(_selectedFilter);
@@ -908,14 +934,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     // Refresh spotlight status to get latest options
     await _fetchSpotlightStatus();
 
-    // Delay for smooth UI transition (matching provided code pattern)
-    // Note: _fetchFeed may also set _isInitialPostsLoading to false, but we ensure
-    // it's set after the delay to match the provided UI behavior
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() {
-      _isInitialPostsLoading = false;
-    });
+    // No artificial delay - _fetchFeed already sets _isInitialPostsLoading to false
+    // Content displays immediately when data is ready
   }
 
   /// Fetches feed posts with optional category and location filtering
@@ -956,48 +976,104 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         _categoryMap.containsKey(_selectedCategory);
     final hasFilters = hasLocationFilter || hasCategoryFilter;
 
-    // Special handling for Hot filter - uses get-hottest-post edge function
-    // Always uses the edge function regardless of location/category filters
+    // Special handling for Hot filter - uses get-feed with sort: 'hot'
+    // Supports infinite scroll with looping behavior
     if (_selectedFilter == 'Hot') {
       setState(() {
         _isFeedFetching = true;
         if (reset) {
           _remotePosts.clear();
           _remoteOffset = 0;
-          _hasMoreRemotePosts =
-              false; // Hot filter returns single post, no pagination
+          _hasMoreRemotePosts = true; // Enable pagination for feed
         }
       });
 
       try {
-        final response = await _postService.getHottestPost(timeframe: 'today');
+        // Convert category and location names to IDs for the get-feed API call
+        String? categoryId;
+        String? locationId;
 
-        final hottestPost = response['hottest_post'] as Map<String, dynamic>?;
-        final variant = PostCardVariant.hot;
+        if (hasCategoryFilter && _selectedCategory != null) {
+          categoryId = _categoryMap[_selectedCategory];
+        }
 
+        if (hasLocationFilter && _selectedLocation != null) {
+          locationId = _locationMap[_selectedLocation];
+        }
+
+        // Use get-feed with sort: 'hot' instead of getHottestPost
+        final response = await _postService.getFeed(
+          sort: 'hot',
+          limit: _pageSize,
+          offset: reset ? 0 : _remoteOffset,
+          categoryId: categoryId,
+          locationId: locationId,
+        );
+
+        final success = response['success'] as bool? ?? true;
+        if (!success) {
+          final errorMessage =
+              response['error'] as String? ??
+              response['message'] as String? ??
+              'Failed to load feed';
+          throw Exception(errorMessage);
+        }
+
+        final posts = response['posts'] as List<dynamic>? ?? [];
+        final pagination = response['pagination'] as Map<String, dynamic>?;
+        final hasMore = pagination?['has_more'] as bool? ?? false;
+
+        // Map posts - first post gets Hot variant, rest get regular variant
         List<PostCardData> mappedPosts = [];
-        if (hottestPost != null) {
-          // Fetch profile for this post's user
-          await _fetchProfilesForPosts([hottestPost]);
+        if (posts.isNotEmpty) {
+          // Convert List<dynamic> to List<Map<String, dynamic>> for type safety
+          final postsList = posts
+              .map((p) => p as Map<String, dynamic>)
+              .toList();
+          await _fetchProfilesForPosts(postsList);
 
-          final mappedPost = _mapPostToCardData(hottestPost, variant);
-          if (mappedPost != null) {
-            mappedPosts = [mappedPost];
+          for (int i = 0; i < posts.length; i++) {
+            final post = posts[i];
+            // First post in feed (when offset is 0 and first item) gets Hot variant ONLY ONCE
+            // After showing Hot variant once, all subsequent posts (including on loop) show normal UI
+            final currentOffset = reset ? 0 : _remoteOffset;
+            PostCardVariant variant = PostCardVariant.newPost;
+            if (currentOffset == 0 && i == 0 && !_hasShownFirstHotPost) {
+              variant = PostCardVariant.hot;
+              _hasShownFirstHotPost = true;
+            }
+            
+            final mappedPost = _mapPostToCardData(post, variant);
+            if (mappedPost != null) {
+              mappedPosts.add(mappedPost);
+            }
           }
         }
 
         if (!mounted) return;
+        
+        final updatedOffset = reset 
+            ? mappedPosts.length 
+            : _remoteOffset + mappedPosts.length;
+        
         setState(() {
           if (reset) {
             _remotePosts.clear();
             _remotePosts.addAll(mappedPosts);
-            _hasMoreRemotePosts = false; // Single post, no more to load
+            _remoteOffset = updatedOffset;
           } else {
-            // For Hot filter, replace existing posts on reset
-            _remotePosts.clear();
             _remotePosts.addAll(mappedPosts);
-            _hasMoreRemotePosts = false;
+            _remoteOffset = updatedOffset;
           }
+          
+          // Implement looping: if no more posts, enable looping by keeping hasMoreRemotePosts true
+          // The offset will be reset in _loadMorePosts when we detect we've reached the end
+          if (!hasMore && mappedPosts.isNotEmpty) {
+            _hasMoreRemotePosts = true; // Keep true for looping - offset will reset in next load
+          } else {
+            _hasMoreRemotePosts = hasMore;
+          }
+          
           final filteredLength = _postsForFilter(_selectedFilter).length;
           if (reset) {
             _visiblePostLimit = math.min(
@@ -1016,7 +1092,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         final message = e.toString().replaceFirst('Exception: ', '');
         PalToast.show(
           context,
-          message: message.isEmpty ? 'Failed to load hottest post.' : message,
+          message: message.isEmpty ? 'Failed to load hot posts.' : message,
+          isError: true,
         );
       } finally {
         if (!mounted) return;
@@ -1028,48 +1105,104 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       return;
     }
 
-    // Special handling for Top filter - uses get-top-post edge function
-    // Always uses the edge function regardless of location/category filters
+    // Special handling for Top filter - uses get-feed with sort: 'top'
+    // Supports infinite scroll with looping behavior
     if (_selectedFilter == 'Top') {
       setState(() {
         _isFeedFetching = true;
         if (reset) {
           _remotePosts.clear();
           _remoteOffset = 0;
-          _hasMoreRemotePosts =
-              false; // Top filter returns single post, no pagination
+          _hasMoreRemotePosts = true; // Enable pagination for feed
         }
       });
 
       try {
-        final response = await _postService.getTopPost(period: 'all_time');
+        // Convert category and location names to IDs for the get-feed API call
+        String? categoryId;
+        String? locationId;
 
-        final topPost = response['top_post'] as Map<String, dynamic>?;
-        final variant = PostCardVariant.top;
+        if (hasCategoryFilter && _selectedCategory != null) {
+          categoryId = _categoryMap[_selectedCategory];
+        }
 
+        if (hasLocationFilter && _selectedLocation != null) {
+          locationId = _locationMap[_selectedLocation];
+        }
+
+        // Use get-feed with sort: 'top' instead of getTopPost
+        final response = await _postService.getFeed(
+          sort: 'top',
+          limit: _pageSize,
+          offset: reset ? 0 : _remoteOffset,
+          categoryId: categoryId,
+          locationId: locationId,
+        );
+
+        final success = response['success'] as bool? ?? true;
+        if (!success) {
+          final errorMessage =
+              response['error'] as String? ??
+              response['message'] as String? ??
+              'Failed to load feed';
+          throw Exception(errorMessage);
+        }
+
+        final posts = response['posts'] as List<dynamic>? ?? [];
+        final pagination = response['pagination'] as Map<String, dynamic>?;
+        final hasMore = pagination?['has_more'] as bool? ?? false;
+
+        // Map posts - first post gets Top variant, rest get regular variant
         List<PostCardData> mappedPosts = [];
-        if (topPost != null) {
-          // Fetch profile for this post's user
-          await _fetchProfilesForPosts([topPost]);
+        if (posts.isNotEmpty) {
+          // Convert List<dynamic> to List<Map<String, dynamic>> for type safety
+          final postsList = posts
+              .map((p) => p as Map<String, dynamic>)
+              .toList();
+          await _fetchProfilesForPosts(postsList);
 
-          final mappedPost = _mapPostToCardData(topPost, variant);
-          if (mappedPost != null) {
-            mappedPosts = [mappedPost];
+          for (int i = 0; i < posts.length; i++) {
+            final post = posts[i];
+            // First post in feed (when offset is 0 and first item) gets Top variant ONLY ONCE
+            // After showing Top variant once, all subsequent posts (including on loop) show normal UI
+            final currentOffset = reset ? 0 : _remoteOffset;
+            PostCardVariant variant = PostCardVariant.newPost;
+            if (currentOffset == 0 && i == 0 && !_hasShownFirstTopPost) {
+              variant = PostCardVariant.top;
+              _hasShownFirstTopPost = true;
+            }
+            
+            final mappedPost = _mapPostToCardData(post, variant);
+            if (mappedPost != null) {
+              mappedPosts.add(mappedPost);
+            }
           }
         }
 
         if (!mounted) return;
+        
+        final updatedOffset = reset 
+            ? mappedPosts.length 
+            : _remoteOffset + mappedPosts.length;
+        
         setState(() {
           if (reset) {
             _remotePosts.clear();
             _remotePosts.addAll(mappedPosts);
-            _hasMoreRemotePosts = false; // Single post, no more to load
+            _remoteOffset = updatedOffset;
           } else {
-            // For Top filter, replace existing posts on reset
-            _remotePosts.clear();
             _remotePosts.addAll(mappedPosts);
-            _hasMoreRemotePosts = false;
+            _remoteOffset = updatedOffset;
           }
+          
+          // Implement looping: if no more posts, enable looping by keeping hasMoreRemotePosts true
+          // The offset will be reset in _loadMorePosts when we detect we've reached the end
+          if (!hasMore && mappedPosts.isNotEmpty) {
+            _hasMoreRemotePosts = true; // Keep true for looping - offset will reset in next load
+          } else {
+            _hasMoreRemotePosts = hasMore;
+          }
+          
           final filteredLength = _postsForFilter(_selectedFilter).length;
           if (reset) {
             _visiblePostLimit = math.min(
@@ -1088,7 +1221,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         final message = e.toString().replaceFirst('Exception: ', '');
         PalToast.show(
           context,
-          message: message.isEmpty ? 'Failed to load top post.' : message,
+          message: message.isEmpty ? 'Failed to load top posts.' : message,
+          isError: true,
         );
       } finally {
         if (!mounted) return;
@@ -1199,6 +1333,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       PalToast.show(
         context,
         message: message.isEmpty ? 'Failed to load feed.' : message,
+        isError: true,
       );
     } finally {
       if (!mounted) return;
@@ -1238,7 +1373,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     // Extract unique user IDs that need fetching
     final Set<String> profileUserIds = {};
     final Set<String> badgeUserIds = {};
-    
+
     for (final post in posts) {
       final userId = post['user_id']?.toString();
       if (userId != null && userId.isNotEmpty) {
@@ -1256,7 +1391,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     // Fetch all profiles in parallel
     final profileFutures = profileUserIds.map((userId) async {
       try {
-        final profileData = await _profileService.getProfileDataByUserId(userId);
+        final profileData = await _profileService.getProfileDataByUserId(
+          userId,
+        );
         return MapEntry(userId, profileData);
       } catch (e) {
         debugPrint('ERROR: Failed to fetch profile for user $userId: $e');
@@ -1269,10 +1406,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       try {
         final badgeResponse = await _postService.getUserBadges(userId: userId);
         if (badgeResponse['success'] == true) {
-          final badges = (badgeResponse['badges'] as List<dynamic>?)
-              ?.map((b) => b.toString())
-              .where((b) => b.isNotEmpty)
-              .toList() ?? [];
+          final badges =
+              (badgeResponse['badges'] as List<dynamic>?)
+                  ?.map((b) => b.toString())
+                  .where((b) => b.isNotEmpty)
+                  .toList() ??
+              [];
           return MapEntry(userId, badges);
         }
         return MapEntry(userId, <String>[]);
@@ -1652,6 +1791,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               _hasMoreRemotePosts = true;
               _isShowingSpotlightPosts =
                   false; // Reset spotlight posts when switching filters
+              // Reset Hot/Top first post UI flags when switching filters
+              // This ensures the first post gets special UI when switching to Hot or Top
+              _hasShownFirstHotPost = false;
+              _hasShownFirstTopPost = false;
               _resetVisibleLimitForFilter(label);
             });
             // Show toast message for feed type change
@@ -1715,7 +1858,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   Widget _buildLocationFilter() {
     // Get current location options from API (includes "All Areas" as first option)
     final locationOptions = _locationOptions;
-    final selectedLocation = _selectedLocation ?? (locationOptions.isNotEmpty ? locationOptions.first : 'All Areas');
+    final selectedLocation =
+        _selectedLocation ??
+        (locationOptions.isNotEmpty ? locationOptions.first : 'All Areas');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1820,7 +1965,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             borderColor: _slate200,
             showHeader: false,
             onSelected: (value) {
-              final isAllAreas = locationOptions.isNotEmpty && value == locationOptions.first;
+              final isAllAreas =
+                  locationOptions.isNotEmpty && value == locationOptions.first;
               debugPrint(
                 'DEBUG: Location selected: "$value" (isAllAreas: $isAllAreas)',
               );
@@ -1895,7 +2041,11 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       );
     }
 
-    final selectedCategory = _selectedCategory ?? (categoryOptionsList.isNotEmpty ? categoryOptionsList.first : 'All Categories');
+    final selectedCategory =
+        _selectedCategory ??
+        (categoryOptionsList.isNotEmpty
+            ? categoryOptionsList.first
+            : 'All Categories');
     final categoryOptions = categoryOptionsList
         .map(
           (label) => _DropdownOption(
@@ -2010,7 +2160,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               setState(() {
                 // Set the selected category
                 // If "All Categories" is selected, set to null to clear filter
-                _selectedCategory = (categoryOptionsList.isNotEmpty && value == categoryOptionsList.first)
+                _selectedCategory =
+                    (categoryOptionsList.isNotEmpty &&
+                        value == categoryOptionsList.first)
                     ? null
                     : value;
                 _isCategoryDropdownOpen = false;
@@ -2032,9 +2184,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     // Use API data if available, otherwise show default Detty December
     final options = _trendingOptions;
     _TrendingOption? trending;
-    
+
     String topicTitle = 'Detty December';
-    String topicDescription = 'Share parties, owambe, concerts & nightlife vibes';
+    String topicDescription =
+        'Share parties, owambe, concerts & nightlife vibes';
     int postCountValue = 1;
     String tagLabel = 'MONTHLY SPOTLIGHT';
     String iconAsset = 'assets/images/dettyIcon.svg';
@@ -2078,7 +2231,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     }
 
     final postsLabel = '$postCountValue post${postCountValue == 1 ? '' : 's'}';
-    
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -2088,180 +2241,181 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           child: GestureDetector(
             key: _trendingDropdownKey,
             onTap: () {
-            setState(() {
-              _isLocationDropdownOpen = false;
-              _isCategoryDropdownOpen = false;
-              _isTrendingDropdownOpen = !_isTrendingDropdownOpen;
-            });
-            if (_isTrendingDropdownOpen) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _showTrendingDropdownOverlay();
+              setState(() {
+                _isLocationDropdownOpen = false;
+                _isCategoryDropdownOpen = false;
+                _isTrendingDropdownOpen = !_isTrendingDropdownOpen;
               });
-            } else {
-              _removeTrendingDropdownOverlay();
-            }
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: const Color(0xFFC6D2FF),
-                width: 1,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x140F172A),
-                  blurRadius: 8,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Icon container - matching Figma design
-                Container(
-                  width: 27.996,
-                  height: 27.996,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDAE9F8),
-                    borderRadius: BorderRadius.circular(10),
+              if (_isTrendingDropdownOpen) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _showTrendingDropdownOverlay();
+                });
+              } else {
+                _removeTrendingDropdownOverlay();
+              }
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFC6D2FF), width: 1),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x140F172A),
+                    blurRadius: 8,
+                    offset: Offset(0, 4),
                   ),
-                  child: Center(
-                    child: SvgPicture.asset(
-                      iconAsset,
-                      width: 16,
-                      height: 16,
-                      fit: BoxFit.contain,
-                      // colorFilter: ColorFilter.mode(
-                      //   iconColor,
-                      //   BlendMode.srcIn,
-                      // ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Icon container - matching Figma design
+                  Container(
+                    width: 27.996,
+                    height: 27.996,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDAE9F8),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: SvgPicture.asset(
+                        iconAsset,
+                        width: 16,
+                        height: 16,
+                        fit: BoxFit.contain,
+                        // colorFilter: ColorFilter.mode(
+                        //   iconColor,
+                        //   BlendMode.srcIn,
+                        // ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // Content section - matching Figma design
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top row: Label, bullet, post count
-                      Row(
-                        children: [
-                          Text(
-                            tagLabel,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: isSelected 
-                                  ? const Color(0xFF4F39F6) // Purple when selected
-                                  : const Color(0xFF45556C), // Gray when not selected
-                              fontFamily: 'Inter',
-                              letterSpacing: isSelected ? 0.392 : 0.3672,
-                              height: 15 / 10,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            '•',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w400,
-                              color: Color(0xFFCAD5E2),
-                              fontFamily: 'Inter',
-                              letterSpacing: -0.3125,
-                              height: 24 / 16,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            postsLabel,
-                            style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w400,
-                              color: Color(0xFF62748E),
-                              fontFamily: 'Inter',
-                              letterSpacing: 0.167,
-                              height: 13.5 / 9,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      // Title
-                      Text(
-                        topicTitle,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172B),
-                          fontFamily: 'Inter',
-                          letterSpacing: -0.0762,
-                          height: 19.5 / 13,
-                        ),
-                      ),
-                      const SizedBox(height: 0.51),
-                      // Description
-                      Text(
-                        topicDescription,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: Color(0xFF62748E),
-                          fontFamily: 'Inter',
-                          letterSpacing: 0.0645,
-                          height: 16.5 / 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                // Show "Active" badge when selected, up arrow when dropdown is open, or right arrow when collapsed
-                const SizedBox(width: 7.989),
-                _isTrendingDropdownOpen
-                    ? Icon(
-                        Icons.keyboard_arrow_up,
-                        size: 16,
-                        color: const Color(0xFF90A1B9),
-                      )
-                    : (isSelected
-                        ? Container(
-                            height: 18.991,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5.99,
-                              vertical: 0,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE0E7FF),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Center(
-                              child: Text(
-                                'Active',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFF432DD7),
-                                  fontFamily: 'Inter',
-                                  letterSpacing: 0.1172,
-                                  height: 15 / 10,
-                                ),
+                  const SizedBox(width: 10),
+                  // Content section - matching Figma design
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top row: Label, bullet, post count
+                        Row(
+                          children: [
+                            Text(
+                              tagLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected
+                                    ? const Color(
+                                        0xFF4F39F6,
+                                      ) // Purple when selected
+                                    : const Color(
+                                        0xFF45556C,
+                                      ), // Gray when not selected
+                                fontFamily: 'Inter',
+                                letterSpacing: isSelected ? 0.392 : 0.3672,
+                                height: 15 / 10,
                               ),
                             ),
-                          )
-                        : Icon(
-                            Icons.chevron_right,
-                            size: 16,
-                            color: const Color(0xFF90A1B9),
-                          )),
-              ],
+                            const SizedBox(width: 6),
+                            const Text(
+                              '•',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                                color: Color(0xFFCAD5E2),
+                                fontFamily: 'Inter',
+                                letterSpacing: -0.3125,
+                                height: 24 / 16,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              postsLabel,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w400,
+                                color: Color(0xFF62748E),
+                                fontFamily: 'Inter',
+                                letterSpacing: 0.167,
+                                height: 13.5 / 9,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        // Title
+                        Text(
+                          topicTitle,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0F172B),
+                            fontFamily: 'Inter',
+                            letterSpacing: -0.0762,
+                            height: 19.5 / 13,
+                          ),
+                        ),
+                        const SizedBox(height: 0.51),
+                        // Description
+                        Text(
+                          topicDescription,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: Color(0xFF62748E),
+                            fontFamily: 'Inter',
+                            letterSpacing: 0.0645,
+                            height: 16.5 / 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Show "Active" badge when selected, up arrow when dropdown is open, or right arrow when collapsed
+                  const SizedBox(width: 7.989),
+                  _isTrendingDropdownOpen
+                      ? Icon(
+                          Icons.keyboard_arrow_up,
+                          size: 16,
+                          color: const Color(0xFF90A1B9),
+                        )
+                      : (isSelected
+                            ? Container(
+                                height: 18.991,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5.99,
+                                  vertical: 0,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE0E7FF),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Active',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w500,
+                                      color: const Color(0xFF432DD7),
+                                      fontFamily: 'Inter',
+                                      letterSpacing: 0.1172,
+                                      height: 15 / 10,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                Icons.chevron_right,
+                                size: 16,
+                                color: const Color(0xFF90A1B9),
+                              )),
+                ],
+              ),
             ),
-          ),
           ),
         ),
       ],
@@ -2284,10 +2438,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFC6D2FF),
-          width: 1,
-        ),
+        border: Border.all(color: const Color(0xFFC6D2FF), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.15),
@@ -2638,7 +2789,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   }
 
   Widget _buildCards(BuildContext context) {
-    final trending = _selectedTrending ?? (_trendingOptions.isNotEmpty ? _trendingOptions.first : null);
+    final trending =
+        _selectedTrending ??
+        (_trendingOptions.isNotEmpty ? _trendingOptions.first : null);
     final postsToShow = _visiblePosts;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
@@ -2697,37 +2850,33 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                 ),
               )
             else
-              ...postsToShow
-                  .map(
-                    (post) {
-                      try {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: PostCard(data: post),
-                        );
-                      } catch (e, stackTrace) {
-                        debugPrint('ERROR: Failed to render post ${post.id}: $e');
-                        debugPrint('ERROR: Stack trace: $stackTrace');
-                        // Return a placeholder widget instead of crashing
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade300),
-                            ),
-                            child: Text(
-                              'Error loading post',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  )
-                  .toList(),
+              ...postsToShow.map((post) {
+                try {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: PostCard(data: post),
+                  );
+                } catch (e, stackTrace) {
+                  debugPrint('ERROR: Failed to render post ${post.id}: $e');
+                  debugPrint('ERROR: Stack trace: $stackTrace');
+                  // Return a placeholder widget instead of crashing
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        'Error loading post',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ),
+                  );
+                }
+              }).toList(),
             if (_isLoadingMore)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
@@ -3119,7 +3268,6 @@ class _TrendingDropdownTile extends StatelessWidget {
     );
   }
 }
-
 
 class _CheckListTile extends StatelessWidget {
   const _CheckListTile({required this.label});

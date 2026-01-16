@@ -69,7 +69,11 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
     } catch (e) {
       // Handle error
       if (mounted) {
-        PalToast.show(context, message: 'Error picking image: $e');
+        PalToast.show(
+          context,
+          message: 'Error picking image: $e',
+          isError: true,
+        );
       }
     }
   }
@@ -97,7 +101,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
         _selectedImageFile!.name,
         mimeType: _selectedImageFile!.mimeType,
       );
-      
+
       if (!mounted) return;
 
       // Reset uploading state before navigation
@@ -114,21 +118,28 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      
+
       setState(() {
         _isUploading = false;
       });
 
       // Show error but still allow navigation
-      PalToast.show(context, message: 'Failed to upload profile picture: ${e.toString().replaceFirst('Exception: ', '')}');
-      
+      PalToast.show(
+        context,
+        message:
+            'Failed to upload profile picture: ${e.toString().replaceFirst('Exception: ', '')}',
+        isError: true,
+      );
+
       // Show dialog to continue anyway
       if (mounted) {
         showDialog(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: const Text('Upload Failed'),
-            content: const Text('Would you like to continue without uploading a profile picture?'),
+            content: const Text(
+              'Would you like to continue without uploading a profile picture?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
@@ -140,7 +151,8 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => OtpVerificationScreen(email: widget.email),
+                      builder: (context) =>
+                          OtpVerificationScreen(email: widget.email),
                     ),
                   );
                 },
@@ -231,180 +243,207 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                         textAlign: TextAlign.center,
                       ),
 
-                const SizedBox(height: 120),
+                      const SizedBox(height: 120),
 
-                // Profile Picture Container
-                SizedBox(
-                  width: 400,
-                  child: Column(
-                    children: [
-                      // Profile Picture Circle
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Profile Picture Circle
-                          Container(
-                            width: 160,
-                            height: 160,
-                            decoration: BoxDecoration(
-                              color: _slate50,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: _slate100, width: 4),
-                            ),
-                            child: _selectedImageBytes != null
-                                ? ClipOval(
-                                    child: Image.memory(
-                                      _selectedImageBytes!,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                : Center(
-                                    child: SvgPicture.asset(
-                                      'assets/authPages/profile.svg',
-                                      width: 64,
-                                      height: 64,
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                          ),
-
-                          // Camera Button
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: GestureDetector(
-                              onTap: _pickImage,
-                              child: Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: _primaryBlue,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 4,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0x1A000000),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                      spreadRadius: 0,
-                                    ),
-                                    BoxShadow(
-                                      color: const Color(0x1A000000),
-                                      blurRadius: 25,
-                                      offset: const Offset(0, 0),
-                                      spreadRadius: 0,
-                                    ),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: SvgPicture.asset(
-                                    'assets/authPages/camera.svg',
-                                    width: 20,
-                                    height: 20,
-                                    fit: BoxFit.contain,
-                                    colorFilter: const ColorFilter.mode(
-                                      Colors.white,
-                                      BlendMode.srcIn,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Instructions Text
-                      Column(
-                        children: [
-                          Text(
-                            'Tap camera to add photo',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.normal, // Rubik Regular
-                              color: _textColor,
-                              fontFamily: 'Rubik',
-                              letterSpacing: 0,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'JPG, PNG or GIF • Max 5MB',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.normal, // Rubik Regular
-                              color: _lightTextColor,
-                              fontFamily: 'Rubik',
-                              letterSpacing: 0,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Info Box
-                      Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(maxWidth: 400),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: Responsive.scaledPadding(context, 17),
-                          vertical: Responsive.scaledPadding(context, 17),
-                        ),
-                        decoration: BoxDecoration(
-                          color: _slate50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: _slate100, width: 1),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      // Profile Picture Container
+                      SizedBox(
+                        width: 400,
+                        child: Column(
                           children: [
-                            // Upload Icon
-                            Container(
-                              width: Responsive.scaledIcon(context, 32),
-                              height: Responsive.scaledIcon(context, 32),
-                              decoration: BoxDecoration(
-                                color: const Color.fromRGBO(21, 93, 252, 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: SvgPicture.asset(
-                                  'assets/authPages/upload.svg',
-                                  width: Responsive.scaledIcon(context, 16),
-                                  height: Responsive.scaledIcon(context, 16),
-                                  fit: BoxFit.contain,
+                            // Profile Picture Circle
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                // Profile Picture Circle
+                                Container(
+                                  width: 160,
+                                  height: 160,
+                                  decoration: BoxDecoration(
+                                    color: _slate50,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _slate100,
+                                      width: 4,
+                                    ),
+                                  ),
+                                  child: _selectedImageBytes != null
+                                      ? ClipOval(
+                                          child: Image.memory(
+                                            _selectedImageBytes!,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : Center(
+                                          child: SvgPicture.asset(
+                                            'assets/authPages/profile.svg',
+                                            width: 64,
+                                            height: 64,
+                                            fit: BoxFit.contain,
+                                          ),
+                                        ),
                                 ),
-                              ),
+
+                                // Camera Button
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: GestureDetector(
+                                    onTap: _pickImage,
+                                    child: Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: _primaryBlue,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 4,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0x1A000000),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                            spreadRadius: 0,
+                                          ),
+                                          BoxShadow(
+                                            color: const Color(0x1A000000),
+                                            blurRadius: 25,
+                                            offset: const Offset(0, 0),
+                                            spreadRadius: 0,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: SvgPicture.asset(
+                                          'assets/authPages/camera.svg',
+                                          width: 20,
+                                          height: 20,
+                                          fit: BoxFit.contain,
+                                          colorFilter: const ColorFilter.mode(
+                                            Colors.white,
+                                            BlendMode.srcIn,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            SizedBox(width: Responsive.scaledPadding(context, 12)),
-                            // Info Text
-                            Expanded(
-                              child: Text(
-                                'Choose a clear photo where your face is visible. You can update this anytime in your account settings.',
-                                style: TextStyle(
-                                  fontSize: Responsive.scaledFont(context, 12),
-                                  fontWeight:
-                                      FontWeight.normal, // Rubik Regular
-                                  color: _textColor,
-                                  fontFamily: 'Rubik',
-                                  letterSpacing: 0,
-                                  height: 1.625,
+
+                            const SizedBox(height: 32),
+
+                            // Instructions Text
+                            Column(
+                              children: [
+                                Text(
+                                  'Tap camera to add photo',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight:
+                                        FontWeight.normal, // Rubik Regular
+                                    color: _textColor,
+                                    fontFamily: 'Rubik',
+                                    letterSpacing: 0,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'JPG, PNG or GIF • Max 5MB',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight:
+                                        FontWeight.normal, // Rubik Regular
+                                    color: _lightTextColor,
+                                    fontFamily: 'Rubik',
+                                    letterSpacing: 0,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 32),
+
+                            // Info Box
+                            Container(
+                              width: double.infinity,
+                              constraints: const BoxConstraints(maxWidth: 400),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: Responsive.scaledPadding(
+                                  context,
+                                  17,
+                                ),
+                                vertical: Responsive.scaledPadding(context, 17),
+                              ),
+                              decoration: BoxDecoration(
+                                color: _slate50,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: _slate100, width: 1),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Upload Icon
+                                  Container(
+                                    width: Responsive.scaledIcon(context, 32),
+                                    height: Responsive.scaledIcon(context, 32),
+                                    decoration: BoxDecoration(
+                                      color: const Color.fromRGBO(
+                                        21,
+                                        93,
+                                        252,
+                                        0.1,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: SvgPicture.asset(
+                                        'assets/authPages/upload.svg',
+                                        width: Responsive.scaledIcon(
+                                          context,
+                                          16,
+                                        ),
+                                        height: Responsive.scaledIcon(
+                                          context,
+                                          16,
+                                        ),
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: Responsive.scaledPadding(
+                                      context,
+                                      12,
+                                    ),
+                                  ),
+                                  // Info Text
+                                  Expanded(
+                                    child: Text(
+                                      'Choose a clear photo where your face is visible. You can update this anytime in your account settings.',
+                                      style: TextStyle(
+                                        fontSize: Responsive.scaledFont(
+                                          context,
+                                          12,
+                                        ),
+                                        fontWeight:
+                                            FontWeight.normal, // Rubik Regular
+                                        color: _textColor,
+                                        fontFamily: 'Rubik',
+                                        letterSpacing: 0,
+                                        height: 1.625,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
 
                       const SizedBox(height: 92),
 
@@ -432,16 +471,18 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                                         height: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            Colors.white,
-                                          ),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.white,
+                                              ),
                                         ),
                                       )
                                     : Text(
                                         'Continue',
                                         style: TextStyle(
                                           fontSize: 14,
-                                          fontWeight: FontWeight.w500, // Rubik Medium
+                                          fontWeight:
+                                              FontWeight.w500, // Rubik Medium
                                           color: Colors.white,
                                           fontFamily: 'Rubik',
                                           letterSpacing: 0,

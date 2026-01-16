@@ -48,6 +48,11 @@ class NotificationService {
           .toList() ?? [];
 
       debugPrint('[NotificationService] Fetched ${notifications.length} notifications');
+      if (notifications.isNotEmpty) {
+        debugPrint('[NotificationService] First notification type: ${notifications.first['notification_type']}');
+        debugPrint('[NotificationService] First notification ID: ${notifications.first['id']}');
+        debugPrint('[NotificationService] First notification is_read: ${notifications.first['is_read']}');
+      }
       
       return notifications;
     } catch (e) {
@@ -266,6 +271,14 @@ class NotificationService {
       };
       if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
 
+      print('=== NOTIFICATION SERVICE - REQUEST TO EDGE FUNCTION ($functionName) ===');
+      print('URL: $uri');
+      print('Method: $method');
+      print('Has session token: ${sessionToken != null}');
+      if (body != null) {
+        print('Request body: ${jsonEncode(body)}');
+      }
+
       late http.Response resp;
       final encoded = body == null ? null : jsonEncode(body);
       if (method.toUpperCase() == 'GET') {
@@ -274,17 +287,26 @@ class NotificationService {
         resp = await http.post(uri, headers: headers, body: encoded);
       }
 
+      print('=== NOTIFICATION SERVICE - RESPONSE FROM EDGE FUNCTION ($functionName) ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Response headers: ${resp.headers}');
+      print('Response body: ${resp.body}');
+      print('===================================================================');
+
       final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
 
       if (resp.statusCode >= 400) {
         final errorMessage = parsed['error'] ?? parsed['message'] ?? 'Server error';
         debugPrint('ERROR: Function $functionName returned ${resp.statusCode}: $errorMessage');
+        print('ERROR _callFunction ($functionName): Full response body: $parsed');
         throw Exception(errorMessage);
       }
 
+      print('SUCCESS _callFunction ($functionName): Response parsed - $parsed');
       return parsed;
     } catch (e) {
       debugPrint('ERROR: Exception while calling function $functionName - ${e.toString()}');
+      print('ERROR _callFunction ($functionName): Exception - $e');
       rethrow;
     }
   }

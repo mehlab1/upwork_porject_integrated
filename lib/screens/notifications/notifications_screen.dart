@@ -155,10 +155,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'post_top':
       case 'post_trending':
         if (postId != null) {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/home',
-            (route) => route.isFirst,
-            arguments: {'highlight_post_id': postId},
+          Navigator.of(context).pushNamed(
+            '/post-detail',
+            arguments: {'postId': postId},
           );
         }
         break;
@@ -167,12 +166,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'mention_in_post':
       case 'mention': // Legacy support
         if (postId != null) {
-          Navigator.of(context).pushNamedAndRemoveUntil(
-            '/home',
-            (route) => route.isFirst,
+          Navigator.of(context).pushNamed(
+            '/post-detail',
             arguments: {
-              'highlight_post_id': postId,
-              'highlight_comment_id': commentId,
+              'postId': postId,
+              'commentId': commentId,
             },
           );
         }

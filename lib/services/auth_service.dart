@@ -153,6 +153,18 @@ class AuthService {
       final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
       final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
       
+      final requestBody = {
+        'email': email,
+        'otp_code': token,
+      };
+      
+      print('=== VERIFY OTP - REQUEST TO EDGE FUNCTION ===');
+      print('URL: $uri');
+      print('Email: $email');
+      print('OTP code: $token (length: ${token.length})');
+      print('Has session token: ${sessionToken != null}');
+      print('Request body: ${jsonEncode(requestBody)}');
+      
       final resp = await http.post(
         uri,
         headers: {
@@ -160,11 +172,14 @@ class AuthService {
           'apikey': anonKey,
           'Authorization': 'Bearer ${sessionToken ?? anonKey}',
         },
-        body: jsonEncode({
-          'email': email,
-          'otp_code': token,
-        }),
+        body: jsonEncode(requestBody),
       );
+
+      print('=== VERIFY OTP - RESPONSE FROM EDGE FUNCTION ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Response headers: ${resp.headers}');
+      print('Response body: ${resp.body}');
+      print('================================================');
 
       final body = jsonDecode(resp.body ?? '{}');
 
@@ -175,12 +190,18 @@ class AuthService {
         final messageField = body['message']?.toString() ?? '';
         final combinedError = '$errorField $messageField'.toLowerCase();
         
+        print('ERROR verifyOtp: Status ${resp.statusCode} - $message');
+        print('ERROR verifyOtp: Error field: $errorField');
+        print('ERROR verifyOtp: Message field: $messageField');
+        print('ERROR verifyOtp: Full response body: $body');
+        
         // Check if it's the known backend error about createSession
         // The edge function re-throws the error, causing a 500, but OTP was actually verified
         // We need to check if OTP verification succeeded before session creation failed
         if (combinedError.contains('createsession is not a function') || 
             combinedError.contains('createsession') ||
             errorField.toLowerCase().contains('createsession')) {
+          print('WARNING verifyOtp: OTP verified but session creation failed');
           // Return a success response even though session creation failed
           // The OTP was verified, which is what matters - user can sign in separately
           return {
@@ -193,8 +214,13 @@ class AuthService {
       }
 
       if (body is Map<String, dynamic> && body['success'] != true) {
+        print('ERROR verifyOtp: Success field is false or missing');
+        print('ERROR verifyOtp: Response body: $body');
         throw AuthException(body['message'] ?? 'OTP verification failed');
       }
+      
+      print('SUCCESS verifyOtp: OTP verified successfully');
+      print('SUCCESS verifyOtp: Response body: $body');
 
       // If tokens are returned, set the session
       if (body is Map<String, dynamic> && 
@@ -295,6 +321,16 @@ class AuthService {
       final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
       final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
       
+      final requestBody = {
+        'email': email,
+      };
+      
+      print('=== FORGOT PASSWORD - REQUEST TO EDGE FUNCTION ===');
+      print('URL: $uri');
+      print('Email: $email');
+      print('Has session token: ${sessionToken != null}');
+      print('Request body: ${jsonEncode(requestBody)}');
+      
       final resp = await http.post(
         uri,
         headers: {
@@ -302,22 +338,31 @@ class AuthService {
           'apikey': anonKey,
           'Authorization': 'Bearer ${sessionToken ?? anonKey}',
         },
-        body: jsonEncode({
-          'email': email,
-        }),
+        body: jsonEncode(requestBody),
       );
+
+      print('=== FORGOT PASSWORD - RESPONSE FROM EDGE FUNCTION ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Response headers: ${resp.headers}');
+      print('Response body: ${resp.body}');
+      print('==================================================');
 
       final body = jsonDecode(resp.body ?? '{}');
 
       if (resp.statusCode >= 400) {
         final message = body['message'] ?? body['error'] ?? 'Failed to send password reset OTP';
+        print('ERROR forgotPassword: Status ${resp.statusCode} - $message');
+        print('ERROR forgotPassword: Full response body: $body');
         throw AuthException(message);
       }
 
+      print('SUCCESS forgotPassword: Response parsed - $body');
       return Map<String, dynamic>.from(body);
     } on AuthException catch (e) {
+      print('ERROR forgotPassword: AuthException - ${e.message}');
       throw AuthException(e.message);
     } catch (e) {
+      print('ERROR forgotPassword: Unexpected error - $e');
       throw AuthException('An unexpected error occurred: $e');
     }
   }

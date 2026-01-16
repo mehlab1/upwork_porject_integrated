@@ -102,6 +102,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
         PalToast.show(
           context,
           message: response['message']?.toString() ?? 'Failed to unblock user',
+          isError: true,
         );
       }
     } catch (e) {
@@ -113,6 +114,7 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
         context,
         message:
             'Failed to unblock user: ${e.toString().replaceFirst('Exception: ', '')}',
+        isError: true,
       );
     }
   }
@@ -579,10 +581,10 @@ class _EmptyStateCard extends StatelessWidget {
         ? 400.0
         : 352.0;
     final spacing = isSmallScreen
-        ? 48.0
+        ? 24.0
         : isLargeScreen
-        ? 80.0
-        : 64.0;
+        ? 40.0
+        : 32.0;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -656,14 +658,8 @@ class _EmptyStateCard extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: isSmallScreen ? 6 : 8),
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isSmallScreen
-                      ? 8
-                      : isLargeScreen
-                      ? 24
-                      : 0,
-                ),
+              FractionallySizedBox(
+                widthFactor: 0.6,
                 child: Text(
                   'You haven\'t blocked anyone yet. When you block a user, they\'ll appear here and won\'t be able to interact with your content.',
                   style: TextStyle(

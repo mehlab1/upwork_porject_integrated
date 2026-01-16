@@ -13,6 +13,7 @@ import 'screens/settings/settings_screen.dart';
 import 'screens/settings/your_posts_screen.dart';
 import 'screens/settings/upvoted_posts_screen.dart';
 import 'screens/settings/community_guidelines_screen.dart';
+import 'screens/feed/post_detail_screen.dart';
 import 'services/auth_state_service.dart';
 import 'services/post_service.dart';
 import 'services/fcm_service.dart';
@@ -26,69 +27,42 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    // Initialize Firebase (only on mobile platforms, not web)
+    // =========================================================================
+    // PHASE 1: Firebase Initialization (Required first for mobile FCM)
+    // =========================================================================
     if (!kIsWeb) {
       try {
         await Firebase.initializeApp();
         debugPrint('[main] Firebase initialized successfully');
+        
+        // Set up FCM background handler immediately after Firebase (non-blocking)
+        try {
+          setupFCMBackgroundHandler();
+          debugPrint('[main] FCM background handler set up');
+        } catch (e) {
+          debugPrint('[main] FCM background handler setup failed: $e');
+        }
       } catch (e) {
         debugPrint('[main] Firebase initialization failed: $e');
         // Continue even if Firebase fails - app should still work
       }
     }
     
-    // Set up background message handler (only on mobile platforms)
-    try {
-      setupFCMBackgroundHandler();
-      debugPrint('[main] FCM background handler set up');
-    } catch (e) {
-      debugPrint('[main] FCM background handler setup failed: $e');
-      // Continue even if FCM setup fails
-    }
-    
-    // Initialize Supabase
-    try {
-      await Supabase.initialize(
-        url: 'https://wvkyzhnzwijfxpzsrguj.supabase.co',
-        anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY',
-        authOptions: const FlutterAuthClientOptions(
-          authFlowType: AuthFlowType.pkce,
-        ),
-      );
-      debugPrint('[main] Supabase initialized successfully');
-    } catch (e) {
-      debugPrint('[main] Supabase initialization failed: $e');
-      // Don't run app if Supabase fails - it's critical
-      rethrow;
-    }
+    // =========================================================================
+    // PHASE 2: Parallel Initialization (Supabase + Google Fonts)
+    // These are independent operations that can run simultaneously
+    // =========================================================================
+    await Future.wait([
+      // Supabase initialization (critical)
+      _initializeSupabase(),
+      // Google Fonts preload (non-critical, but improves UX)
+      _preloadFonts(),
+    ]);
 
-    try {
-      await GoogleFonts.pendingFonts([GoogleFonts.inter()]);
-    } catch (e) {
-      debugPrint('[main] GoogleFonts preload skipped: $e');
-    }
-
-
-    // Preload Inter font
-    final fontFuture = GoogleFonts.pendingFonts([GoogleFonts.inter()]);
-
-    runApp(
-      FutureBuilder(
-        future: fontFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return const PalApp(); // Font ready → show app
-          } else {
-            return const MaterialApp(
-              debugShowCheckedModeBanner: false,
-              home: Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              ),
-            );
-          }
-        },
-      ),
-    );
+    // =========================================================================
+    // PHASE 3: Launch App (no more waiting)
+    // =========================================================================
+    runApp(const PalApp());
 
   } catch (e, stackTrace) {
     debugPrint('[main] Critical error during initialization: $e');
@@ -124,6 +98,39 @@ void main() async {
         ),
       ),
     );
+  }
+}
+
+// =============================================================================
+// INITIALIZATION HELPER FUNCTIONS (for parallel execution)
+// =============================================================================
+
+/// Initialize Supabase client - critical for app functionality
+Future<void> _initializeSupabase() async {
+  try {
+    await Supabase.initialize(
+      url: 'https://wvkyzhnzwijfxpzsrguj.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY',
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+      ),
+    );
+    debugPrint('[main] Supabase initialized successfully');
+  } catch (e) {
+    debugPrint('[main] Supabase initialization failed: $e');
+    // Rethrow - Supabase is critical for app functionality
+    rethrow;
+  }
+}
+
+/// Preload Google Fonts - improves text rendering on first display
+Future<void> _preloadFonts() async {
+  try {
+    await GoogleFonts.pendingFonts([GoogleFonts.inter()]);
+    debugPrint('[main] Google Fonts preloaded successfully');
+  } catch (e) {
+    debugPrint('[main] GoogleFonts preload skipped: $e');
+    // Don't rethrow - fonts are not critical, app works without preload
   }
 }
 
@@ -344,6 +351,16 @@ class _PalAppState extends State<PalApp> {
         },
         '/notifications': (context) => const NotificationsScreen(),
         '/settings': (context) => const SettingsScreen(),
+        PostDetailScreen.routeName: (context) {
+          final args = ModalRoute.of(context)?.settings.arguments
+              as Map<String, dynamic>?;
+          final postId = args?['postId']?.toString() ?? '';
+          final commentId = args?['commentId']?.toString();
+          return PostDetailScreen(
+            postId: postId,
+            commentId: commentId,
+          );
+        },
         YourPostsScreen.routeName: (context) => const YourPostsScreen(),
         UpvotedPostsScreen.routeName: (context) => const UpvotedPostsScreen(),
         CommunityGuidelinesScreen.routeName: (context) =>

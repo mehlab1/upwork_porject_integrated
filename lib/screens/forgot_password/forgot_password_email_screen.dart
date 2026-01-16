@@ -106,16 +106,45 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       if (!mounted) return;
       setState(() {
         _isSubmitting = false;
-        if (e.toString().contains('rate limit') ||
-            e.toString().contains('too many')) {
+      });
+      
+      final errorStr = e.toString().toLowerCase();
+      
+      // Handle 404 - Email not registered
+      if (errorStr.contains('404') || 
+          errorStr.contains('not registered') ||
+          errorStr.contains('email is not registered') ||
+          errorStr.contains('this email is not registered')) {
+        setState(() {
+          _emailError = 'This email is not registered. Please sign up first.';
+        });
+        return;
+      }
+      
+      // Handle rate limit (429)
+      if (errorStr.contains('rate limit') || 
+          errorStr.contains('too many') ||
+          errorStr.contains('429')) {
+        setState(() {
           _emailError = 'Too many requests. Please try again later.';
-        } else {
-          _emailError =
-              e.toString().contains('not found') ||
-                  e.toString().contains('does not exist')
-              ? 'If this email exists, a password reset code has been sent.'
-              : 'Failed to send password reset code. Please try again.';
-        }
+        });
+        return;
+      }
+      
+      // Handle email service errors (500)
+      if (errorStr.contains('email service') || 
+          errorStr.contains('not configured') ||
+          errorStr.contains('failed to send') ||
+          errorStr.contains('email service is not')) {
+        setState(() {
+          _emailError = 'Email service is temporarily unavailable. Please try again later.';
+        });
+        return;
+      }
+      
+      // Generic error
+      setState(() {
+        _emailError = 'Failed to send password reset code. Please try again.';
       });
     }
   }

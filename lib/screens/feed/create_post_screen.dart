@@ -8,10 +8,7 @@ import '../settings/community_guidelines_screen.dart';
 import 'widgets/post_card.dart';
 
 class CreatePostScreen extends StatefulWidget {
-  const CreatePostScreen({
-    super.key,
-    this.postData,
-  });
+  const CreatePostScreen({super.key, this.postData});
 
   final PostCardData? postData;
 
@@ -157,7 +154,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       }
     });
   }
-
 
   Future<void> _checkSpotlightStatus() async {
     try {
@@ -436,13 +432,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final minHeight = screenHeight * 0.6;
-    
+
     return Scaffold(
       backgroundColor: _overlay.withOpacity(0.55),
       body: Center(
         child: _isAdmin
             ? Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 24,
+                ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: minHeight,
@@ -471,7 +470,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         Expanded(
                           child: SingleChildScrollView(
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 24.49, 16, 0),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                24.49,
+                                16,
+                                0,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -501,11 +505,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               )
             : ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: 342,
-                ),
+                constraints: BoxConstraints(maxWidth: 342),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 24,
+                  ),
                   child: Container(
                     width: 342,
                     decoration: BoxDecoration(
@@ -587,7 +592,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   'assets/adminIcons/adminpostMenu/announcementIcon.svg',
                   fit: BoxFit.none,
                   alignment: Alignment.center,
-                  colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                  colorFilter: const ColorFilter.mode(
+                    Colors.white,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -872,7 +880,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 letterSpacing: -0.1504,
               ),
               border: InputBorder.none,
-              counterText: '', // Hide default counter, we'll show custom one below
+              counterText:
+                  '', // Hide default counter, we'll show custom one below
             ),
           ),
         ],
@@ -951,14 +960,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Widget _buildLocationCard() {
     final bool hasLocation = _isLocationSelected;
-    
+
     return Container(
       key: _locationCardKey,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: hasLocation
-            ? const Color(0x99EEF2FF)
-            : const Color(0x66EEF2FF),
+        color: hasLocation ? const Color(0x99EEF2FF) : const Color(0x66EEF2FF),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE0E7FF), width: 0.756),
       ),
@@ -970,10 +977,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           },
           borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               children: [
                 Container(
@@ -1042,14 +1046,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   void _showLocationDropdown(BuildContext context) {
-    final RenderBox? renderBox = _locationCardKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _locationCardKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
     final Offset position = renderBox.localToGlobal(Offset.zero);
     final Size size = renderBox.size;
     final double screenWidth = MediaQuery.of(context).size.width;
     final double screenHeight = MediaQuery.of(context).size.height;
-    
+
     // Calculate available space below the card
     final double availableHeight = screenHeight - position.dy - size.height;
     final double maxHeight = availableHeight.clamp(100.0, 200.0);
@@ -1074,10 +1079,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       ),
       color: Colors.white,
       elevation: 8,
-      constraints: BoxConstraints(
-        maxHeight: maxHeight,
-        minWidth: size.width,
-      ),
+      constraints: BoxConstraints(maxHeight: maxHeight, minWidth: size.width),
       items: _locationOptions.map((location) {
         final isSelected = location == _selectedLocation;
         return PopupMenuItem<String>(
@@ -1145,7 +1147,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final hasLocation = _isLocationSelected;
     final bodyLength = _bodyController.text.length;
     final isOverLimit = _isBodyOverLimit;
-    
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1166,9 +1168,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: isOverLimit
-                ? const Color(0xFFFB2C36)
-                : _textSecondary,
+            color: isOverLimit ? const Color(0xFFFB2C36) : _textSecondary,
             fontFamily: 'Inter',
           ),
         ),
@@ -1179,7 +1179,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget _buildAdminCharacterLimitIndicator() {
     final bodyLength = _bodyController.text.length;
     final isOverLimit = bodyLength > 500;
-    
+
     return Align(
       alignment: Alignment.centerRight,
       child: Text(
@@ -1187,9 +1187,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w500,
-          color: isOverLimit
-              ? const Color(0xFFFB2C36)
-              : _textSecondary,
+          color: isOverLimit ? const Color(0xFFFB2C36) : _textSecondary,
           fontFamily: 'Inter',
         ),
       ),
@@ -1417,9 +1415,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Community guidelines link - expanded to prevent collapsing
-            Expanded(
-              child: _buildStatusPrompt(),
-            ),
+            Expanded(child: _buildStatusPrompt()),
             const SizedBox(width: 12),
             // Post button - fixed minimum width to prevent collapsing
             ElevatedButton(
@@ -1485,9 +1481,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Community guidelines link - expanded to prevent collapsing
-          Expanded(
-            child: _buildStatusPrompt(),
-          ),
+          Expanded(child: _buildStatusPrompt()),
           const SizedBox(width: 12),
           // Post button - fixed minimum width to prevent collapsing
           ElevatedButton(
@@ -1543,11 +1537,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   Widget _buildWodCard() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0x66EEF2FF), // rgba(238,242,255,0.4) - same as Detty December
-        border: Border.all(
-          color: const Color(0xFFE0E7FF),
-          width: 1,
-        ),
+        color: const Color(
+          0x66EEF2FF,
+        ), // rgba(238,242,255,0.4) - same as Detty December
+        border: Border.all(color: const Color(0xFFE0E7FF), width: 1),
         borderRadius: BorderRadius.circular(14),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1669,10 +1662,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     if (_isSubmitting || !_canPost) {
       return;
     }
-    
+
     // Dismiss keyboard first
     FocusScope.of(context).unfocus();
-    
+
     final rawTitle = _titleController.text.trim();
     final title = _ensureTitleEndsWithPeriod(rawTitle);
     final body = _bodyController.text.trim();
@@ -1681,7 +1674,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Wait a bit for keyboard to dismiss before showing toast
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
-        PalToast.show(context, message: 'Please enter post details.');
+        PalToast.show(
+          context,
+          message: 'Please enter post details.',
+          isError: true,
+        );
       }
       return;
     }
@@ -1689,7 +1686,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Wait a bit for keyboard to dismiss before showing toast
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
-        PalToast.show(context, message: 'Post exceeds 1000 characters.');
+        PalToast.show(
+          context,
+          message: 'Post exceeds 1000 characters.',
+          isError: true,
+        );
       }
       return;
     }
@@ -1697,14 +1698,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     // For admin, use default category/location or skip if not required
     String? categoryId;
     String? locationId;
-    
+
     if (_isAdmin) {
       // Admin posts: Use default category (Gist) or fallback
       final usedCategories = _categoryIdLookup.isNotEmpty
           ? _categoryIdLookup
           : _fallbackCategoryIdLookup;
       categoryId = usedCategories['Gist'] ?? usedCategories.values.first;
-      
+
       // Use default location or fallback
       final usedLocations = _locationIdLookup.isNotEmpty
           ? _locationIdLookup
@@ -1724,6 +1725,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           PalToast.show(
             context,
             message: 'Selected location is unavailable right now.',
+            isError: true,
           );
         }
         return;
@@ -1786,6 +1788,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         PalToast.show(
           context,
           message: e.toString().replaceFirst('Exception: ', ''),
+          isError: true,
         );
       }
     }

@@ -91,7 +91,7 @@ class NotificationMapper {
       
       // Attach original notification data for navigation
       // Create a new item with notificationData
-      return NotificationItem(
+      final mappedItem = NotificationItem(
         headlineParts: item.headlineParts,
         subtitle: item.subtitle,
         body: item.body,
@@ -109,8 +109,9 @@ class NotificationMapper {
         tileBackgroundColor: item.tileBackgroundColor,
         notificationData: notificationData,
       );
-          
-      return null;
+      
+      debugPrint('[NotificationMapper] Successfully mapped notification: $notificationType (id: $id)');
+      return mappedItem;
     } catch (e) {
       debugPrint('[NotificationMapper] Error mapping notification: $e');
       return null;

@@ -251,6 +251,7 @@ class PostCard extends StatefulWidget {
     this.isYourPosts = false,
     this.showOverflowMenu = true,
     this.isUpvotedPostsScreen = false,
+    this.initialCommentsExpanded = false,
   });
 
   final PostCardData data;
@@ -262,6 +263,8 @@ class PostCard extends StatefulWidget {
   final bool showOverflowMenu;
 
   final bool isUpvotedPostsScreen;
+
+  final bool initialCommentsExpanded;
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -323,11 +326,15 @@ class _PostCardState extends State<PostCard> {
     _actualCommentCount =
         null; // Start with null, will be set when comments are loaded
 
+    // Set initial comments expanded state if requested
+    _showComments = widget.initialCommentsExpanded;
+
     _loadCurrentUsername();
     _loadCurrentUserId();
 
     // Load comments in background to get accurate count (only if feed shows comments exist)
-    if (data.commentsCount > 0 && data.id != null) {
+    // Also load if comments should be expanded initially
+    if ((data.commentsCount > 0 || widget.initialCommentsExpanded) && data.id != null) {
       // Load comments in background to get accurate count of active comments
       Future.microtask(() => _loadComments());
     }

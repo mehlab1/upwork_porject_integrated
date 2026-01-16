@@ -279,7 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           );
         } else {
           final errorMessage = response['error'] ?? 'Failed to update username';
-          PalToast.show(context, message: errorMessage);
+          PalToast.show(context, message: errorMessage, isError: true);
         }
       } catch (e) {
         if (!mounted) {
@@ -379,7 +379,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           );
         } else {
           final errorMessage = response['error'] ?? 'Failed to update birthday';
-          PalToast.show(context, message: errorMessage);
+          PalToast.show(context, message: errorMessage, isError: true);
         }
       } catch (e) {
         if (!mounted) {
@@ -864,24 +864,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _togglePushNotifications() async {
     final newValue = !_pushNotificationsEnabled;
 
+    print('=== TOGGLE PUSH NOTIFICATIONS ===');
+    print('Current state: $_pushNotificationsEnabled');
+    print('New value: $newValue');
+    print('Request payload: {push_notifications_enabled: $newValue}');
+    print('================================');
+
     // Optimistically update UI
     setState(() {
       _pushNotificationsEnabled = newValue;
     });
 
     try {
-      await _profileService.updateNotificationPreferences({
+      final response = await _profileService.updateNotificationPreferences({
         'push_notifications_enabled': newValue,
       });
-    } catch (e) {
+      
+      print('=== TOGGLE PUSH NOTIFICATIONS - RESPONSE ===');
+      print('Response received: ${response != null}');
+      print('Response keys: ${response?.keys.toList()}');
+      print('Response success: ${response?['success']}');
+      print('Response message: ${response?['message']}');
+      print('Response preferences: ${response?['preferences']}');
+      if (response?['preferences'] != null) {
+        final prefs = response!['preferences'] as Map<String, dynamic>?;
+        print('Push notifications enabled in response: ${prefs?['push_notifications_enabled']}');
+      }
+      print('Full response body: $response');
+      print('==========================================');
+      
+      // Verify the response
+      if (response['success'] == true && response['preferences'] != null) {
+        final prefs = response['preferences'] as Map<String, dynamic>;
+        final actualValue = prefs['push_notifications_enabled'] as bool?;
+        print('Response verification: actualValue=$actualValue, expectedValue=$newValue');
+        // Sync with actual response value
+        if (mounted && actualValue != null) {
+          setState(() {
+            _pushNotificationsEnabled = actualValue;
+          });
+          print('UI synced with response value: $actualValue');
+        }
+      }
+    } catch (e, stackTrace) {
+      print('=== TOGGLE PUSH NOTIFICATIONS - ERROR ===');
+      print('Error type: ${e.runtimeType}');
+      print('Error message: ${e.toString()}');
+      print('Error details: $e');
+      print('Stack trace: $stackTrace');
+      print('========================================');
+      
       // Revert on error
       if (mounted) {
         setState(() {
           _pushNotificationsEnabled = !newValue;
         });
+        print('UI reverted to previous state: ${!newValue}');
         PalToast.show(
           context,
           message: 'Failed to update notification settings',
+          isError: true,
         );
       }
     }
@@ -905,7 +947,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _wodEnabled = !newValue;
         });
-        PalToast.show(context, message: 'Failed to update WOD settings');
+        PalToast.show(
+          context,
+          message: 'Failed to update WOD settings',
+          isError: true,
+        );
       }
     }
   }
@@ -3393,7 +3439,7 @@ class _ShareFeedbackDialogState extends State<_ShareFeedbackDialog> {
           _errorMessage = errorMsg;
           _isSubmitting = false;
         });
-        PalToast.show(context, message: errorMsg);
+        PalToast.show(context, message: errorMsg, isError: true);
       }
     } catch (e) {
       if (!mounted) return;

@@ -107,9 +107,15 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final double horizontalScreenPadding = Responsive.scaledPadding(context, 24);
-    final double contentWidth = Responsive.widthPercent(context, 90).clamp(260.0, 400.0);
-    
+    final double horizontalScreenPadding = Responsive.scaledPadding(
+      context,
+      24,
+    );
+    final double contentWidth = Responsive.widthPercent(
+      context,
+      90,
+    ).clamp(260.0, 400.0);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -163,305 +169,353 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               child: SingleChildScrollView(
                 child: Column(
                   children: [
+                    SizedBox(height: Responsive.scaledPadding(context, 70)),
 
-                  SizedBox(height: Responsive.scaledPadding(context, 70)),
-
-                  // Email text
-                  Padding(
-                    padding: Responsive.responsiveSymmetric(
-                      context,
-                      horizontal: horizontalScreenPadding,
-                    ),
-                    child: Text(
-                      'Code has been send to ${widget.email}',
-                      style: Responsive.responsiveTextStyle(
-                        context,
-                        fontSize: 16,
-                        fontWeight: FontWeight.normal, // Rubik Regular
-                        color: _primary900,
-                        fontFamily: 'Rubik',
-                        height: 1.4,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-
-                  SizedBox(height: Responsive.scaledPadding(context, 45)),
-
-                  // OTP input boxes (responsive sizing)
-                  Padding(
-                    padding: Responsive.responsiveSymmetric(
-                      context,
-                      horizontal: horizontalScreenPadding,
-                    ),
-                    child: LayoutBuilder(builder: (context, constraints) {
-                      final double available = constraints.maxWidth;
-                      // Gaps scale with width but kept in reasonable bounds
-                      final double gap = (available * 0.025).clamp(8.0, 12.0);
-                      final double edgeGap = gap; // dynamic side spacing for first/last
-                      // Subtract inner gaps and edge gaps from available to avoid overflow
-                      double boxSize =
-                          (available - (gap * (_otpLength - 1)) - (edgeGap * 2)) /
-                              _otpLength;
-                      // Clamp to sensible min/max to avoid overly large/small boxes
-                      boxSize = boxSize.clamp(40.0, 56.0);
-                      final double radius = boxSize / 3.5;
-                      // edgeGap already accounted for in size calculation
-                      final double textSize = (boxSize * 0.6).clamp(20.0, 28.0);
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(_otpLength, (index) {
-                          final isActive = _focusNodes[index].hasFocus;
-                          final isLast = index == _otpLength - 1;
-                          final isFirst = index == 0;
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _currentIndex = index;
-                              });
-                              _focusNodes[index].requestFocus();
-                            },
-                            child: Container(
-                              width: boxSize,
-                              height: boxSize,
-                              margin: EdgeInsets.only(
-                                left: isFirst ? edgeGap : 0,
-                                right: isLast ? edgeGap : gap,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isActive ? _lightBlue : _grey100,
-                                border: isActive
-                                    ? Border.all(color: _primaryColor, width: 1.5)
-                                    : null,
-                                boxShadow: isActive
-                                    ? [
-                                        BoxShadow(
-                                          color: _primaryColor.withOpacity(0.35),
-                                          blurRadius: 0,
-                                          spreadRadius: 1,
-                                        ),
-                                      ]
-                                    : null,
-                                borderRadius: BorderRadius.circular(radius),
-                              ),
-                              child: Focus(
-                                onKeyEvent: (node, event) {
-                                  if (event is KeyDownEvent &&
-                                      event.logicalKey == LogicalKeyboardKey.backspace) {
-                                    // Handle backspace
-                                    if (_controllers[index].text.isEmpty && index > 0) {
-                                      // If current field is empty, move to previous and clear it
-                                      _controllers[index - 1].clear();
-                                      _currentIndex = index - 1;
-                                      _focusNodes[index - 1].requestFocus();
-                                      return KeyEventResult.handled;
-                                    } else if (_controllers[index].text.isNotEmpty) {
-                                      // If current field has text, clear it
-                                      _controllers[index].clear();
-                                      return KeyEventResult.handled;
-                                    }
-                                  }
-                                  return KeyEventResult.ignored;
-                                },
-                                child: TextField(
-                                  controller: _controllers[index],
-                                  focusNode: _focusNodes[index],
-                                  textAlign: TextAlign.center,
-                                  keyboardType: TextInputType.number,
-                                  showCursor: false,
-                                  inputFormatters: [
-                                    LengthLimitingTextInputFormatter(1),
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                  style: Responsive.responsiveTextStyle(
-                                    context,
-                                    fontSize: textSize,
-                                    fontWeight: FontWeight.w500, // Rubik Medium
-                                    color: _primary900,
-                                    fontFamily: 'Rubik',
-                                  ),
-                                  onChanged: (value) {
-                                    if (value.isNotEmpty &&
-                                        index < _otpLength - 1) {
-                                      _focusNodes[index].unfocus();
-                                      _currentIndex = index + 1;
-                                      _focusNodes[_currentIndex].requestFocus();
-                                    } else if (value.isEmpty && index > 0) {
-                                      // When field becomes empty, move to previous
-                                      _currentIndex = index - 1;
-                                      _focusNodes[_currentIndex].requestFocus();
-                                    }
-                                  },
-                                  onTap: () {
-                                    setState(() {
-                                      _currentIndex = index;
-                                    });
-                                  },
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                      );
-                    }),
-                  ),
-
-                  SizedBox(height: Responsive.scaledPadding(context, 35)),
-
-                  // Error message (kept for backend error display)
-                  if (_errorMessage != null)
+                    // Email text
                     Padding(
                       padding: Responsive.responsiveSymmetric(
                         context,
                         horizontal: horizontalScreenPadding,
                       ),
-                      child: Container(
-                        padding: Responsive.responsivePadding(context, all: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 8)),
-                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                      child: Text(
+                        'Code has been send to ${widget.email}',
+                        style: Responsive.responsiveTextStyle(
+                          context,
+                          fontSize: 16,
+                          fontWeight: FontWeight.normal, // Rubik Regular
+                          color: _primary900,
+                          fontFamily: 'Rubik',
+                          height: 1.4,
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                              size: Responsive.scaledIcon(context, 20),
-                            ),
-                            SizedBox(width: Responsive.scaledPadding(context, 8)),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: Responsive.responsiveTextStyle(
-                                  context,
-                                  fontSize: 14,
-                                  color: Colors.red,
-                                  fontFamily: 'Rubik',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
 
-                  if (_errorMessage != null) SizedBox(height: Responsive.scaledPadding(context, 16)),
+                    SizedBox(height: Responsive.scaledPadding(context, 45)),
 
-                  // Resend code text
-                  Builder(
-                    builder: (context) {
-                      final timeString = _formatResendTime();
-                      if (_resendSeconds > 0) {
-                        // Show timer text (matches updated UI)
-                        return RichText(
-                          textAlign: TextAlign.center,
-                          text: TextSpan(
-                            style: Responsive.responsiveTextStyle(
-                              context,
-                              fontSize: 14,
-                              fontWeight: FontWeight.normal, // Rubik Regular
-                              color: _primary900,
-                              fontFamily: 'Rubik',
-                              letterSpacing: 0.2,
+                    // OTP input boxes (responsive sizing)
+                    Padding(
+                      padding: Responsive.responsiveSymmetric(
+                        context,
+                        horizontal: horizontalScreenPadding,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double available = constraints.maxWidth;
+                          // Gaps scale with width but kept in reasonable bounds
+                          final double gap = (available * 0.025).clamp(
+                            8.0,
+                            12.0,
+                          );
+                          final double edgeGap =
+                              gap; // dynamic side spacing for first/last
+                          // Subtract inner gaps and edge gaps from available to avoid overflow
+                          double boxSize =
+                              (available -
+                                  (gap * (_otpLength - 1)) -
+                                  (edgeGap * 2)) /
+                              _otpLength;
+                          // Clamp to sensible min/max to avoid overly large/small boxes
+                          boxSize = boxSize.clamp(40.0, 56.0);
+                          final double radius = boxSize / 3.5;
+                          // edgeGap already accounted for in size calculation
+                          final double textSize = (boxSize * 0.6).clamp(
+                            20.0,
+                            28.0,
+                          );
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(_otpLength, (index) {
+                              final isActive = _focusNodes[index].hasFocus;
+                              final isLast = index == _otpLength - 1;
+                              final isFirst = index == 0;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _currentIndex = index;
+                                  });
+                                  _focusNodes[index].requestFocus();
+                                },
+                                child: Container(
+                                  width: boxSize,
+                                  height: boxSize,
+                                  margin: EdgeInsets.only(
+                                    left: isFirst ? edgeGap : 0,
+                                    right: isLast ? edgeGap : gap,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isActive ? _lightBlue : _grey100,
+                                    border: isActive
+                                        ? Border.all(
+                                            color: _primaryColor,
+                                            width: 1.5,
+                                          )
+                                        : null,
+                                    boxShadow: isActive
+                                        ? [
+                                            BoxShadow(
+                                              color: _primaryColor.withOpacity(
+                                                0.35,
+                                              ),
+                                              blurRadius: 0,
+                                              spreadRadius: 1,
+                                            ),
+                                          ]
+                                        : null,
+                                    borderRadius: BorderRadius.circular(radius),
+                                  ),
+                                  child: Focus(
+                                    onKeyEvent: (node, event) {
+                                      if (event is KeyDownEvent &&
+                                          event.logicalKey ==
+                                              LogicalKeyboardKey.backspace) {
+                                        // Handle backspace
+                                        if (_controllers[index].text.isEmpty &&
+                                            index > 0) {
+                                          // If current field is empty, move to previous and clear it
+                                          _controllers[index - 1].clear();
+                                          _currentIndex = index - 1;
+                                          _focusNodes[index - 1].requestFocus();
+                                          return KeyEventResult.handled;
+                                        } else if (_controllers[index]
+                                            .text
+                                            .isNotEmpty) {
+                                          // If current field has text, clear it
+                                          _controllers[index].clear();
+                                          return KeyEventResult.handled;
+                                        }
+                                      }
+                                      return KeyEventResult.ignored;
+                                    },
+                                    child: TextField(
+                                      controller: _controllers[index],
+                                      focusNode: _focusNodes[index],
+                                      textAlign: TextAlign.center,
+                                      keyboardType: TextInputType.number,
+                                      showCursor: false,
+                                      inputFormatters: [
+                                        LengthLimitingTextInputFormatter(1),
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      style: Responsive.responsiveTextStyle(
+                                        context,
+                                        fontSize: textSize,
+                                        fontWeight:
+                                            FontWeight.w500, // Rubik Medium
+                                        color: _primary900,
+                                        fontFamily: 'Rubik',
+                                      ),
+                                      onChanged: (value) {
+                                        if (value.isNotEmpty &&
+                                            index < _otpLength - 1) {
+                                          _focusNodes[index].unfocus();
+                                          _currentIndex = index + 1;
+                                          _focusNodes[_currentIndex]
+                                              .requestFocus();
+                                        } else if (value.isEmpty && index > 0) {
+                                          // When field becomes empty, move to previous
+                                          _currentIndex = index - 1;
+                                          _focusNodes[_currentIndex]
+                                              .requestFocus();
+                                        }
+                                      },
+                                      onTap: () {
+                                        setState(() {
+                                          _currentIndex = index;
+                                        });
+                                      },
+                                      decoration: const InputDecoration(
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          );
+                        },
+                      ),
+                    ),
+
+                    SizedBox(height: Responsive.scaledPadding(context, 35)),
+
+                    // Error message (kept for backend error display)
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: Responsive.responsiveSymmetric(
+                          context,
+                          horizontal: horizontalScreenPadding,
+                        ),
+                        child: Container(
+                          padding: Responsive.responsivePadding(
+                            context,
+                            all: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(
+                              Responsive.responsiveRadius(context, 8),
                             ),
+                            border: Border.all(
+                              color: Colors.red.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              const TextSpan(text: 'Resend code in '),
-                              TextSpan(
-                                text: '($timeString)',
-                                style: Responsive.responsiveTextStyle(
-                                  context,
-                                  color: _primaryColor,
-                                  fontFamily: 'Rubik',
-                                  letterSpacing: 0.2,
+                              Icon(
+                                Icons.error_outline,
+                                color: Colors.red,
+                                size: Responsive.scaledIcon(context, 20),
+                              ),
+                              SizedBox(
+                                width: Responsive.scaledPadding(context, 8),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: Responsive.responsiveTextStyle(
+                                    context,
+                                    fontSize: 14,
+                                    color: Colors.red,
+                                    fontFamily: 'Rubik',
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        );
-                      } else {
-                        // Show resend button when timer expires (backend functionality)
-                        return TextButton(
-                          onPressed: _isResending ? null : () => _handleResendOtp(),
-                          child: _isResending
-                              ? SizedBox(
-                                  width: Responsive.scaledIcon(context, 16),
-                                  height: Responsive.scaledIcon(context, 16),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
-                                  ),
-                                )
-                              : Text(
-                                  'Resend code',
+                        ),
+                      ),
+
+                    if (_errorMessage != null)
+                      SizedBox(height: Responsive.scaledPadding(context, 16)),
+
+                    // Resend code text
+                    Builder(
+                      builder: (context) {
+                        final timeString = _formatResendTime();
+                        if (_resendSeconds > 0) {
+                          // Show timer text (matches updated UI)
+                          return RichText(
+                            textAlign: TextAlign.center,
+                            text: TextSpan(
+                              style: Responsive.responsiveTextStyle(
+                                context,
+                                fontSize: 14,
+                                fontWeight: FontWeight.normal, // Rubik Regular
+                                color: _primary900,
+                                fontFamily: 'Rubik',
+                                letterSpacing: 0.2,
+                              ),
+                              children: [
+                                const TextSpan(text: 'Resend code in '),
+                                TextSpan(
+                                  text: '($timeString)',
                                   style: Responsive.responsiveTextStyle(
                                     context,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
                                     color: _primaryColor,
                                     fontFamily: 'Rubik',
+                                    letterSpacing: 0.2,
                                   ),
                                 ),
-                        );
-                      }
-                    },
-                  ),
-
-                  SizedBox(height: Responsive.scaledPadding(context, 35)),
-
-                  // Continue button
-                  Container(
-                    width: contentWidth,
-                    height: Responsive.scaledPadding(context, 56),
-                    decoration: BoxDecoration(
-                      color: _isLoading ? _primaryColor.withOpacity(0.7) : _primaryColor,
-                      borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 20)),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _isLoading ? null : () async {
-                          // Verify OTP
-                          final otp = _controllers.map((c) => c.text).join('');
-                          if (otp.length == _otpLength) {
-                            await _handleVerifyOtp(otp);
-                          } else {
-                            setState(() {
-                              _errorMessage = 'Please enter the complete OTP code';
-                            });
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 20)),
-                        child: Center(
-                          child: _isLoading
-                              ? SizedBox(
-                                  width: Responsive.scaledIcon(context, 20),
-                                  height: Responsive.scaledIcon(context, 20),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
+                              ],
+                            ),
+                          );
+                        } else {
+                          // Show resend button when timer expires (backend functionality)
+                          return TextButton(
+                            onPressed: _isResending
+                                ? null
+                                : () => _handleResendOtp(),
+                            child: _isResending
+                                ? SizedBox(
+                                    width: Responsive.scaledIcon(context, 16),
+                                    height: Responsive.scaledIcon(context, 16),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        _primaryColor,
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    'Resend code',
+                                    style: Responsive.responsiveTextStyle(
+                                      context,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: _primaryColor,
+                                      fontFamily: 'Rubik',
                                     ),
                                   ),
-                                )
-                              : Text(
-                                  'Continue',
-                                  style: Responsive.responsiveTextStyle(
-                                    context,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500, // Rubik Medium
-                                    color: Colors.white,
-                                    fontFamily: 'Rubik',
+                          );
+                        }
+                      },
+                    ),
+
+                    SizedBox(height: Responsive.scaledPadding(context, 35)),
+
+                    // Continue button
+                    Container(
+                      width: contentWidth,
+                      height: Responsive.scaledPadding(context, 56),
+                      decoration: BoxDecoration(
+                        color: _isLoading
+                            ? _primaryColor.withOpacity(0.7)
+                            : _primaryColor,
+                        borderRadius: BorderRadius.circular(
+                          Responsive.responsiveRadius(context, 20),
+                        ),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _isLoading
+                              ? null
+                              : () async {
+                                  // Verify OTP
+                                  final otp = _controllers
+                                      .map((c) => c.text)
+                                      .join('');
+                                  if (otp.length == _otpLength) {
+                                    await _handleVerifyOtp(otp);
+                                  } else {
+                                    setState(() {
+                                      _errorMessage =
+                                          'Please enter the complete OTP code';
+                                    });
+                                  }
+                                },
+                          borderRadius: BorderRadius.circular(
+                            Responsive.responsiveRadius(context, 20),
+                          ),
+                          child: Center(
+                            child: _isLoading
+                                ? SizedBox(
+                                    width: Responsive.scaledIcon(context, 20),
+                                    height: Responsive.scaledIcon(context, 20),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    'Continue',
+                                    style: Responsive.responsiveTextStyle(
+                                      context,
+                                      fontSize: 16,
+                                      fontWeight:
+                                          FontWeight.w500, // Rubik Medium
+                                      color: Colors.white,
+                                      fontFamily: 'Rubik',
+                                    ),
                                   ),
-                                ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
                     SizedBox(height: Responsive.scaledPadding(context, 50)),
                   ],
@@ -556,8 +610,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       } else {
         // No session - OTP verified but session creation failed
         // This shouldn't happen in normal flow, but handle gracefully
-        PalToast.show(context, message: 'OTP verified successfully! Please sign in with your email and password.');
-        
+        PalToast.show(
+          context,
+          message:
+              'OTP verified successfully! Please sign in with your email and password.',
+        );
+
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/login',
           (route) => false,
@@ -567,17 +625,21 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     } on AuthException catch (e) {
       if (!mounted) return;
       final errorMessage = e.message.toLowerCase();
-      
+
       // Check if it's about session creation (OTP was verified but session failed)
-      if (errorMessage.contains('createsession') || 
+      if (errorMessage.contains('createsession') ||
           errorMessage.contains('session creation failed')) {
         // OTP was verified, just session creation failed
         setState(() {
           _isLoading = false;
         });
-        
-        PalToast.show(context, message: 'OTP verified successfully! Please sign in with your email and password.');
-        
+
+        PalToast.show(
+          context,
+          message:
+              'OTP verified successfully! Please sign in with your email and password.',
+        );
+
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/login',
           (route) => false,
@@ -589,7 +651,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           _isLoading = false;
           _errorMessage = e.message;
         });
-        PalToast.show(context, message: e.message);
+        PalToast.show(context, message: e.message, isError: true);
       }
     } catch (e) {
       if (!mounted) return;
@@ -597,7 +659,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         _isLoading = false;
         _errorMessage = 'An unexpected error occurred. Please try again.';
       });
-      PalToast.show(context, message: 'An unexpected error occurred. Please try again.');
+      PalToast.show(
+        context,
+        message: 'An unexpected error occurred. Please try again.',
+        isError: true,
+      );
     }
   }
 
@@ -623,7 +689,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       for (var controller in _controllers) {
         controller.clear();
       }
-      
+
       // Reset focus to first field
       _currentIndex = 0;
       _focusNodes[0].requestFocus();
@@ -640,7 +706,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       // Show success message
       PalToast.show(
         context,
-        message: widget.isPasswordReset 
+        message: widget.isPasswordReset
             ? 'Password reset code resent successfully'
             : 'OTP resent successfully',
       );

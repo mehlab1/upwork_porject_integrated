@@ -9,6 +9,7 @@ class PalToast {
   static void show(
     BuildContext context, {
     required String message,
+    bool isError = false,
     Duration duration = const Duration(seconds: 3),
   }) {
     if (_isVisible) {
@@ -16,7 +17,7 @@ class PalToast {
     }
 
     final overlay = Overlay.of(context);
-    _overlayEntry = _createOverlayEntry(context, message);
+    _overlayEntry = _createOverlayEntry(context, message, isError);
 
     overlay.insert(_overlayEntry!);
     _isVisible = true;
@@ -37,10 +38,11 @@ class PalToast {
   static OverlayEntry _createOverlayEntry(
     BuildContext context,
     String message,
+    bool isError,
   ) {
     // Position above navigation bar (responsive)
     final bottomOffset = Responsive.scaledPadding(context, 110.0);
-    
+
     return OverlayEntry(
       builder: (context) => Positioned(
         bottom: bottomOffset,
@@ -55,13 +57,10 @@ class PalToast {
             builder: (context, value, child) {
               return Transform.translate(
                 offset: Offset(0, 20 * (1 - value)),
-                child: Opacity(
-                  opacity: value,
-                  child: child,
-                ),
+                child: Opacity(opacity: value, child: child),
               );
             },
-            child: _ToastWidget(message: message),
+            child: _ToastWidget(message: message, isError: isError),
           ),
         ),
       ),
@@ -70,9 +69,10 @@ class PalToast {
 }
 
 class _ToastWidget extends StatelessWidget {
-  const _ToastWidget({required this.message});
+  const _ToastWidget({required this.message, required this.isError});
 
   final String message;
+  final bool isError;
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +83,9 @@ class _ToastWidget extends StatelessWidget {
           color: const Color.fromRGBO(0, 0, 0, 0.1),
           width: 0.756,
         ),
-        borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 8)),
+        borderRadius: BorderRadius.circular(
+          Responsive.responsiveRadius(context, 8),
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF0F172A).withOpacity(0.1),
@@ -105,20 +107,22 @@ class _ToastWidget extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.black,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 1,
-              ),
+              border: Border.all(color: Colors.white, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 2,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Center(
               child: SvgPicture.asset(
-                'assets/images/checkIcon.svg',
+                isError
+                    ? 'assets/images/exclamationIcon.svg'
+                    : 'assets/images/checkIcon.svg',
                 width: Responsive.scaledIcon(context, 12),
                 height: Responsive.scaledIcon(context, 12),
-                colorFilter: const ColorFilter.mode(
-                  Colors.white,
-                  BlendMode.srcIn,
-                ),
               ),
             ),
           ),
@@ -142,4 +146,3 @@ class _ToastWidget extends StatelessWidget {
     );
   }
 }
-

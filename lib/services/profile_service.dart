@@ -1,14 +1,40 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Cached profile data with timestamp for expiration checking
+class _CachedProfile {
+  final ProfileData data;
+  final DateTime cachedAt;
+  
+  _CachedProfile(this.data) : cachedAt = DateTime.now();
+  
+  bool isValid(Duration maxAge) {
+    return DateTime.now().difference(cachedAt) < maxAge;
+  }
+}
+
 /// Service for user profile operations
-/// Handles fetching and managing user profile data
+/// Handles fetching and managing user profile data with caching support
 class ProfileService {
-  ProfileService();
+  // Singleton pattern for shared cache across app
+  static final ProfileService _instance = ProfileService._internal();
+  factory ProfileService() => _instance;
+  ProfileService._internal();
 
   final SupabaseClient _supabaseClient = Supabase.instance.client;
+  
+  // Cache configuration
+  static const Duration _profileCacheDuration = Duration(minutes: 5);
+  
+  // Current user profile cache (singleton)
+  static ProfileData? _currentUserProfileCache;
+  static DateTime? _currentUserProfileCachedAt;
+  
+  // Other users' profile cache (user_id -> cached profile)
+  static final Map<String, _CachedProfile> _userProfileCache = {};
 
   // Internal helper to call Supabase Edge Functions
   Future<Map<String, dynamic>> _callFunction(
@@ -27,6 +53,14 @@ class ProfileService {
       };
       if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
 
+      print('=== PROFILE SERVICE - REQUEST TO EDGE FUNCTION ($functionName) ===');
+      print('URL: $uri');
+      print('Method: $method');
+      print('Has session token: ${sessionToken != null}');
+      if (body != null) {
+        print('Request body: ${jsonEncode(body)}');
+      }
+
       late http.Response resp;
       final encoded = body == null ? null : jsonEncode(body);
       if (method.toUpperCase() == 'GET') {
@@ -35,15 +69,25 @@ class ProfileService {
         resp = await http.post(uri, headers: headers, body: encoded);
       }
 
+      print('=== PROFILE SERVICE - RESPONSE FROM EDGE FUNCTION ($functionName) ===');
+      print('Status Code: ${resp.statusCode}');
+      print('Response headers: ${resp.headers}');
+      print('Response body: ${resp.body}');
+      print('===============================================================');
+
       final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
 
       if (resp.statusCode >= 400) {
         final errorMessage = parsed['message'] ?? parsed['error'] ?? 'Server error';
+        print('ERROR _callFunction ($functionName): Status ${resp.statusCode} - $errorMessage');
+        print('ERROR _callFunction ($functionName): Full response body: $parsed');
         throw Exception(errorMessage);
       }
 
+      print('SUCCESS _callFunction ($functionName): Response parsed - $parsed');
       return parsed;
     } catch (e) {
+      print('ERROR _callFunction ($functionName): Exception - $e');
       rethrow;
     }
   }
@@ -83,40 +127,75 @@ class ProfileService {
     return await _callFunction('get-profile', body: {'user_id': userId});
   }
 
-  /// Get profile data by user_id as a structured object
-  /// Returns null if profile fetch fails
-  Future<ProfileData?> getProfileDataByUserId(String userId) async {
+  /// Get profile data by user_id as a structured object with caching
+  /// Returns cached data if valid (< 5 minutes old), otherwise fetches fresh
+  /// Set forceRefresh to true to bypass cache
+  Future<ProfileData?> getProfileDataByUserId(String userId, {bool forceRefresh = false}) async {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && _userProfileCache.containsKey(userId)) {
+      final cached = _userProfileCache[userId]!;
+      if (cached.isValid(_profileCacheDuration)) {
+        debugPrint('[ProfileService] Returning cached profile for user: $userId');
+        return cached.data;
+      }
+    }
+    
     try {
       final response = await getProfileByUserId(userId);
       if (response['success'] == true && response['profile'] != null) {
-        return ProfileData.fromMap(response['profile'] as Map<String, dynamic>);
+        final profileData = ProfileData.fromMap(response['profile'] as Map<String, dynamic>);
+        // Cache the profile
+        _userProfileCache[userId] = _CachedProfile(profileData);
+        return profileData;
       }
       return null;
     } catch (e) {
+      // On error, return cached data if available (even if stale)
+      if (_userProfileCache.containsKey(userId)) {
+        debugPrint('[ProfileService] Returning stale cached profile for user: $userId (fetch failed)');
+        return _userProfileCache[userId]!.data;
+      }
       return null;
     }
   }
 
-  /// Get profile data as a structured object
-  /// Returns null if profile fetch fails
-  Future<ProfileData?> getProfileData() async {
-    print('=== DEBUG getProfileData: Fetching profile as ProfileData ===');
+  /// Get current user's profile data as a structured object with caching
+  /// Returns cached data if valid (< 5 minutes old), otherwise fetches fresh
+  /// Set forceRefresh to true to bypass cache
+  Future<ProfileData?> getProfileData({bool forceRefresh = false}) async {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && 
+        _currentUserProfileCache != null && 
+        _currentUserProfileCachedAt != null) {
+      final age = DateTime.now().difference(_currentUserProfileCachedAt!);
+      if (age < _profileCacheDuration) {
+        debugPrint('[ProfileService] Returning cached current user profile (age: ${age.inSeconds}s)');
+        return _currentUserProfileCache;
+      }
+    }
+    
+    debugPrint('[ProfileService] Fetching fresh current user profile');
     try {
       final response = await getProfile();
-      print('DEBUG getProfileData: response success: ${response['success']}');
-      print('DEBUG getProfileData: response has profile: ${response['profile'] != null}');
       if (response['success'] == true && response['profile'] != null) {
         final profileMap = response['profile'] as Map<String, dynamic>;
-        print('DEBUG getProfileData: profile map total_upvotes: ${profileMap['total_upvotes']}');
-        print('DEBUG getProfileData: profile map total_upvotes_received: ${profileMap['total_upvotes_received']}');
         final profileData = ProfileData.fromMap(profileMap);
-        print('DEBUG getProfileData: parsed ProfileData totalUpvotesReceived: ${profileData.totalUpvotesReceived}');
+        
+        // Update cache
+        _currentUserProfileCache = profileData;
+        _currentUserProfileCachedAt = DateTime.now();
+        
         return profileData;
       }
-      print('DEBUG getProfileData: Returning null - success false or no profile');
+      debugPrint('[ProfileService] getProfileData: Returning null - success false or no profile');
       return null;
     } catch (e) {
-      print('ERROR getProfileData: Exception - $e');
+      debugPrint('[ProfileService] getProfileData error: $e');
+      // On error, return cached data if available (even if stale)
+      if (_currentUserProfileCache != null) {
+        debugPrint('[ProfileService] Returning stale cached profile (fetch failed)');
+        return _currentUserProfileCache;
+      }
       return null;
     }
   }
@@ -159,6 +238,12 @@ class ProfileService {
 
       print('DEBUG updateUsername: Success - ${parsed['success']}');
       print('DEBUG updateUsername: Message - ${parsed['message']}');
+      
+      // Invalidate cache since profile was updated
+      if (parsed['success'] == true) {
+        invalidateCurrentUserCache();
+      }
+      
       return parsed;
     } catch (e) {
       print('ERROR updateUsername: Exception - $e');
@@ -205,6 +290,12 @@ class ProfileService {
       print('DEBUG updateBirthday: Message - ${parsed['message']}');
       print('DEBUG updateBirthday: Birthday in response - ${parsed['birthday']}');
       print('DEBUG updateBirthday: Profile in response - ${parsed['profile']}');
+      
+      // Invalidate cache since profile was updated
+      if (parsed['success'] == true) {
+        invalidateCurrentUserCache();
+      }
+      
       return parsed;
     } catch (e) {
       print('ERROR updateBirthday: Exception - $e');
@@ -343,21 +434,76 @@ class ProfileService {
   /// 
   /// Returns: Map with success (bool), preferences (Map), message (String)
   Future<Map<String, dynamic>> updateNotificationPreferences(Map<String, bool> preferences) async {
-    print('=== DEBUG updateNotificationPreferences: Updating preferences ===');
-    print('DEBUG updateNotificationPreferences: Preferences to update: $preferences');
+    print('=== PROFILE SERVICE - UPDATE NOTIFICATION PREFERENCES ===');
+    print('Request payload: $preferences');
+    print('Has session token: ${_supabaseClient.auth.currentSession?.accessToken != null}');
+    print('User ID: ${_supabaseClient.auth.currentUser?.id}');
+    
     try {
       final response = await _callFunction('update-notification-preferences', body: preferences);
-      print('DEBUG updateNotificationPreferences: Success - ${response['success']}');
-      print('DEBUG updateNotificationPreferences: Message - ${response['message']}');
-      print('DEBUG updateNotificationPreferences: Preferences - ${response['preferences']}');
+      
+      print('=== PROFILE SERVICE - RESPONSE ===');
+      print('Status: Success');
+      print('Response success field: ${response['success']}');
+      print('Response message: ${response['message']}');
+      print('Response preferences: ${response['preferences']}');
+      if (response['preferences'] != null) {
+        final prefs = response['preferences'] as Map<String, dynamic>;
+        print('Response push_notifications_enabled: ${prefs['push_notifications_enabled']}');
+      }
+      print('Full response: $response');
+      print('======================================================');
+      
       return response;
-    } catch (e) {
-      print('ERROR updateNotificationPreferences: Exception - $e');
+    } catch (e, stackTrace) {
+      print('=== PROFILE SERVICE - ERROR ===');
+      print('Error type: ${e.runtimeType}');
+      print('Error message: ${e.toString()}');
+      print('Error details: $e');
+      print('Stack trace: $stackTrace');
+      print('================================');
       rethrow;
     }
   }
 
+  // ============================================================================
+  // CACHE MANAGEMENT METHODS
+  // ============================================================================
 
+  /// Clear all profile caches (call on logout or when data needs full refresh)
+  void clearAllProfileCaches() {
+    _currentUserProfileCache = null;
+    _currentUserProfileCachedAt = null;
+    _userProfileCache.clear();
+    debugPrint('[ProfileService] All profile caches cleared');
+  }
+
+  /// Invalidate current user's profile cache (call after profile update)
+  void invalidateCurrentUserCache() {
+    _currentUserProfileCache = null;
+    _currentUserProfileCachedAt = null;
+    debugPrint('[ProfileService] Current user profile cache invalidated');
+  }
+
+  /// Invalidate a specific user's profile cache
+  void invalidateUserCache(String userId) {
+    _userProfileCache.remove(userId);
+    debugPrint('[ProfileService] Profile cache invalidated for user: $userId');
+  }
+
+  /// Check if current user profile is cached and valid
+  bool get hasValidCurrentUserCache {
+    if (_currentUserProfileCache == null || _currentUserProfileCachedAt == null) {
+      return false;
+    }
+    return DateTime.now().difference(_currentUserProfileCachedAt!) < _profileCacheDuration;
+  }
+
+  /// Get cache age for current user profile (for debugging)
+  Duration? get currentUserCacheAge {
+    if (_currentUserProfileCachedAt == null) return null;
+    return DateTime.now().difference(_currentUserProfileCachedAt!);
+  }
 }
 
 /// Structured profile data model
