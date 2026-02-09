@@ -12,6 +12,7 @@ class PalBottomNavigationBar extends StatelessWidget {
     required this.onHomeTap,
     required this.onNotificationsTap,
     required this.onSettingsTap,
+    this.showNotificationDot = false,
   });
 
   static const _primaryColor = Color(0xFF155DFC);
@@ -23,6 +24,7 @@ class PalBottomNavigationBar extends StatelessWidget {
   final VoidCallback onHomeTap;
   final VoidCallback onNotificationsTap;
   final VoidCallback onSettingsTap;
+  final bool showNotificationDot;
 
   bool get _notificationsActive => active == PalNavDestination.notifications;
   bool get _homeActive => active == PalNavDestination.home;

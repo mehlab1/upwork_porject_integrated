@@ -29,10 +29,10 @@ class PostService {
   // CLIENT-SIDE FEED CACHE CONFIGURATION
   // ============================================================================
   // Cache durations by filter type (industry best practice)
-  // - "New" filter: 30 seconds (content changes frequently)
-  // - "Hot"/"Top" filters: 2 minutes (trending content is more stable)
-  static const Duration _newFilterCacheDuration = Duration(seconds: 30);
-  static const Duration _hotTopFilterCacheDuration = Duration(minutes: 2);
+  // - "New" filter: 2 minutes (increased from 30 seconds for better cache hits)
+  // - "Hot"/"Top" filters: 5 minutes (increased from 2 minutes for better cache hits)
+  static const Duration _newFilterCacheDuration = Duration(minutes: 2);
+  static const Duration _hotTopFilterCacheDuration = Duration(minutes: 5);
   
   // Feed cache storage (cache key -> cached data)
   static final Map<String, _CachedFeedData> _feedCache = {};

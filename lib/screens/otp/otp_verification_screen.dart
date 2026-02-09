@@ -4,9 +4,15 @@ import 'dart:async';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String email;
-  final VoidCallback? onSuccess;
+  final ValueChanged<String>? onSuccess;
+  final bool isPasswordReset;
 
-  const OtpVerificationScreen({super.key, required this.email, this.onSuccess});
+  const OtpVerificationScreen({
+    super.key, 
+    required this.email, 
+    this.onSuccess,
+    this.isPasswordReset = false,
+  });
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -288,7 +294,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           final otp = _controllers.map((c) => c.text).join('');
                           if (otp.length == _otpLength) {
                             if (widget.onSuccess != null) {
-                              widget.onSuccess!.call();
+                              widget.onSuccess!.call(otp);
                             } else {
                               Navigator.pushReplacementNamed(
                                 context,

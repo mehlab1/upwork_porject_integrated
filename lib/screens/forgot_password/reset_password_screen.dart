@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:pal_app/widgets/pal_toast.dart';
+import 'package:pal/widgets/pal_toast.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key, required this.email});
+  const ResetPasswordScreen({
+    super.key, 
+    required this.email,
+    this.otpCode,
+  });
 
   final String email;
+  final String? otpCode;
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();

@@ -4662,7 +4662,12 @@ class _CommentCardState extends State<_CommentCard> {
             errorMessage.contains('already voted') ||
             errorMessage.contains('have not voted') ||
             errorMessage.contains('failed to vote you have not voted') ||
-            errorMessage.contains('you have not voted on this comment');
+            errorMessage.contains('you have not voted on this comment') ||
+            errorMessage.contains('unable to vote') ||
+            errorMessage.contains('you have already voted') ||
+            errorMessage.contains('already voted on this') ||
+            errorMessage.contains('you have already voted on this post') ||
+            errorMessage.contains('you have already voted on this comment');
         
         setState(() {
           _currentVotes = previousVotes;
@@ -4718,7 +4723,12 @@ class _CommentCardState extends State<_CommentCard> {
             errorMessage.contains('already voted') ||
             errorMessage.contains('have not voted') ||
             errorMessage.contains('failed to vote you have not voted') ||
-            errorMessage.contains('you have not voted on this comment');
+            errorMessage.contains('you have not voted on this comment') ||
+            errorMessage.contains('unable to vote') ||
+            errorMessage.contains('you have already voted') ||
+            errorMessage.contains('already voted on this') ||
+            errorMessage.contains('you have already voted on this post') ||
+            errorMessage.contains('you have already voted on this comment');
         
         setState(() {
           _currentVotes = previousVotes;
@@ -4796,7 +4806,12 @@ class _CommentCardState extends State<_CommentCard> {
             errorMessage.contains('already voted') ||
             errorMessage.contains('have not voted') ||
             errorMessage.contains('failed to vote you have not voted') ||
-            errorMessage.contains('you have not voted on this comment');
+            errorMessage.contains('you have not voted on this comment') ||
+            errorMessage.contains('unable to vote') ||
+            errorMessage.contains('you have already voted') ||
+            errorMessage.contains('already voted on this') ||
+            errorMessage.contains('you have already voted on this post') ||
+            errorMessage.contains('you have already voted on this comment');
         
         setState(() {
           _currentVotes = previousVotes;
@@ -4852,7 +4867,12 @@ class _CommentCardState extends State<_CommentCard> {
             errorMessage.contains('already voted') ||
             errorMessage.contains('have not voted') ||
             errorMessage.contains('failed to vote you have not voted') ||
-            errorMessage.contains('you have not voted on this comment');
+            errorMessage.contains('you have not voted on this comment') ||
+            errorMessage.contains('unable to vote') ||
+            errorMessage.contains('you have already voted') ||
+            errorMessage.contains('already voted on this') ||
+            errorMessage.contains('you have already voted on this post') ||
+            errorMessage.contains('you have already voted on this comment');
         
         setState(() {
           _currentVotes = previousVotes;
