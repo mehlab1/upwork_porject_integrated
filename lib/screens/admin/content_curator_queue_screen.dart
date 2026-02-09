@@ -54,10 +54,12 @@ class _ContentCuratorQueueScreenState
                     child: Text(
                       'Content Curator Queue',
                       style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF0F172B),
                         fontFamily: 'Inter',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 20,
+                        height: 36 / 20, // line-height: 36px
+                        letterSpacing: 0.07,
+                        color: Color(0xFF0F172B),
                       ),
                     ),
                   ),
@@ -110,7 +112,6 @@ class _ContentCuratorQueueScreenState
               MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
             );
           },
-          showNotificationDot: true,
         ),
     );
   }
@@ -348,7 +349,7 @@ class _ContentCuratorQueueScreenState
                     Row(
                       children: [
                         Text(
-                          username,
+                          username.startsWith('@') ? username : '@$username',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,

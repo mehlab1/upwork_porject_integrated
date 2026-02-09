@@ -62,9 +62,27 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
   ];
 
   late String _selectedReason = _reportOptions.first.title;
+  bool _isOverCharacterLimit = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsController.addListener(_onDetailsChanged);
+  }
+
+  void _onDetailsChanged() {
+    const maxLength = 500;
+    final isOverLimit = _detailsController.text.length > maxLength;
+    if (isOverLimit != _isOverCharacterLimit) {
+      setState(() {
+        _isOverCharacterLimit = isOverLimit;
+      });
+    }
+  }
 
   @override
   void dispose() {
+    _detailsController.removeListener(_onDetailsChanged);
     _detailsController.dispose();
     super.dispose();
   }
@@ -156,6 +174,7 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
                           ),
                         );
                       },
+                      isSubmitDisabled: _isOverCharacterLimit,
                     ),
                   ],
                 ),
@@ -699,22 +718,30 @@ class _ReportActionButton extends StatelessWidget {
     required this.textColor,
     required this.backgroundColor,
     required this.borderColor,
-    required this.onPressed,
+    this.onPressed,
   });
 
   final String label;
   final Color textColor;
   final Color backgroundColor;
   final Color borderColor;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = onPressed == null;
+    final disabledBackgroundColor = backgroundColor == _submitColor
+        ? const Color(0xFFE2E8F0) // Gray when submit button is disabled
+        : backgroundColor;
+    final disabledTextColor = backgroundColor == _submitColor
+        ? const Color(0xFF94A3B8) // Muted gray text when submit button is disabled
+        : textColor;
+
     return SizedBox(
       height: 40,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          backgroundColor: backgroundColor,
+          backgroundColor: isDisabled ? disabledBackgroundColor : backgroundColor,
           side: BorderSide(
             color: borderColor,
             width: borderColor.opacity == 0 ? 0 : 0.756,
@@ -722,7 +749,9 @@ class _ReportActionButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
-          foregroundColor: textColor,
+          foregroundColor: isDisabled ? disabledTextColor : textColor,
+          disabledBackgroundColor: disabledBackgroundColor,
+          disabledForegroundColor: disabledTextColor,
         ),
         onPressed: onPressed,
         child: Text(
@@ -730,7 +759,7 @@ class _ReportActionButton extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: textColor,
+            color: isDisabled ? disabledTextColor : textColor,
             fontFamily: 'Inter',
             letterSpacing: -0.1504,
           ),
@@ -824,10 +853,15 @@ class _ReportDetailsSectionTitle extends StatelessWidget {
 }
 
 class _ReportFooter extends StatelessWidget {
-  const _ReportFooter({required this.onCancel, required this.onSubmit});
+  const _ReportFooter({
+    required this.onCancel,
+    required this.onSubmit,
+    required this.isSubmitDisabled,
+  });
 
   final VoidCallback onCancel;
   final VoidCallback onSubmit;
+  final bool isSubmitDisabled;
 
   @override
   Widget build(BuildContext context) {
@@ -855,7 +889,7 @@ class _ReportFooter extends StatelessWidget {
               textColor: Colors.white,
               backgroundColor: _submitColor,
               borderColor: Colors.transparent,
-              onPressed: onSubmit,
+              onPressed: isSubmitDisabled ? null : onSubmit,
             ),
           ),
         ],

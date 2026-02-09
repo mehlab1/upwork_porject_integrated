@@ -37,7 +37,7 @@ class BlockUserDialog extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Block $username?',
+                    'Block ${username.startsWith('@') ? username : '@$username'}?',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -48,7 +48,7 @@ class BlockUserDialog extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Are you sure you want to block $username? They won\'t be able to interact with your posts. You also won\'t see their content. Exception: Platform-pinned posts remain visible to everyone.',
+                    'Are you sure you want to block ${username.startsWith('@') ? username : '@$username'}? They won\'t be able to interact with your posts. You also won\'t see their content. Exception: Platform-pinned posts remain visible to everyone.',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w400,

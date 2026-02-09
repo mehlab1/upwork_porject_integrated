@@ -203,15 +203,16 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                     constraints: const BoxConstraints(),
                   ),
                   // Title - centered
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Add Profile Picture',
+                      'Add a Profile Picture',
                       style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172B),
-                        fontFamily: 'Rubik',
-                        letterSpacing: 0,
+                        fontSize: Responsive.scaledFont(context, 24),
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0A0A0A),
+                        fontFamily: 'Inter',
+                        letterSpacing: -0.44,
+                        height: 1.0,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -230,17 +231,22 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                     children: [
                       const SizedBox(height: 8),
                       // Subtitle
-                      Text(
-                        'Upload a photo that represents you best',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500, // Rubik Regular
-                          color: _lightTextColor,
-                          fontFamily: 'Rubik',
-                          letterSpacing: 0,
-                          height: 1.43,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Upload a photo that represents you best',
+                          style: TextStyle(
+                            fontSize: Responsive.scaledFont(context, 16),
+                            fontWeight: FontWeight.w400,
+                            color: const Color(0xFF717182),
+                            fontFamily: 'Inter',
+                            letterSpacing: -0.15,
+                            height: 1.25, // 20px / 16px = 1.25
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        textAlign: TextAlign.center,
                       ),
 
                       const SizedBox(height: 120),
@@ -369,19 +375,17 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
 
                             // Info Box
                             Container(
-                              width: double.infinity,
-                              constraints: const BoxConstraints(maxWidth: 400),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: Responsive.scaledPadding(
-                                  context,
-                                  17,
-                                ),
-                                vertical: Responsive.scaledPadding(context, 17),
+                              width: Responsive.scaledPadding(context, 360).clamp(300.0, 380.0),
+                              constraints: BoxConstraints(
+                                minHeight: Responsive.scaledPadding(context, 60).clamp(55.0, 65.0),
+                              ),
+                              padding: EdgeInsets.all(
+                                Responsive.scaledPadding(context, 16),
                               ),
                               decoration: BoxDecoration(
-                                color: _slate50,
+                                color: _slate50, // #F8FAFC
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: _slate100, width: 1),
+                                border: Border.all(color: _slate100, width: 1), // #F1F5F9
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,15 +431,16 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                                       style: TextStyle(
                                         fontSize: Responsive.scaledFont(
                                           context,
-                                          12,
+                                          11,
                                         ),
-                                        fontWeight:
-                                            FontWeight.normal, // Rubik Regular
-                                        color: _textColor,
+                                        fontWeight: FontWeight.w400,
+                                        color: _textColor, // #45556C
                                         fontFamily: 'Rubik',
                                         letterSpacing: 0,
-                                        height: 1.625,
+                                        height: 1.77, // 19.5px / 11px = 1.7727
                                       ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.visible,
                                     ),
                                   ),
                                 ],

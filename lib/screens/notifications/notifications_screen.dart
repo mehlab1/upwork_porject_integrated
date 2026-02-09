@@ -5,6 +5,7 @@ import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
 import 'package:pal/services/notification_service.dart';
+import 'package:pal/services/notification_count_manager.dart';
 import 'package:pal/utils/notification_mapper.dart';
 import 'package:pal/models/notification_item.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -37,6 +38,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _markAllNotificationsAsRead() async {
     try {
       await _notificationService.markAllAsRead();
+      // Update notification count manager
+      await NotificationCountManager.instance.refreshCount();
       // Reload to update unread count
       if (mounted) {
         final unreadCount = await _notificationService.getUnreadCount();
@@ -98,6 +101,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       // Get unread count
       final unreadCount = await _notificationService.getUnreadCount();
+      // Update notification count manager
+      await NotificationCountManager.instance.refreshCount();
 
       if (!mounted) return;
 
@@ -131,6 +136,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       // Mark as read and clicked
       await _notificationService.markAsRead(notificationId);
       await _notificationService.markAsClicked(notificationId);
+      // Update notification count manager
+      await NotificationCountManager.instance.refreshCount();
     }
 
     // Extract navigation data
@@ -222,9 +229,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                   if (_unreadCount > 0)
                     Container(
-                      width: 28.0669,
-                      height: 23.98981,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      width: 28.0669002532959,
+                      height: 23.98981475830078,
+                      padding: const EdgeInsets.only(left: 10, right: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFFE7000B),
                         borderRadius: BorderRadius.circular(25378200),
@@ -233,10 +240,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: Text(
                           _unreadCount.toString(),
                           style: const TextStyle(
+                            fontFamily: 'Inter',
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                            height: 1.0,
+                            height: 16 / 12, // line-height: 16px / font-size: 12px
+                            letterSpacing: 0,
+                            color: Color(0xFFFFFFFF), // #FFFFFF
                           ),
                         ),
                       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'profile_upload_screen.dart';
+import '../../core/responsive/responsive.dart';
 
 class InterestSelectionScreen extends StatefulWidget {
   const InterestSelectionScreen({super.key, required this.email});
@@ -91,12 +92,14 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
                   // Title - centered
                   Expanded(
                     child: Text(
-                      'Select your Interest',
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w600,
+                      'Select Your Interest',
+                      style: TextStyle(
+                        fontSize: Responsive.scaledFont(context, 24),
+                        fontWeight: FontWeight.w500,
                         color: _headingColor,
                         fontFamily: 'Rubik',
+                        letterSpacing: 0,
+                        height: 1.2,
                       ),
                       textAlign: TextAlign.center,
                     ),

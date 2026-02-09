@@ -183,7 +183,6 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> {
                   ),
                 );
               },
-              showNotificationDot: true,
             ),
     );
   }
@@ -298,7 +297,7 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> {
             _InfoRow(
               label: 'Username',
               value:
-                  _profileData?.formattedUsername ?? widget.username ?? 'N/A',
+                  _profileData?.formattedUsername ?? (widget.username != null ? (widget.username!.startsWith('@') ? widget.username! : '@${widget.username!}') : 'N/A'),
             ),
             _InfoRow(
               label: 'Date of birth',

@@ -496,7 +496,7 @@ class _InlineNotificationItem extends StatelessWidget {
                 spacing: 6,
                 children: [
                   Text(
-                    item.username,
+                    item.username.startsWith('@') ? item.username : '@${item.username}',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,

@@ -9,6 +9,36 @@ import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
 import '../settings/community_guidelines_screen.dart';
 import 'interest_selection_screen.dart';
+import '../../core/responsive/responsive.dart';
+import '../../widgets/error_dialog.dart';
+
+/// Custom painter for checkmark with border (for success messages)
+class _CheckmarkPainter extends CustomPainter {
+  static const Color _checkmarkColor = Color(0xFF00A63E);
+  static const double _borderWidth = 1.17;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _checkmarkColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _borderWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    // Draw checkmark path
+    final path = Path();
+    // Start from bottom-left, curve up and right
+    path.moveTo(0, size.height * 0.6);
+    path.lineTo(size.width * 0.35, size.height);
+    path.lineTo(size.width, 0);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -90,6 +120,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   static const Color _grey700 = Color(0xFF717182);
   static const Color _blue500 = Color(0xFF45556C);
   static const Color _greenSuccess = Color(0xFF00A63E);
+  static const Color _checkboxColor = Color(0xFF7265E3);
 
   // ============================================================================
   // UI CONSTANTS - Nigeria States List
@@ -295,7 +326,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           _isUsernameAvailable = available;
 
           if (!available) {
-            _usernameError = message ?? 'That username is already taken';
+            _usernameError = message ?? 'That username is already taken.';
           } else {
             _usernameError = null;
           }
@@ -315,16 +346,41 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // VALIDATION HELPERS
   // ============================================================================
 
-  /// Validates name format (3+ characters, letters and spaces only)
-  bool _isValidName(String value) {
-    if (value.trim().length < 3) return false;
-    final nameRegex = RegExp(r'^[A-Za-z ]+');
-    return nameRegex.hasMatch(value.trim());
+  /// Validates name format and returns specific error message if invalid
+  /// Returns null if name is valid
+  /// Rules: Min 3 / Max 20 characters; allowed: letters, spaces, hyphens
+  String? _validateName(String value) {
+    final trimmed = value.trim();
+    
+    // Check if empty (handled separately in form validation)
+    if (trimmed.isEmpty) return null;
+    
+    // Check length - too short
+    if (trimmed.length < 3) {
+      return 'Minimum 3 characters. Letters, spaces, or hyphens only.';
+    }
+    
+    // Check length - too long
+    if (trimmed.length > 20) {
+      return 'Maximum 20 characters allowed. Letters, spaces, or hyphens only.';
+    }
+    
+    // Only letters, spaces, and hyphens allowed
+    if (!RegExp(r'^[A-Za-z -]+$').hasMatch(trimmed)) {
+      return 'Minimum 3 characters. Letters, spaces, or hyphens only.';
+    }
+    
+    return null; // Valid name
   }
 
-  /// Checks if value contains special characters (non-letter, non-space)
+  /// Validates name format (3-20 characters, letters, spaces, hyphens only)
+  bool _isValidName(String value) {
+    return _validateName(value) == null;
+  }
+
+  /// Checks if value contains invalid characters (non-letter, non-space, non-hyphen)
   bool _hasSpecialCharacters(String value) {
-    return RegExp(r'[^A-Za-z ]').hasMatch(value);
+    return RegExp(r'[^A-Za-z -]').hasMatch(value);
   }
 
    /// Validates username format and returns specific error message if invalid
@@ -461,48 +517,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
     String? errorText,
     Function(String)? onChanged,
     List<TextInputFormatter>? inputFormatters,
+    required BuildContext context,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          height: 60,
+          height: Responsive.scaledPadding(context, 60).clamp(55.0, 65.0),
           decoration: BoxDecoration(
             color: Colors.white,
             border: Border.all(
               color: errorText != null ? Colors.red : _primaryColor,
               width: 0.758,
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 14)),
           ),
           child: Row(
             children: [
-              const SizedBox(width: 20),
+              SizedBox(width: Responsive.scaledPadding(context, 20)),
               // Icon
               if (iconAsset != null) ...[
                 SvgPicture.asset(
                   iconAsset,
-                  width: 20,
-                  height: 20,
+                  width: Responsive.scaledIcon(context, 20),
+                  height: Responsive.scaledIcon(context, 20),
                   colorFilter: iconAssetColor != null
                       ? ColorFilter.mode(iconAssetColor, BlendMode.srcIn)
                       : null,
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: Responsive.scaledPadding(context, 16)),
               ] else if (icon != null) ...[
-                Icon(icon, color: _grey400, size: 20),
-                const SizedBox(width: 16),
+                Icon(icon, color: _grey400, size: Responsive.scaledIcon(context, 20)),
+                SizedBox(width: Responsive.scaledPadding(context, 16)),
               ],
               if (prefixText != null) ...[
                 Text(
                   prefixText,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: Responsive.scaledFont(context, 16),
                     fontWeight: FontWeight.w500,
                     color: _grey400,
                   ),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: Responsive.scaledPadding(context, 16)),
               ],
               // Input field
               Expanded(
@@ -512,7 +569,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   onChanged: onChanged,
                   inputFormatters: inputFormatters,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: Responsive.scaledFont(context, 16),
                     color: _primary900,
                     fontFamily: 'Inter',
                     letterSpacing: -0.3125,
@@ -520,35 +577,46 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   decoration: InputDecoration(
                     hintText: hintText,
                     hintStyle: TextStyle(
-                      fontSize: 16,
+                      fontSize: Responsive.scaledFont(context, 16),
                       color: _grey700,
                       fontFamily: 'Inter',
                       letterSpacing: -0.3125,
                     ),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    contentPadding: EdgeInsets.symmetric(vertical: Responsive.scaledPadding(context, 4)),
                   ),
                 ),
               ),
               if (suffixIcon != null) ...[
-                const SizedBox(width: 12),
+                SizedBox(width: Responsive.scaledPadding(context, 12)),
                 suffixIcon,
-                const SizedBox(width: 12),
+                SizedBox(width: Responsive.scaledPadding(context, 12)),
               ] else
-                const SizedBox(width: 12),
+                SizedBox(width: Responsive.scaledPadding(context, 12)),
             ],
           ),
         ),
         if (errorText != null)
           Padding(
-            padding: const EdgeInsets.only(left: 20, top: 4),
+            padding: EdgeInsets.only(
+              left: Responsive.scaledPadding(context, 20),
+              top: Responsive.scaledPadding(context, 4),
+            ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.error_outline, size: 14, color: Colors.red),
-                const SizedBox(width: 4),
-                Text(
-                  errorText,
-                  style: TextStyle(fontSize: 12, color: Colors.red),
+                Icon(Icons.error_outline, size: Responsive.scaledIcon(context, 14), color: Colors.red),
+                SizedBox(width: Responsive.scaledPadding(context, 4)),
+                Expanded(
+                  child: Text(
+                    errorText,
+                    style: TextStyle(
+                      fontSize: Responsive.scaledFont(context, 12),
+                      color: Colors.red,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -557,19 +625,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Calculates password strength based on length and character types (returns 0-4)
+  /// Calculates password strength based on required validation rules (returns 0-4)
+  /// Only reaches maximum (4) when ALL required rules are met:
+  /// - Length >= 8
+  /// - Contains uppercase [A-Z]
+  /// - Contains special character
   int _calculatePasswordStrength(String password) {
     if (password.isEmpty) return 0;
 
-    int strength = 0;
-    if (password.length >= 8) strength++;
-    if (password.length >= 12) strength++;
-    if (password.contains(RegExp(r'[a-z]'))) strength++;
-    if (password.contains(RegExp(r'[A-Z]'))) strength++;
-    if (password.contains(RegExp(r'[0-9]'))) strength++;
-    if (password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) strength++;
+    // Count how many required validation rules are met
+    int rulesMet = 0;
+    if (password.length >= 8) rulesMet++;
+    if (password.contains(RegExp(r'[A-Z]'))) rulesMet++;
+    if (password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) rulesMet++;
 
-    return strength > 4 ? 4 : strength;
+    // Strength is based on progress: 0 rules = 0, 1 rule = 1, 2 rules = 2-3, 3 rules = 4
+    if (rulesMet == 0) return 0;
+    if (rulesMet == 1) return 1;
+    if (rulesMet == 2) return 3; // Show 3 bars when 2 rules met
+    // Only return 4 when all 3 required rules are met
+    if (rulesMet == 3) return 4;
+    
+    return 0;
   }
 
   /// Validates password requirements and updates state
@@ -579,6 +656,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _hasCapital = password.contains(RegExp(r'[A-Z]'));
       _hasSpecialChar = password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'));
     });
+  }
+
+  /// Checks if password meets all validation requirements
+  bool _isPasswordFullyValid(String password) {
+    if (password.isEmpty) return false;
+    return password.length >= 8 &&
+        password.contains(RegExp(r'[A-Z]')) &&
+        password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'));
   }
 
   /// Gets the current password hint (one at a time, in priority order)
@@ -661,8 +746,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  /// Helper widget to build a custom checkmark for success messages (no circle)
+  Widget _buildSuccessCheckmark() {
+    return CustomPaint(
+      size: const Size(9.327059745788574, 6.412353992462158),
+      painter: _CheckmarkPainter(),
+    );
+  }
+
   /// Builds password hint widget showing one requirement at a time
-  Widget _buildPasswordHint() {
+  Widget _buildPasswordHint(BuildContext context) {
     final hint = _getPasswordHint();
     if (hint == null) {
       // All requirements met - hide the hint
@@ -679,15 +772,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       children: [
         Icon(
           isError ? Icons.error_outline : Icons.info_outline,
-          size: 14,
+          size: Responsive.scaledIcon(context, 14),
           color: isError ? Colors.red : _blue500,
         ),
-        const SizedBox(width: 4),
+        SizedBox(width: Responsive.scaledPadding(context, 4)),
         Flexible(
           child: Text(
             hint,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: Responsive.scaledFont(context, 12),
               color: isError ? Colors.red : _blue500,
               fontFamily: 'Inter',
             ),
@@ -699,12 +792,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   /// Builds a location search field with autocomplete dropdown
-  Widget _buildLocationSearchField() {
+  Widget _buildLocationSearchField(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          height: 60,
+          height: Responsive.scaledPadding(context, 60).clamp(55.0, 65.0),
           decoration: BoxDecoration(
             color: Colors.white,
             border: Border.all(
@@ -712,53 +805,53 @@ class _SignUpScreenState extends State<SignUpScreen> {
               width: 0.758,
             ),
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(14),
-              topRight: const Radius.circular(14),
+              topLeft: Radius.circular(Responsive.responsiveRadius(context, 14)),
+              topRight: Radius.circular(Responsive.responsiveRadius(context, 14)),
               bottomLeft: Radius.circular(
                 (_isLocationDropdownOpen && _locationResults.isNotEmpty)
                     ? 0
-                    : 14,
+                    : Responsive.responsiveRadius(context, 14),
               ),
               bottomRight: Radius.circular(
                 (_isLocationDropdownOpen && _locationResults.isNotEmpty)
                     ? 0
-                    : 14,
+                    : Responsive.responsiveRadius(context, 14),
               ),
             ),
           ),
           child: Row(
             children: [
-              const SizedBox(width: 20),
+              SizedBox(width: Responsive.scaledPadding(context, 20)),
               SvgPicture.asset(
                 'assets/authPages/location.svg',
-                width: 20,
-                height: 20,
+                width: Responsive.scaledIcon(context, 20),
+                height: Responsive.scaledIcon(context, 20),
                 colorFilter: ColorFilter.mode(
                   const Color.fromRGBO(144, 161, 185, 1.0),
                   BlendMode.srcIn,
                 ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: Responsive.scaledPadding(context, 16)),
               Expanded(
                 child: TextField(
                   controller: _stateController,
                   focusNode: _locationFocusNode,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: Responsive.scaledFont(context, 16),
                     color: _primary900,
                     fontFamily: 'Inter',
                     letterSpacing: -0.3125,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Location',
+                    hintText: 'State, Country',
                     hintStyle: TextStyle(
-                      fontSize: 16,
+                      fontSize: Responsive.scaledFont(context, 16),
                       color: _grey700,
                       fontFamily: 'Inter',
                       letterSpacing: -0.3125,
                     ),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    contentPadding: EdgeInsets.symmetric(vertical: Responsive.scaledPadding(context, 4)),
                   ),
                   onChanged: (value) {
                     setState(() {
@@ -787,10 +880,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
               if (_isSearchingLocation)
                 Padding(
-                  padding: const EdgeInsets.only(right: 12),
+                  padding: EdgeInsets.only(right: Responsive.scaledPadding(context, 12)),
                   child: SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: Responsive.scaledIcon(context, 20),
+                    height: Responsive.scaledIcon(context, 20),
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
@@ -799,11 +892,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 )
               else if (_stateController.text.isNotEmpty && _stateError == null)
                 Padding(
-                  padding: const EdgeInsets.only(right: 12),
+                  padding: EdgeInsets.only(right: Responsive.scaledPadding(context, 12)),
                   child: _buildGreenTick(),
                 )
               else
-                const SizedBox(width: 12),
+                SizedBox(width: Responsive.scaledPadding(context, 12)),
             ],
           ),
         ),
@@ -859,14 +952,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       _locationFocusNode.unfocus();
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Responsive.scaledPadding(context, 20),
+                        vertical: Responsive.scaledPadding(context, 12),
                       ),
                       child: Text(
                         displayText,
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: Responsive.scaledFont(context, 16),
                           color: _primary900,
                           fontFamily: 'Inter',
                           letterSpacing: -0.3125,
@@ -880,14 +973,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         if (_stateError != null)
           Padding(
-            padding: const EdgeInsets.only(left: 20, top: 4),
+            padding: EdgeInsets.only(
+              left: Responsive.scaledPadding(context, 20),
+              top: Responsive.scaledPadding(context, 4),
+            ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.error_outline, size: 14, color: Colors.red),
-                const SizedBox(width: 4),
-                Text(
-                  _stateError!,
-                  style: TextStyle(fontSize: 12, color: Colors.red),
+                Icon(Icons.error_outline, size: Responsive.scaledIcon(context, 14), color: Colors.red),
+                SizedBox(width: Responsive.scaledPadding(context, 4)),
+                Expanded(
+                  child: Text(
+                    _stateError!,
+                    style: TextStyle(
+                      fontSize: Responsive.scaledFont(context, 12),
+                      color: Colors.red,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -907,138 +1011,172 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              const SizedBox(height: 64),
+              SizedBox(height: Responsive.scaledPadding(context, 64)),
 
               // Title - "Create Account"
               Text(
                 'Complete Profile ',
                 style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold, // Rubik Medium
+                  fontSize: Responsive.scaledFont(context, 32),
+                  fontWeight: FontWeight.bold,
                   color: _primary900,
                   letterSpacing: 0,
-                  fontFamily: 'Rubik',
+                  fontFamily: 'Inter',
                 ),
                 textAlign: TextAlign.center,
               ),
 
-              const SizedBox(height: 52),
+              SizedBox(height: Responsive.scaledPadding(context, 52)),
 
-              // Form fields container - width 342px, centered
+              // Form fields container - responsive width, centered
               Center(
                 child: SizedBox(
-                  width: 342,
+                  width: Responsive.widthPercent(context, 90).clamp(300.0, 342.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // First Name
                       _buildInputField(
+                        context: context,
                         hintText: 'First Name',
                         iconAsset: 'assets/authPages/profile.svg',
                         controller: _firstNameController,
                         errorText: _firstNameError,
                         onChanged: (value) {
                           setState(() {
-                            if (_hasSpecialCharacters(value)) {
-                              _firstNameError = 'Use Letters and spaces only';
-                            } else if (value.trim().length < 3) {
-                              _firstNameError = 'Use 3+ letters/spaces only';
+                            final validationError = _validateName(value);
+                            if (validationError != null) {
+                              _firstNameError = validationError;
                             } else {
                               _firstNameError = null;
                             }
                           });
                         },
                         suffixIcon:
-                            _isValidName(_firstNameController.text) &&
-                                !_hasSpecialCharacters(
-                                  _firstNameController.text,
-                                )
+                            _firstNameController.text.isNotEmpty &&
+                            _isValidName(_firstNameController.text)
                             ? _buildGreenTick()
                             : null,
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Last Name
                       _buildInputField(
+                        context: context,
                         hintText: 'Last Name',
                         iconAsset: 'assets/authPages/profile.svg',
                         controller: _lastNameController,
                         errorText: _lastNameError,
                         onChanged: (value) {
                           setState(() {
-                            if (_hasSpecialCharacters(value)) {
-                              _lastNameError = 'Use Letters and spaces only';
-                            } else if (value.trim().length < 3) {
-                              _lastNameError = 'Use 3+ letters/spaces only';
+                            final validationError = _validateName(value);
+                            if (validationError != null) {
+                              _lastNameError = validationError;
                             } else {
                               _lastNameError = null;
                             }
                           });
                         },
                         suffixIcon:
-                            _isValidName(_lastNameController.text) &&
-                                !_hasSpecialCharacters(_lastNameController.text)
+                            _lastNameController.text.isNotEmpty &&
+                            _isValidName(_lastNameController.text)
                             ? _buildGreenTick()
                             : null,
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Username
-                      _buildInputField(
-                        hintText: 'Username',
-                        icon: Icons.alternate_email,
-                        controller: _usernameController,
-                        inputFormatters: [
-                          TextInputFormatter.withFunction((oldValue, newValue) {
-                            return newValue.copyWith(
-                              text: newValue.text.toLowerCase(),
-                            );
-                          }),
-                        ],
-                        errorText: _usernameError,
-                        onChanged: (value) {
-                          setState(() {
-                            if (_hasSpaces(value)) {
-                              _usernameError = 'Only letters, numbers, and underscores are allowed.';
-                              _isUsernameAvailable = false;
-                            } else {
-                              // Validate username format with specific error messages
-                              final validationError = _validateUsername(value);
-                              if (validationError != null) {
-                                _usernameError = validationError;
-                                _isUsernameAvailable = false;
-                              } else {
-                                // Clear error and check availability
-                                _usernameError = null;
-                                _checkUsernameAvailability(value);
-                              }
-                            }
-                          });
-                        },
-                        suffixIcon: _isCheckingUsername
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    _primaryColor,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInputField(
+                            context: context,
+                            hintText: 'Username',
+                            icon: Icons.alternate_email,
+                            controller: _usernameController,
+                            inputFormatters: [
+                              TextInputFormatter.withFunction((oldValue, newValue) {
+                                return newValue.copyWith(
+                                  text: newValue.text.toLowerCase(),
+                                );
+                              }),
+                            ],
+                            errorText: _usernameError,
+                            onChanged: (value) {
+                              setState(() {
+                                if (_hasSpaces(value)) {
+                                  _usernameError = 'Only letters, numbers, and underscores are allowed.';
+                                  _isUsernameAvailable = false;
+                                } else {
+                                  // Validate username format with specific error messages
+                                  final validationError = _validateUsername(value);
+                                  if (validationError != null) {
+                                    _usernameError = validationError;
+                                    _isUsernameAvailable = false;
+                                  } else {
+                                    // Clear error and check availability
+                                    _usernameError = null;
+                                    _checkUsernameAvailability(value);
+                                  }
+                                }
+                              });
+                            },
+                            suffixIcon: _isCheckingUsername
+                                ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        _primaryColor,
+                                      ),
+                                    ),
+                                  )
+                                : (_isValidUsername(_usernameController.text) &&
+                                      !_hasSpaces(_usernameController.text) &&
+                                      _isUsernameAvailable == true)
+                                ? _buildGreenTick()
+                                : null,
+                          ),
+                          // Success message when username is available
+                          if (_isValidUsername(_usernameController.text) &&
+                              !_hasSpaces(_usernameController.text) &&
+                              _isUsernameAvailable == true &&
+                              _usernameError == null)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                left: Responsive.scaledPadding(context, 9),
+                                top: Responsive.scaledPadding(context, 4),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  _buildSuccessCheckmark(),
+                                  SizedBox(width: Responsive.scaledPadding(context, 8)),
+                                  Expanded(
+                                    child: Text(
+                                      'Username is available',
+                                      style: TextStyle(
+                                        fontSize: Responsive.scaledFont(context, 12),
+                                        color: _greenSuccess,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
-                              )
-                            : (_isValidUsername(_usernameController.text) &&
-                                  !_hasSpaces(_usernameController.text) &&
-                                  _isUsernameAvailable == true)
-                            ? _buildGreenTick()
-                            : null,
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Email
                       _buildInputField(
+                        context: context,
                         hintText: 'Email',
                         icon: Icons.email_outlined,
                         controller: _emailController,
@@ -1080,19 +1218,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             : null,
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Location Search Field with Autocomplete
-                      _buildLocationSearchField(),
+                      _buildLocationSearchField(context),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Gender selection
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(16.748),
+                            padding: EdgeInsets.all(Responsive.scaledPadding(context, 16.748)),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               border: Border.all(
@@ -1101,7 +1239,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     : _primaryColor,
                                 width: 0.758,
                               ),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 14)),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1109,21 +1247,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 Text(
                                   'Gender',
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: Responsive.scaledFont(context, 14),
                                     fontWeight: FontWeight.w500,
                                     color: const Color(0xFF717182),
                                     fontFamily: 'Rubik',
                                     letterSpacing: -0.1504,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: Responsive.scaledPadding(context, 12)),
                                 Row(
                                   children: [
-                                    _buildGenderOption('Male'),
-                                    const SizedBox(width: 16),
-                                    _buildGenderOption('Female'),
-                                    const SizedBox(width: 16),
-                                    _buildGenderOption('Other'),
+                                    _buildGenderOption(context, 'Male'),
+                                    SizedBox(width: Responsive.scaledPadding(context, 16)),
+                                    _buildGenderOption(context, 'Female'),
+                                    SizedBox(width: Responsive.scaledPadding(context, 16)),
+                                    _buildGenderOption(context, 'Other'),
                                   ],
                                 ),
                               ],
@@ -1131,11 +1269,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           ),
                           if (_genderError != null)
                             Padding(
-                              padding: const EdgeInsets.only(left: 20, top: 4),
+                              padding: EdgeInsets.only(
+                                left: Responsive.scaledPadding(context, 20),
+                                top: Responsive.scaledPadding(context, 4),
+                              ),
                               child: Text(
                                 _genderError!,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: Responsive.scaledFont(context, 12),
                                   color: Colors.red,
                                 ),
                               ),
@@ -1143,14 +1284,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Date of Birth (opens calendar)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            height: 60,
+                            height: Responsive.scaledPadding(context, 60).clamp(55.0, 65.0),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               border: Border.all(
@@ -1159,19 +1300,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     : _primaryColor,
                                 width: 0.758,
                               ),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 14)),
                             ),
                             child: InkWell(
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 14)),
                               onTap: () async {
                                 final now = DateTime.now();
                                 final picked = await showDatePicker(
                                   context: context,
-                                  initialDate: DateTime(
-                                    now.year - 18,
-                                    now.month,
-                                    now.day,
-                                  ),
+                                  initialDate: now,
                                   firstDate: DateTime(1900, 1, 1),
                                   lastDate: now,
                                 );
@@ -1196,20 +1333,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               },
                               child: Row(
                                 children: [
-                                  const SizedBox(width: 20),
+                                  SizedBox(width: Responsive.scaledPadding(context, 20)),
                                   SvgPicture.asset(
                                     'assets/authPages/calender.svg',
-                                    width: 20,
-                                    height: 20,
+                                    width: Responsive.scaledIcon(context, 20),
+                                    height: Responsive.scaledIcon(context, 20),
                                   ),
-                                  const SizedBox(width: 16),
+                                  SizedBox(width: Responsive.scaledPadding(context, 16)),
                                   Expanded(
                                     child: Text(
                                       _dobController.text.isEmpty
                                           ? 'Date of Birth'
                                           : _dobController.text,
                                       style: TextStyle(
-                                        fontSize: 16,
+                                        fontSize: Responsive.scaledFont(context, 16),
                                         color: _dobController.text.isEmpty
                                             ? _grey700
                                             : _primary900,
@@ -1220,21 +1357,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   ),
                                   if (_dobController.text.isNotEmpty &&
                                       _dobError == null) ...[
-                                    const SizedBox(width: 12),
+                                    SizedBox(width: Responsive.scaledPadding(context, 12)),
                                     _buildGreenTick(),
                                   ],
-                                  const SizedBox(width: 12),
+                                  SizedBox(width: Responsive.scaledPadding(context, 12)),
                                 ],
                               ),
                             ),
                           ),
                           if (_dobError != null)
                             Padding(
-                              padding: const EdgeInsets.only(left: 20, top: 4),
+                              padding: EdgeInsets.only(
+                                left: Responsive.scaledPadding(context, 20),
+                                top: Responsive.scaledPadding(context, 4),
+                              ),
                               child: Text(
                                 _dobError!,
-                                style: const TextStyle(
-                                  fontSize: 12,
+                                style: TextStyle(
+                                  fontSize: Responsive.scaledFont(context, 12),
                                   color: Colors.red,
                                 ),
                               ),
@@ -1242,13 +1382,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Password
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildInputField(
+                            context: context,
                             hintText: 'Password',
                             iconAsset: 'assets/authPages/password.svg',
                             iconAssetColor: const Color(0xFF90A1B9),
@@ -1275,9 +1416,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             suffixIcon: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (_passwordController.text.isNotEmpty &&
-                                    _passwordError == null &&
-                                    _passwordStrength >= 3)
+                                if (_isPasswordFullyValid(_passwordController.text) &&
+                                    _passwordError == null)
                                   Padding(
                                     padding: const EdgeInsets.only(right: 8),
                                     child: _buildGreenTick(),
@@ -1285,8 +1425,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 IconButton(
                                   icon: Icon(
                                     _obscurePassword
-                                        ? Icons.visibility_outlined
-                                        : Icons.visibility_off_outlined,
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
                                     color: _grey400,
                                     size: 20,
                                   ),
@@ -1306,16 +1446,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               padding: const EdgeInsets.only(top: 4, left: 20),
                               child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: _buildPasswordHint(),
+                                child: _buildPasswordHint(context),
                               ),
                             ),
                         ],
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Confirm Password
                       _buildInputField(
+                        context: context,
                         hintText: 'Confirm Password',
                         iconAsset: 'assets/authPages/password.svg',
                         iconAssetColor: const Color(0xFF90A1B9),
@@ -1337,7 +1478,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         suffixIcon: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (_confirmPasswordController.text.isNotEmpty &&
+                            if (_isPasswordFullyValid(_passwordController.text) &&
+                                _confirmPasswordController.text.isNotEmpty &&
                                 _confirmPasswordError == null &&
                                 _passwordController.text ==
                                     _confirmPasswordController.text)
@@ -1348,8 +1490,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             IconButton(
                               icon: Icon(
                                 _obscureConfirmPassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                                 color: _grey400,
                                 size: 20,
                               ),
@@ -1364,14 +1506,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 10),
+                      SizedBox(height: Responsive.scaledPadding(context, 10)),
 
                       // Account type dropdown
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            height: 90,
+                            height: Responsive.scaledPadding(context, 90).clamp(80.0, 100.0),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               border: Border.all(
@@ -1381,9 +1523,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 width: 1,
                               ),
                               borderRadius: BorderRadius.vertical(
-                                top: const Radius.circular(10),
+                                top: Radius.circular(Responsive.responsiveRadius(context, 10)),
                                 bottom: Radius.circular(
-                                  (_isAccountTypeDropdownOpen == true) ? 0 : 10,
+                                  (_isAccountTypeDropdownOpen == true) ? 0 : Responsive.responsiveRadius(context, 10),
                                 ),
                               ),
                             ),
@@ -1398,17 +1540,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   });
                                 },
                                 borderRadius: BorderRadius.vertical(
-                                  top: const Radius.circular(10),
+                                  top: Radius.circular(Responsive.responsiveRadius(context, 10)),
                                   bottom: Radius.circular(
                                     (_isAccountTypeDropdownOpen == true)
                                         ? 0
-                                        : 10,
+                                        : Responsive.responsiveRadius(context, 10),
                                   ),
                                 ),
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 18,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: Responsive.scaledPadding(context, 14),
+                                    vertical: Responsive.scaledPadding(context, 18),
                                   ),
                                   child: Row(
                                     children: [
@@ -1417,7 +1559,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                           _selectedAccountType ??
                                               'What will you most likely be using this account for',
                                           style: TextStyle(
-                                            fontSize: 14,
+                                            fontSize: Responsive.scaledFont(context, 14),
                                             fontWeight: FontWeight.normal,
                                             color: _selectedAccountType != null
                                                 ? _primary900
@@ -1433,7 +1575,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                             ? Icons.keyboard_arrow_up
                                             : Icons.keyboard_arrow_down,
                                         color: _grey400,
-                                        size: 16,
+                                        size: Responsive.scaledIcon(context, 16),
                                       ),
                                     ],
                                   ),
@@ -1445,9 +1587,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             Container(
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: const BorderRadius.only(
-                                  bottomLeft: Radius.circular(10),
-                                  bottomRight: Radius.circular(10),
+                                borderRadius: BorderRadius.only(
+                                  bottomLeft: Radius.circular(Responsive.responsiveRadius(context, 10)),
+                                  bottomRight: Radius.circular(Responsive.responsiveRadius(context, 10)),
                                 ),
                                 border: Border(
                                   top: BorderSide.none,
@@ -1474,13 +1616,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               child: ListView.separated(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                  horizontal: 8,
+                                padding: EdgeInsets.symmetric(
+                                  vertical: Responsive.scaledPadding(context, 8),
+                                  horizontal: Responsive.scaledPadding(context, 8),
                                 ),
                                 itemCount: 2,
                                 separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 4),
+                                    SizedBox(height: Responsive.scaledPadding(context, 4)),
                                 itemBuilder: (context, index) {
                                   final option = index == 0
                                       ? 'Personal'
@@ -1490,7 +1632,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   return Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 12)),
                                       onTap: () {
                                         setState(() {
                                           _selectedAccountType = option;
@@ -1504,12 +1646,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                               ? const Color(0xFFF8FAFC)
                                               : Colors.white,
                                           borderRadius: BorderRadius.circular(
-                                            12,
+                                            Responsive.responsiveRadius(context, 12),
                                           ),
                                         ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 12,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: Responsive.scaledPadding(context, 12),
+                                          vertical: Responsive.scaledPadding(context, 12),
                                         ),
                                         child: Row(
                                           children: [
@@ -1517,7 +1659,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                               child: Text(
                                                 option,
                                                 style: TextStyle(
-                                                  fontSize: 12,
+                                                  fontSize: Responsive.scaledFont(context, 12),
                                                   fontWeight: isSelected
                                                       ? FontWeight.w600
                                                       : FontWeight.w500,
@@ -1536,11 +1678,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             ),
                           if (_accountTypeError != null)
                             Padding(
-                              padding: const EdgeInsets.only(left: 20, top: 4),
+                              padding: EdgeInsets.only(
+                                left: Responsive.scaledPadding(context, 20),
+                                top: Responsive.scaledPadding(context, 4),
+                              ),
                               child: Text(
                                 _accountTypeError!,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: Responsive.scaledFont(context, 12),
                                   color: Colors.red,
                                 ),
                               ),
@@ -1552,12 +1697,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
 
-              const SizedBox(height: 50),
+              SizedBox(height: Responsive.scaledPadding(context, 50)),
 
               // Terms and conditions checkbox - aligned with input forms
               Center(
                 child: SizedBox(
-                  width: 342,
+                  width: Responsive.widthPercent(context, 90).clamp(300.0, 342.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1574,28 +1719,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               });
                             },
                             child: Container(
-                              width: 24.476,
-                              height: 24,
+                              width: Responsive.scaledPadding(context, 24.476),
+                              height: Responsive.scaledPadding(context, 24),
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: _primaryColor,
+                                  color: _checkboxColor,
                                   width: 1,
                                 ),
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 6)),
                                 color: _agreeToTerms
-                                    ? _primaryColor
+                                    ? _checkboxColor
                                     : Colors.white,
                               ),
                               child: _agreeToTerms
                                   ? Icon(
                                       Icons.check,
                                       color: Colors.white,
-                                      size: 16,
+                                      size: Responsive.scaledIcon(context, 16),
                                     )
                                   : null,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: Responsive.scaledPadding(context, 12)),
                           Expanded(
                             child: GestureDetector(
                               onTap: () {
@@ -1609,23 +1754,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               child: RichText(
                                 text: TextSpan(
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: Responsive.scaledFont(context, 12),
                                     fontWeight:
                                         FontWeight.normal, // Rubik Regular
-                                    color: _primary900,
+                                    color: const Color(0xFF100B3C),
                                     letterSpacing: 0.2,
                                     fontFamily: 'Rubik',
                                     height: 1.4,
                                   ),
                                   children: [
                                     const TextSpan(
-                                      text: "By signing up I agree to the ",
+                                      text: "By signing up I agree, to the ",
                                     ),
                                     TextSpan(
                                       text: 'Terms of Use',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         decoration: TextDecoration.underline,
+                                        color: const Color(0xFF100B3C),
                                       ),
                                     ),
                                     const TextSpan(text: ' and '),
@@ -1634,6 +1780,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         decoration: TextDecoration.underline,
+                                        color: const Color(0xFF100B3C),
                                       ),
                                     ),
                                     const TextSpan(text: '.'),
@@ -1646,21 +1793,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       if (_termsError != null)
                         Padding(
-                          padding: const EdgeInsets.only(left: 36, top: 8),
+                          padding: EdgeInsets.only(
+                            left: Responsive.scaledPadding(context, 36),
+                            top: Responsive.scaledPadding(context, 8),
+                          ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.error_outline,
-                                size: 16,
+                                size: Responsive.scaledIcon(context, 16),
                                 color: Colors.red,
                               ),
-                              const SizedBox(width: 8),
+                              SizedBox(width: Responsive.scaledPadding(context, 8)),
                               Expanded(
                                 child: Text(
                                   _termsError!,
-                                  style: const TextStyle(
-                                    fontSize: 13,
+                                  style: TextStyle(
+                                    fontSize: Responsive.scaledFont(context, 13),
                                     color: Colors.red,
                                     height: 1.4,
                                   ),
@@ -1674,37 +1824,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
 
-              const SizedBox(height: 22),
+              SizedBox(height: Responsive.scaledPadding(context, 22)),
 
               // Sign up button - aligned with input forms
               Center(
                 child: Container(
-                  width: 338,
-                  height: 56,
+                  width: Responsive.widthPercent(context, 90).clamp(300.0, 338.0),
+                  height: Responsive.scaledPadding(context, 56).clamp(50.0, 60.0),
                   decoration: BoxDecoration(
                     color: _isLoading
                         ? _primaryColor.withOpacity(0.7)
-                        : (_areAllFieldsValid()
-                              ? _primaryColor
-                              : _primaryColor.withOpacity(0.5)),
-                    borderRadius: BorderRadius.circular(20),
+                        : _primaryColor,
+                    borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 20)),
                   ),
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: (_isLoading || !_areAllFieldsValid())
+                      onTap: _isLoading
                           ? null
                           : () async {
                               if (_validateSignUp()) {
                                 await _handleSignUp();
                               }
                             },
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 20)),
                       child: Center(
                         child: _isLoading
                             ? SizedBox(
-                                width: 20,
-                                height: 20,
+                                width: Responsive.scaledIcon(context, 20),
+                                height: Responsive.scaledIcon(context, 20),
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
@@ -1715,7 +1863,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             : Text(
                                 'Sign up',
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: Responsive.scaledFont(context, 16),
                                   fontWeight: FontWeight.w500, // Poppins Medium
                                   color: Colors.white,
                                   fontFamily: 'Poppins',
@@ -1751,14 +1899,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
 
-              const SizedBox(height: 30),
+              SizedBox(height: Responsive.scaledPadding(context, 30)),
 
               // Footer text
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: Responsive.scaledFont(context, 16),
                     fontWeight: FontWeight.normal, // Rubik Regular
                     color: _grey400,
                     fontFamily: 'Inter',
@@ -1778,7 +1926,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: Text(
                           'Sign in',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: Responsive.scaledFont(context, 16),
                             fontWeight: FontWeight.w700, // Rubik Medium
                             color: _primaryColor,
                             fontFamily: 'Inter',
@@ -1799,7 +1947,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   /// Builds a gender selection option widget (radio button style)
-  Widget _buildGenderOption(String gender) {
+  Widget _buildGenderOption(BuildContext context, String gender) {
     final bool isSelected = _selectedGender == gender;
     return GestureDetector(
       onTap: () {
@@ -1812,8 +1960,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 15.991,
-            height: 15.991,
+            width: Responsive.scaledPadding(context, 15.991),
+            height: Responsive.scaledPadding(context, 15.991),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: _primaryColor, width: 0.758),
@@ -1822,8 +1970,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             child: isSelected
                 ? Center(
                     child: Container(
-                      width: 6,
-                      height: 6,
+                      width: Responsive.scaledPadding(context, 6),
+                      height: Responsive.scaledPadding(context, 6),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white,
@@ -1832,11 +1980,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   )
                 : null,
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: Responsive.scaledPadding(context, 8)),
           Text(
             gender,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: Responsive.scaledFont(context, 14),
               fontWeight: FontWeight.w500,
               color: _primary900,
               fontFamily: 'Inter',
@@ -1865,16 +2013,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final dobText = _dobController.text.trim();
 
     // Check First Name
-    if (firstName.isEmpty ||
-        !_isValidName(firstName) ||
-        _hasSpecialCharacters(firstName)) {
+    if (firstName.isEmpty || !_isValidName(firstName)) {
       return false;
     }
 
     // Check Last Name
-    if (lastName.isEmpty ||
-        !_isValidName(lastName) ||
-        _hasSpecialCharacters(lastName)) {
+    if (lastName.isEmpty || !_isValidName(lastName)) {
       return false;
     }
 
@@ -1950,226 +2094,182 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final confirmPassword = _confirmPasswordController.text.trim();
     final dobText = _dobController.text.trim();
 
+    // Collect all error messages first, then update state once
+    String? newFirstNameError;
+    String? newLastNameError;
+    String? newUsernameError;
+    String? newEmailError;
+    String? newStateError;
+    String? newGenderError;
+    String? newDobError;
+    String? newPasswordError;
+    String? newConfirmPasswordError;
+    String? newAccountTypeError;
+    String? newTermsError;
+
     // Validate First Name
     if (firstName.isEmpty) {
-      setState(() {
-        _firstNameError = 'First name is required';
-      });
-      isValid = false;
-    } else if (!_isValidName(firstName)) {
-      setState(() {
-        _firstNameError = _hasSpecialCharacters(firstName)
-            ? 'Letters and spaces only'
-            : 'Use 3+ letters or spaces only';
-      });
+      newFirstNameError = 'First name is required';
       isValid = false;
     } else {
-      setState(() {
-        _firstNameError = null;
-      });
+      final validationError = _validateName(firstName);
+      if (validationError != null) {
+        newFirstNameError = validationError;
+        isValid = false;
+      } else {
+        newFirstNameError = null;
+      }
     }
 
     // Validate Last Name
     if (lastName.isEmpty) {
-      setState(() {
-        _lastNameError = 'Last name is required';
-      });
-      isValid = false;
-    } else if (!_isValidName(lastName)) {
-      setState(() {
-        _lastNameError = _hasSpecialCharacters(lastName)
-            ? 'Letters and spaces only'
-            : 'Use 3+ letters/spaces only';
-      });
+      newLastNameError = 'Last name is required';
       isValid = false;
     } else {
-      setState(() {
-        _lastNameError = null;
-      });
+      final validationError = _validateName(lastName);
+      if (validationError != null) {
+        newLastNameError = validationError;
+        isValid = false;
+      } else {
+        newLastNameError = null;
+      }
     }
 
     // Validate Username
     if (username.isEmpty) {
-      setState(() {
-        _usernameError = 'Username is required';
-      });
+      newUsernameError = 'Username is required';
       isValid = false;
     } else if (_hasSpaces(username)) {
-      setState(() {
-        _usernameError = 'Only letters, numbers, and underscores are allowed.';
-      });
+      newUsernameError = 'Only letters, numbers, and underscores are allowed.';
       isValid = false;
     } else {
       // Validate username format with specific error messages
       final validationError = _validateUsername(username);
       if (validationError != null) {
-        setState(() {
-          _usernameError = validationError;
-        });
+        newUsernameError = validationError;
         isValid = false;
       } else if (_isCheckingUsername) {
-        setState(() {
-          _usernameError = 'Please wait while we check username availability';
-        });
+        newUsernameError = 'Please wait while we check username availability';
         isValid = false;
       } else if (_isUsernameAvailable == false) {
-        setState(() {
-          _usernameError = _usernameError ?? 'That username is already taken';
-        });
+        newUsernameError = _usernameError ?? 'That username is already taken.';
         isValid = false;
       } else if (_isUsernameAvailable == null) {
         // Username format is valid but availability hasn't been checked yet
         // Trigger check and wait
-        setState(() {
-          _usernameError = 'Please wait while we check username availability';
-        });
+        newUsernameError = 'Please wait while we check username availability';
         _checkUsernameAvailability(username);
         isValid = false;
       } else {
-        setState(() {
-          _usernameError = null;
-        });
+        newUsernameError = null;
       }
     }
 
     // Validate Email
     if (email.isEmpty) {
-      setState(() {
-        _emailError = 'Email is required';
-      });
+      newEmailError = 'Email is required';
       isValid = false;
     } else if (!email.contains('@')) {
-      setState(() {
-        _emailError = 'Email must contain @';
-      });
+      newEmailError = 'Email must contain @';
       isValid = false;
     } else if (!_isValidEmail(email)) {
-      setState(() {
-        _emailError = 'Invalid email format. Use format: example@gmail.com';
-      });
+      newEmailError = 'Invalid email format. Use format: example@gmail.com';
       isValid = false;
     } else {
-      setState(() {
-        _emailError = null;
-      });
+      newEmailError = null;
     }
 
     // Validate State
     if (state.isEmpty) {
-      setState(() {
-        _stateError = 'State is required';
-      });
+      newStateError = 'State is required';
       isValid = false;
     } else {
-      setState(() {
-        _stateError = null;
-      });
+      newStateError = null;
     }
 
     // Validate Gender
     if (_selectedGender == null) {
-      setState(() {
-        _genderError = 'Please select a gender';
-      });
+      newGenderError = 'Please select a gender';
       isValid = false;
     } else {
-      setState(() {
-        _genderError = null;
-      });
+      newGenderError = null;
     }
 
     // Validate Date of Birth (18+ years)
     if (dobText.isEmpty) {
-      setState(() {
-        _dobError = 'Birthday is required';
-      });
+      newDobError = 'Birthday is required';
       isValid = false;
     } else {
       final age = _calculateAgeFromDob(dobText);
       if (age == null) {
-        setState(() {
-          _dobError = 'Enter a valid date (YYYY-MM-DD)';
-        });
+        newDobError = 'Enter a valid date (YYYY-MM-DD)';
         isValid = false;
       } else if (age < 18) {
-        setState(() {
-          _dobError = 'You must be 18 years or older';
-        });
+        newDobError = 'You must be 18 years or older';
         isValid = false;
       } else {
-        setState(() {
-          _dobError = null;
-        });
+        newDobError = null;
       }
     }
 
     // Validate Password
     if (password.isEmpty) {
-      setState(() {
-        _passwordError = 'Password is required';
-      });
+      newPasswordError = 'Password is required';
       isValid = false;
     } else if (password.length < 8) {
-      setState(() {
-        _passwordError = 'Password must be at least 8 characters';
-      });
+      newPasswordError = 'Password must be at least 8 characters';
       isValid = false;
     } else if (!password.contains(RegExp(r'[A-Z]'))) {
-      setState(() {
-        _passwordError = 'Password must contain at least one capital letter';
-      });
+      newPasswordError = 'Password must contain at least one capital letter';
       isValid = false;
     } else if (!password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) {
-      setState(() {
-        _passwordError = 'Password must contain at least one special character';
-      });
+      newPasswordError = 'Password must contain at least one special character';
       isValid = false;
     } else {
-      setState(() {
-        _passwordError = null;
-      });
+      newPasswordError = null;
     }
 
     // Validate Confirm Password
     if (confirmPassword.isEmpty) {
-      setState(() {
-        _confirmPasswordError = 'Please confirm your password';
-      });
+      newConfirmPasswordError = 'Please confirm your password';
       isValid = false;
     } else if (password != confirmPassword) {
-      setState(() {
-        _confirmPasswordError = 'Passwords do not match';
-      });
+      newConfirmPasswordError = 'Passwords do not match';
       isValid = false;
     } else {
-      setState(() {
-        _confirmPasswordError = null;
-      });
+      newConfirmPasswordError = null;
     }
 
     // Validate Account Type
     if (_selectedAccountType == null) {
-      setState(() {
-        _accountTypeError = 'Please select an account type';
-      });
+      newAccountTypeError = 'Please select an account type';
       isValid = false;
     } else {
-      setState(() {
-        _accountTypeError = null;
-      });
+      newAccountTypeError = null;
     }
 
     // Validate Terms Agreement
     if (!_agreeToTerms) {
-      setState(() {
-        _termsError = 'Please agree to the Terms of Use and Privacy Policy';
-      });
+      newTermsError = 'Please agree to the Terms of Use and Privacy Policy';
       isValid = false;
     } else {
-      setState(() {
-        _termsError = null;
-      });
+      newTermsError = null;
     }
+
+    // Update all errors in a single setState call to prevent duplicate displays
+    setState(() {
+      _firstNameError = newFirstNameError;
+      _lastNameError = newLastNameError;
+      _usernameError = newUsernameError;
+      _emailError = newEmailError;
+      _stateError = newStateError;
+      _genderError = newGenderError;
+      _dobError = newDobError;
+      _passwordError = newPasswordError;
+      _confirmPasswordError = newConfirmPasswordError;
+      _accountTypeError = newAccountTypeError;
+      _termsError = newTermsError;
+    });
 
     return isValid;
   }
@@ -2329,6 +2429,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() {
         _isLoading = false;
       });
+
+      final errorStr = e.toString().toLowerCase();
+      // Check if it's a network error
+      if (errorStr.contains('network') || 
+          errorStr.contains('connection') || 
+          errorStr.contains('xmlhttprequest') ||
+          errorStr.contains('socket') ||
+          errorStr.contains('timeout') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('network is unreachable')) {
+        // Show network error dialog
+        await showErrorDialogFromTechnical(
+          context,
+          errorMessage: e.message,
+          onTryAgain: () {
+            Navigator.of(context).pop();
+            _handleSignUp();
+          },
+        );
+        return;
+      }
+
       final errorMessage = e.message.toLowerCase();
       if (errorMessage.contains('email') ||
           errorMessage.contains('already registered')) {
@@ -2338,7 +2461,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       } else if (errorMessage.contains('username') ||
           errorMessage.contains('duplicate')) {
         setState(() {
-          _usernameError = 'That username is already taken';
+          _usernameError = 'That username is already taken.';
         });
       } else if (errorMessage.contains('password')) {
         setState(() {
@@ -2353,6 +2476,33 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+      });
+
+      final errorStr = e.toString().toLowerCase();
+      // Check if it's a network error
+      if (errorStr.contains('network') || 
+          errorStr.contains('connection') || 
+          errorStr.contains('xmlhttprequest') ||
+          errorStr.contains('socket') ||
+          errorStr.contains('timeout') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('network is unreachable') ||
+          errorStr.contains('http') && (errorStr.contains('error') || errorStr.contains('failed'))) {
+        // Show network error dialog
+        await showErrorDialogFromTechnical(
+          context,
+          errorMessage: e.toString(),
+          onTryAgain: () {
+            Navigator.of(context).pop();
+            _handleSignUp();
+          },
+        );
+        return;
+      }
+
+      // For non-network errors, show generic error
+      setState(() {
         _emailError = 'An unexpected error occurred. Please try again.';
       });
     }

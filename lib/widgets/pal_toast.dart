@@ -9,6 +9,8 @@ class PalToast {
   static void show(
     BuildContext context, {
     required String message,
+    String? heading,
+    String? subtext,
     bool isError = false,
     Duration duration = const Duration(seconds: 3),
   }) {
@@ -17,7 +19,7 @@ class PalToast {
     }
 
     final overlay = Overlay.of(context);
-    _overlayEntry = _createOverlayEntry(context, message, isError);
+    _overlayEntry = _createOverlayEntry(context, message, isError, heading: heading, subtext: subtext);
 
     overlay.insert(_overlayEntry!);
     _isVisible = true;
@@ -38,8 +40,10 @@ class PalToast {
   static OverlayEntry _createOverlayEntry(
     BuildContext context,
     String message,
-    bool isError,
-  ) {
+    bool isError, {
+    String? heading,
+    String? subtext,
+  }) {
     // Position above navigation bar (responsive)
     final bottomOffset = Responsive.scaledPadding(context, 110.0);
 
@@ -60,7 +64,12 @@ class PalToast {
                 child: Opacity(opacity: value, child: child),
               );
             },
-            child: _ToastWidget(message: message, isError: isError),
+            child: _ToastWidget(
+              message: message,
+              isError: isError,
+              heading: heading,
+              subtext: subtext,
+            ),
           ),
         ),
       ),
@@ -69,13 +78,25 @@ class PalToast {
 }
 
 class _ToastWidget extends StatelessWidget {
-  const _ToastWidget({required this.message, required this.isError});
+  const _ToastWidget({
+    required this.message,
+    required this.isError,
+    this.heading,
+    this.subtext,
+  });
 
   final String message;
   final bool isError;
+  final String? heading;
+  final String? subtext;
 
   @override
   Widget build(BuildContext context) {
+    // Use heading/subtext if provided, otherwise fall back to message
+    final displayHeading = heading ?? (subtext != null ? message : null);
+    final displaySubtext = subtext;
+    final hasTwoLines = displayHeading != null && displaySubtext != null;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -97,9 +118,10 @@ class _ToastWidget extends StatelessWidget {
       padding: Responsive.responsiveSymmetric(
         context,
         horizontal: 13.76,
-        vertical: 16.75,
+        vertical: hasTwoLines ? 16.75 : 16.75,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: Responsive.scaledPadding(context, 19.995),
@@ -128,18 +150,50 @@ class _ToastWidget extends StatelessWidget {
           ),
           SizedBox(width: Responsive.scaledPadding(context, 12)),
           Expanded(
-            child: Text(
-              message,
-              style: Responsive.responsiveTextStyle(
-                context,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF0F172A),
-                fontFamily: 'Inter',
-                letterSpacing: -0.0762,
-                height: 19.5 / 13,
-              ),
-            ),
+            child: hasTwoLines
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        displayHeading!,
+                        style: Responsive.responsiveTextStyle(
+                          context,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF0F172A),
+                          fontFamily: 'Inter',
+                          letterSpacing: -0.0762,
+                          height: 19.5 / 13,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        displaySubtext!,
+                        style: Responsive.responsiveTextStyle(
+                          context,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: const Color(0xFF62748E),
+                          fontFamily: 'Inter',
+                          letterSpacing: -0.1504,
+                          height: 18 / 12,
+                        ),
+                      ),
+                    ],
+                  )
+                : Text(
+                    message,
+                    style: Responsive.responsiveTextStyle(
+                      context,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF0F172A),
+                      fontFamily: 'Inter',
+                      letterSpacing: -0.0762,
+                      height: 19.5 / 13,
+                    ),
+                  ),
           ),
         ],
       ),

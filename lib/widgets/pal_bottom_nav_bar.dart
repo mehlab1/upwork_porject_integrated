@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../core/responsive/responsive.dart';
+import '../services/notification_count_manager.dart';
 
 enum PalNavDestination { home, notifications, settings }
 
@@ -11,7 +12,6 @@ class PalBottomNavigationBar extends StatelessWidget {
     required this.onHomeTap,
     required this.onNotificationsTap,
     required this.onSettingsTap,
-    this.showNotificationDot = false,
   });
 
   static const _primaryColor = Color(0xFF155DFC);
@@ -23,7 +23,6 @@ class PalBottomNavigationBar extends StatelessWidget {
   final VoidCallback onHomeTap;
   final VoidCallback onNotificationsTap;
   final VoidCallback onSettingsTap;
-  final bool showNotificationDot;
 
   bool get _notificationsActive => active == PalNavDestination.notifications;
   bool get _homeActive => active == PalNavDestination.home;
@@ -49,27 +48,39 @@ class PalBottomNavigationBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 38)),
             border: Border.all(color: const Color.fromRGBO(0, 0, 0, 0.2)),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              _HomeSegment(active: _homeActive, onTap: onHomeTap),
+              // Notification icon centered with slight right offset
               Transform.translate(
-                offset: Offset(-Responsive.scaledPadding(context, 20), 0), // Negative value to shift left
-                child: _NotificationSegment(
-                  active: _notificationsActive,
-                  onTap: onNotificationsTap,
-                  showDot: showNotificationDot && !_notificationsActive,
+                offset: Offset(Responsive.scaledPadding(context, 8), 0),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: NotificationCountManager.instance.notifier,
+                  builder: (context, unreadCount, _) {
+                    return _NotificationSegment(
+                      active: _notificationsActive,
+                      onTap: onNotificationsTap,
+                      unreadCount: unreadCount > 0 && !_notificationsActive ? unreadCount : 0,
+                    );
+                  },
                 ),
               ),
-              Padding(
-                padding: Responsive.responsivePadding(
-                  context,
-                  right: 16,
-                ), // Right padding for settings
-                child: _SettingsSegment(
-                  active: _settingsActive,
-                  onTap: onSettingsTap,
-                ),
+              // Home and Settings positioned at edges
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _HomeSegment(active: _homeActive, onTap: onHomeTap),
+                  Padding(
+                    padding: Responsive.responsivePadding(
+                      context,
+                      right: 16,
+                    ),
+                    child: _SettingsSegment(
+                      active: _settingsActive,
+                      onTap: onSettingsTap,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -123,12 +134,12 @@ class _NotificationSegment extends StatelessWidget {
   const _NotificationSegment({
     required this.active,
     required this.onTap,
-    required this.showDot,
+    required this.unreadCount,
   });
 
   final bool active;
   final VoidCallback onTap;
-  final bool showDot;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -163,18 +174,41 @@ class _NotificationSegment extends StatelessWidget {
                   BlendMode.srcIn,
                 ),
               ),
-              if (showDot)
+              if (unreadCount > 0)
                 Positioned(
-                  top: Responsive.scaledPadding(context, 12),
-                  right: Responsive.scaledPadding(context, 12),
+                  top: Responsive.scaledPadding(context, 8),
+                  right: Responsive.scaledPadding(context, 8),
                   child: Container(
-                    width: Responsive.scaledPadding(context, 10),
-                    height: Responsive.scaledPadding(context, 10),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE7000B),
-                      shape: BoxShape.circle,
-                      border: Border.fromBorderSide(
-                        BorderSide(color: Colors.white, width: 1.0),
+                    constraints: BoxConstraints(
+                      minWidth: Responsive.scaledPadding(context, 18),
+                      minHeight: Responsive.scaledPadding(context, 18),
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: unreadCount > 9 
+                          ? Responsive.scaledPadding(context, 6)
+                          : Responsive.scaledPadding(context, 4),
+                      vertical: Responsive.scaledPadding(context, 2),
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE7000B),
+                      borderRadius: BorderRadius.circular(
+                        Responsive.scaledPadding(context, 9),
+                      ),
+                      border: const Border.fromBorderSide(
+                        BorderSide(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        unreadCount > 99 ? '99+' : unreadCount.toString(),
+                        style: TextStyle(
+                          fontSize: Responsive.scaledFont(context, 10),
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontFamily: 'Inter',
+                          height: 1.0,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/responsive/responsive.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/pal_toast.dart';
 import '../otp/otp_verification_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -69,14 +70,9 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       });
 
       // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response['message'] ?? 'Password reset code sent to your email',
-          ),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
+      PalToast.show(
+        context,
+        message: response['message'] ?? 'Password reset code sent to your email',
       );
 
       // Navigate to OTP verification screen
@@ -154,49 +150,57 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: Responsive.responsiveSymmetric(context, horizontal: 24),
-          child: Column(
-            children: [
-              SizedBox(height: Responsive.scaledPadding(context, 16)),
-              // Header with back button and title
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          children: [
+            SizedBox(height: Responsive.scaledPadding(context, 16)),
+            // Header with back button and centered title - outside padding
+            SizedBox(
+              height: 48,
+              child: Stack(
                 children: [
-                  // Back Button
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_left,
-                      color: _headlineColor,
-                      size: 32,
+                  // Back Button - positioned at top left corner
+                  Positioned(
+                    left: 8,
+                    top: 0,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Icon(
+                          Icons.chevron_left,
+                          color: _headlineColor,
+                          size: 32,
+                        ),
+                      ),
                     ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                   // Title - centered
-                  Expanded(
+                  Center(
                     child: Text(
                       'Reset Password',
                       style: Responsive.responsiveTextStyle(
                         context,
                         fontSize: 24,
-                        height: 1.2,
-                        fontWeight: FontWeight.w500,
-                        color: _headlineColor,
+                        height: 1.2, // 120% line-height
+                        fontWeight: FontWeight.w500, // Medium
+                        color: const Color(0xFF100B3C),
                         fontFamily: 'Rubik',
+                      ).copyWith(
+                        letterSpacing: 0, // 0% letter-spacing
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  // Spacer to balance the back button
-                  const SizedBox(width: 40),
                 ],
               ),
-              SizedBox(height: Responsive.scaledPadding(context, 28)),
-              Expanded(
+            ),
+            SizedBox(height: Responsive.scaledPadding(context, 28)),
+            // Content with padding
+            Expanded(
+              child: Padding(
+                padding: Responsive.responsiveSymmetric(context, horizontal: 24),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,45 +321,53 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                   ),
                 ),
               ),
-              SizedBox(height: Responsive.scaledPadding(context, 24)),
-              SizedBox(
-                width: double.infinity,
-                height: Responsive.scaledPadding(context, 56),
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _handleContinue,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        Responsive.responsiveRadius(context, 20),
-                      ),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? SizedBox(
-                          width: Responsive.scaledIcon(context, 20),
-                          height: Responsive.scaledIcon(context, 20),
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          'Send OTP',
-                          style: Responsive.responsiveTextStyle(
-                            context,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                            fontFamily: 'Inter',
+            ),
+            // Button with padding
+            Padding(
+              padding: Responsive.responsiveSymmetric(context, horizontal: 24),
+              child: Column(
+                children: [
+                  SizedBox(height: Responsive.scaledPadding(context, 24)),
+                  SizedBox(
+                    width: double.infinity,
+                    height: Responsive.scaledPadding(context, 56),
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _handleContinue,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            Responsive.responsiveRadius(context, 20),
                           ),
                         ),
-                ),
+                        elevation: 0,
+                      ),
+                      child: _isSubmitting
+                          ? SizedBox(
+                              width: Responsive.scaledIcon(context, 20),
+                              height: Responsive.scaledIcon(context, 20),
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(Colors.white),
+                              ),
+                            )
+                          : Text(
+                              'Send OTP',
+                              style: Responsive.responsiveTextStyle(
+                                context,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                    ),
+                  ),
+                  SizedBox(height: Responsive.scaledPadding(context, 24)),
+                ],
               ),
-              SizedBox(height: Responsive.scaledPadding(context, 24)),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -284,7 +284,6 @@ class _BlockedAccountsScreenState extends State<BlockedAccountsScreen> {
           Navigator.pushNamed(context, '/notifications');
         },
         onSettingsTap: () {},
-        showNotificationDot: true,
       ),
     );
   }
@@ -802,73 +801,76 @@ class _BlockedUserItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Avatar with 3px border
-            ClipRRect(
-              borderRadius: BorderRadius.circular(avatarSize / 2),
-              child: Container(
-                width: avatarSize,
-                height: avatarSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF0F172B), width: 3),
-                ),
-                child: ClipOval(
-                  child: hasImage
-                      ? Image.network(
-                          profilePictureUrl!,
-                          width: avatarSize,
-                          height: avatarSize,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: avatarSize,
-                              height: avatarSize,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF1F5F9),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  initials ?? 'U',
-                                  style: TextStyle(
-                                    fontSize: isSmallScreen
-                                        ? 14
-                                        : isLargeScreen
-                                        ? 18
-                                        : 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF314158),
-                                    fontFamily: 'Inter',
-                                    letterSpacing: -0.3125,
+            Container(
+              margin: const EdgeInsets.only(right: 2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(avatarSize / 2),
+                child: Container(
+                  width: avatarSize,
+                  height: avatarSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF0F172B), width: 3),
+                  ),
+                  child: ClipOval(
+                    child: hasImage
+                        ? Image.network(
+                            profilePictureUrl!,
+                            width: avatarSize,
+                            height: avatarSize,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: avatarSize,
+                                height: avatarSize,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    initials ?? 'U',
+                                    style: TextStyle(
+                                      fontSize: isSmallScreen
+                                          ? 14
+                                          : isLargeScreen
+                                          ? 18
+                                          : 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF314158),
+                                      fontFamily: 'Inter',
+                                      letterSpacing: -0.3125,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          width: avatarSize,
-                          height: avatarSize,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF1F5F9),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              initials ?? 'U',
-                              style: TextStyle(
-                                fontSize: isSmallScreen
-                                    ? 14
-                                    : isLargeScreen
-                                    ? 18
-                                    : 16,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF314158),
-                                fontFamily: 'Inter',
-                                letterSpacing: -0.3125,
+                              );
+                            },
+                          )
+                        : Container(
+                            width: avatarSize,
+                            height: avatarSize,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF1F5F9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                initials ?? 'U',
+                                style: TextStyle(
+                                  fontSize: isSmallScreen
+                                      ? 14
+                                      : isLargeScreen
+                                      ? 18
+                                      : 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF314158),
+                                  fontFamily: 'Inter',
+                                  letterSpacing: -0.3125,
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                  ),
                 ),
               ),
             ),
@@ -890,49 +892,53 @@ class _BlockedUserItem extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 displayUsername,
-                                style: TextStyle(
-                                  fontSize: usernameFontSize,
+                                style: const TextStyle(
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF0F172B),
+                                  color: Color(0xFF0F172B),
                                   fontFamily: 'Inter',
-                                  letterSpacing: -0.3008,
-                                  height: 21 / usernameFontSize,
+                                  letterSpacing: -0.3,
+                                  height: 21 / 14, // line-height: 21px
                                 ),
                               ),
                             ),
-                            SizedBox(width: isSmallScreen ? 4 : 6),
+                            SizedBox(width: isSmallScreen ? 6 : 8),
                             // Blocked badge
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: isSmallScreen
-                                      ? 8
-                                      : isLargeScreen
-                                      ? 11
-                                      : 9.47,
-                                  vertical: isSmallScreen
-                                      ? 2.5
-                                      : isLargeScreen
-                                      ? 4
-                                      : 3.47,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFEF2F2),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: const Color(0xFFFFC9C9),
-                                    width: 0.735,
+                            Container(
+                              margin: const EdgeInsets.only(left: 2),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isSmallScreen
+                                        ? 8
+                                        : isLargeScreen
+                                        ? 11
+                                        : 9.47,
+                                    vertical: isSmallScreen
+                                        ? 2.5
+                                        : isLargeScreen
+                                        ? 4
+                                        : 3.47,
                                   ),
-                                ),
-                                child: Text(
-                                  'Blocked',
-                                  style: TextStyle(
-                                    fontSize: badgeFontSize,
-                                    fontWeight: FontWeight.w500,
-                                    color: const Color(0xFFE7000B),
-                                    fontFamily: 'Inter',
-                                    height: 18 / badgeFontSize,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFFFC9C9),
+                                      width: 0.74,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Blocked',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFFE7000B),
+                                      fontFamily: 'Inter',
+                                      height: 18 / 12, // line-height: 18px
+                                      letterSpacing: 0,
+                                    ),
                                   ),
                                 ),
                               ),

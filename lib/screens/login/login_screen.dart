@@ -8,7 +8,10 @@ import '../../services/auth_remember_me_service.dart';
 import '../../services/fcm_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/admin_service.dart';
+import '../../services/moderator_service.dart';
 import '../../widgets/pal_toast.dart';
+import '../../widgets/error_dialog.dart';
+import '../../services/notification_count_manager.dart';
 import '../signup/signup_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
 import '../otp/otp_verification_screen.dart';
@@ -31,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final AuthService _authService = AuthService();
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
   final AdminService _adminService = AdminService();
+  final ModeratorService _moderatorService = ModeratorService();
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -329,20 +333,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                         // Password visibility toggle
                                         IconButton(
-                                          icon: SvgPicture.asset(
-                                            'assets/authPages/hide.svg',
-                                            width: Responsive.scaledIcon(
-                                              context,
-                                              20,
-                                            ),
-                                            height: Responsive.scaledIcon(
-                                              context,
-                                              20,
-                                            ),
-                                            colorFilter: ColorFilter.mode(
-                                              _grey400,
-                                              BlendMode.srcIn,
-                                            ),
+                                          icon: Icon(
+                                            _obscurePassword
+                                                ? Icons.visibility_off_outlined
+                                                : Icons.visibility_outlined,
+                                            color: _grey400,
+                                            size: 20,
                                           ),
                                           onPressed: () {
                                             setState(() {
@@ -728,27 +724,124 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      // HARDCODED ADMIN CREDENTIALS (for development/testing only)
+      // TODO: Remove before production deployment
+      const String hardcodedAdminEmail = 'admin@kp2.com';
+      const String hardcodedAdminPassword = 'admin123';
+      
+      // HARDCODED MODERATOR CREDENTIALS (for development/testing only)
+      // TODO: Remove before production deployment
+      const String hardcodedModeratorEmail = 'moderator@kp2.com';
+      const String hardcodedModeratorPassword = 'moderator123';
+      
+      // Check if credentials match hardcoded admin
+      final bool isHardcodedAdmin = email.toLowerCase() == hardcodedAdminEmail.toLowerCase() && 
+                                    password == hardcodedAdminPassword;
+      
+      // Check if credentials match hardcoded moderator
+      final bool isHardcodedModerator = email.toLowerCase() == hardcodedModeratorEmail.toLowerCase() && 
+                                        password == hardcodedModeratorPassword;
+      
       print('=== LOGIN - REQUEST TO SIGN IN ===');
       print('Email: $email');
       print('Password length: ${password.length}');
+      if (isHardcodedAdmin) {
+        print('HARDCODED ADMIN LOGIN DETECTED');
+      }
+      if (isHardcodedModerator) {
+        print('HARDCODED MODERATOR LOGIN DETECTED');
+      }
       
-      final signInResponse = await _authService.signIn(email: email, password: password);
+      AuthResponse? signInResponse;
+      bool skipEmailVerificationCheck = false;
+      bool isHardcodedAdminWithoutSupabase = false;
+      bool isHardcodedModeratorWithoutSupabase = false;
+      
+      // For hardcoded admin, try to authenticate but bypass email verification
+      if (isHardcodedAdmin) {
+        try {
+          signInResponse = await _authService.signIn(email: hardcodedAdminEmail, password: hardcodedAdminPassword);
+          // If Supabase auth succeeds, allow bypassing email verification for admin
+          skipEmailVerificationCheck = true;
+          print('Hardcoded admin authenticated successfully with Supabase');
+        } catch (e) {
+          // If Supabase auth fails, note that we're proceeding without Supabase session
+          // The account may not exist in Supabase yet - user can still test admin UI
+          print('Hardcoded admin - Supabase auth failed (account may not exist): $e');
+          print('Proceeding with hardcoded admin access (bypassing Supabase auth)');
+          skipEmailVerificationCheck = true;
+          isHardcodedAdminWithoutSupabase = true;
+          // Note: Some features may not work without a Supabase session
+        }
+      }
+      
+      // For hardcoded moderator, try to authenticate but bypass email verification
+      if (isHardcodedModerator && signInResponse == null) {
+        try {
+          signInResponse = await _authService.signIn(email: hardcodedModeratorEmail, password: hardcodedModeratorPassword);
+          // If Supabase auth succeeds, allow bypassing email verification for moderator
+          skipEmailVerificationCheck = true;
+          print('Hardcoded moderator authenticated successfully with Supabase');
+        } catch (e) {
+          // If Supabase auth fails, note that we're proceeding without Supabase session
+          // The account may not exist in Supabase yet - user can still test moderator UI
+          print('Hardcoded moderator - Supabase auth failed (account may not exist): $e');
+          print('Proceeding with hardcoded moderator access (bypassing Supabase auth)');
+          skipEmailVerificationCheck = true;
+          isHardcodedModeratorWithoutSupabase = true;
+          // Note: Some features may not work without a Supabase session
+        }
+      }
+      
+      // If not hardcoded admin/moderator or Supabase auth failed for hardcoded admin/moderator, try normal auth
+      if (signInResponse == null && !isHardcodedAdmin && !isHardcodedModerator) {
+        signInResponse = await _authService.signIn(email: email, password: password);
+      }
+      
+      // If hardcoded admin but no Supabase session, show warning but allow access
+      if (isHardcodedAdminWithoutSupabase) {
+        if (mounted) {
+          PalToast.show(
+            context,
+            message: 'Admin access granted. Note: Some features may require Supabase account.',
+            isError: false,
+          );
+        }
+      }
+      
+      // If hardcoded moderator but no Supabase session, show warning but allow access
+      if (isHardcodedModeratorWithoutSupabase) {
+        if (mounted) {
+          PalToast.show(
+            context,
+            message: 'Moderator access granted. Note: Some features may require Supabase account.',
+            isError: false,
+          );
+        }
+      }
       
       print('=== LOGIN - RESPONSE FROM SIGN IN ===');
-      print('Has session: ${signInResponse.session != null}');
-      print('Has user: ${signInResponse.user != null}');
-      if (signInResponse.user != null) {
-        print('User ID: ${signInResponse.user!.id}');
-        print('User email: ${signInResponse.user!.email}');
-        print('Email verified: ${signInResponse.user!.emailConfirmedAt != null}');
-        print('Email confirmed at: ${signInResponse.user!.emailConfirmedAt}');
+      if (signInResponse != null) {
+        print('Has session: ${signInResponse.session != null}');
+        print('Has user: ${signInResponse.user != null}');
+        if (signInResponse.user != null) {
+          print('User ID: ${signInResponse.user!.id}');
+          print('User email: ${signInResponse.user!.email}');
+          print('Email verified: ${signInResponse.user!.emailConfirmedAt != null}');
+          print('Email confirmed at: ${signInResponse.user!.emailConfirmedAt}');
+        }
+      } else if (isHardcodedAdmin) {
+        print('Hardcoded admin - no Supabase session (will proceed anyway)');
+      } else if (isHardcodedModerator) {
+        print('Hardcoded moderator - no Supabase session (will proceed anyway)');
       }
       print('====================================');
 
       if (!mounted) return;
 
-      // Check if email is verified via OTP
-      if (signInResponse.user?.emailConfirmedAt == null) {
+      // Check if email is verified via OTP (skip for hardcoded admin/moderator)
+      if (!skipEmailVerificationCheck && 
+          signInResponse?.user?.emailConfirmedAt == null) {
         // User is not verified - sign them out and redirect to OTP verification
         await _authService.signOut();
         
@@ -789,8 +882,14 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // Check if user is admin and store admin status
-      final isAdmin = email.toLowerCase() == 'admin@kp2.com';
+      // Hardcoded admin is always admin, otherwise check email
+      final isAdmin = isHardcodedAdmin || email.toLowerCase() == 'admin@kp2.com';
       await _adminService.setAdminStatus(isAdmin);
+      
+      // Check if user is moderator and store moderator status
+      // Hardcoded moderator is always moderator, otherwise check email
+      final isModerator = isHardcodedModerator || email.toLowerCase() == 'moderator@kp2.com';
+      await _moderatorService.setModeratorStatus(isModerator);
 
       // Save Remember Me preference after successful login
       await _rememberMeService.setRememberMe(_rememberMe);
@@ -805,25 +904,40 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // After successful sign-in, fetch profile to decide whether to
       // show the welcome modal / first-post card. This ensures all
-      // logged-in users that have 0 posts see the onboarding UI.
+      // logged-in users that have 0 or 1 posts see the onboarding UI.
+      // Skip profile fetch for hardcoded admin without Supabase session
       bool shouldShowWelcome = false;
-      try {
-        final postService = PostService();
-        final profileResp = await postService.getProfile();
-        final profile = profileResp['profile'] as Map<String, dynamic>?;
-        int postCount = 0;
-        if (profile != null) {
-          final pc = profile['post_count'];
-          if (pc is int) {
-            postCount = pc;
-          } else {
-            postCount = int.tryParse(pc?.toString() ?? '') ?? 0;
+      if (!isHardcodedAdminWithoutSupabase) {
+        try {
+          final postService = PostService();
+          final profileResp = await postService.getProfile();
+          final profile = profileResp['profile'] as Map<String, dynamic>?;
+          int postCount = 0;
+          if (profile != null) {
+            final pc = profile['post_count'];
+            if (pc is int) {
+              postCount = pc;
+            } else {
+              postCount = int.tryParse(pc?.toString() ?? '') ?? 0;
+            }
           }
+          shouldShowWelcome = postCount <= 1;
+        } catch (e) {
+          // On error, default to not showing the modal. Preserve safe behaviour.
+          shouldShowWelcome = false;
         }
-        shouldShowWelcome = postCount == 0;
-      } catch (e) {
-        // On error, default to not showing the modal. Preserve safe behaviour.
+      } else {
+        // Hardcoded admin/moderator without Supabase session - don't show welcome modal
         shouldShowWelcome = false;
+      }
+
+      // Initialize notification count manager on successful login
+      try {
+        await NotificationCountManager.instance.initialize();
+        debugPrint('[LoginScreen] Notification count manager initialized');
+      } catch (e) {
+        // Notification count manager failure shouldn't block login
+        debugPrint('[LoginScreen] Notification count manager initialization failed: $e');
       }
 
       Navigator.of(context).pushNamedAndRemoveUntil(
@@ -851,6 +965,28 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = false;
       });
 
+      final errorStr = e.toString().toLowerCase();
+      // Check if it's a network error
+      if (errorStr.contains('network') || 
+          errorStr.contains('connection') || 
+          errorStr.contains('xmlhttprequest') ||
+          errorStr.contains('socket') ||
+          errorStr.contains('timeout') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('network is unreachable')) {
+        // Show network error dialog
+        await showErrorDialogFromTechnical(
+          context,
+          errorMessage: e.message,
+          onTryAgain: () {
+            Navigator.of(context).pop();
+            _handleLogin();
+          },
+        );
+        return;
+      }
+
       final message = e.message.toLowerCase();
       if (message.contains('email') || message.contains('otp')) {
         setState(() {
@@ -870,6 +1006,33 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+      });
+
+      final errorStr = e.toString().toLowerCase();
+      // Check if it's a network error
+      if (errorStr.contains('network') || 
+          errorStr.contains('connection') || 
+          errorStr.contains('xmlhttprequest') ||
+          errorStr.contains('socket') ||
+          errorStr.contains('timeout') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('network is unreachable') ||
+          errorStr.contains('http') && (errorStr.contains('error') || errorStr.contains('failed'))) {
+        // Show network error dialog
+        await showErrorDialogFromTechnical(
+          context,
+          errorMessage: e.toString(),
+          onTryAgain: () {
+            Navigator.of(context).pop();
+            _handleLogin();
+          },
+        );
+        return;
+      }
+
+      // For non-network errors, show generic error
+      setState(() {
         _emailError = 'An unexpected error occurred. Please try again.';
       });
     }

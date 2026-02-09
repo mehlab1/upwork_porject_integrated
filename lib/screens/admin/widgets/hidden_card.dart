@@ -637,7 +637,7 @@ class _HiddenCardState extends State<HiddenCard> {
         break;
       case AdminPostType.flagged:
         text = 'Flagged Post';
-        iconPath = 'assets/adminIcons/adminPostTypes/flagIcon.svg';
+        iconPath = 'assets/adminIcons/adminSettings/flag-2.svg';
         bg = const Color(0xFFFFF5F5);
         content = const Color(0xFFE7000B);
         borderColor = const Color(0xFFE7000B);

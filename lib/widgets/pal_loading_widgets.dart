@@ -47,32 +47,46 @@ class PalLoadingOverlay extends StatelessWidget {
               ],
             ),
             if (showTagline)
-              const Positioned(
+              Positioned(
                 bottom: 72,
                 left: 0,
                 right: 0,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: 'Your every day ',
-                          style: TextStyle(color: Color(0xFF90A1B9)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Your every day ',
+                        style: TextStyle(
+                          color: Color(0xFF90A1B9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          fontFamily: 'Inter',
+                          letterSpacing: -0.15,
+                          decoration: TextDecoration.none,
                         ),
-                        TextSpan(
-                          text: 'community',
-                          style: TextStyle(color: Color(0xFF155DFC)),
-                        ),
-                      ],
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: -0.15,
-                        decoration: TextDecoration.none,
                       ),
-                    ),
-                    textAlign: TextAlign.center,
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [Color(0xFF155DFC), Color(0xFF4F39F6)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ).createShader(bounds),
+                        child: const Text(
+                          'community',
+                          style: TextStyle(
+                            color: Colors.white, // This color is masked by the shader
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            fontFamily: 'Inter',
+                            letterSpacing: -0.15,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

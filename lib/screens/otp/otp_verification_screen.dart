@@ -47,6 +47,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   static const Color _primary900 = Color(0xFF100B3C);
   static const Color _grey100 = Color(0xFFDEDFE3);
   static const Color _lightBlue = Color(0xFFEFF6FF);
+  static const Color _errorRed = Color(0xFFE7000B);
+  static const Color _errorBackground = Color(0x1AF9E3E4); // #F9E3E41A
 
   @override
   void initState() {
@@ -132,19 +134,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Back Button
-                  IconButton(
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: Color(0xFF0F172B),
-                      size: 32,
+                  // Back Button - only show if NOT in password reset flow
+                  if (!widget.isPasswordReset)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.chevron_left,
+                        color: Color(0xFF0F172B),
+                        size: 32,
+                      ),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
                   // Title - centered
                   Expanded(
                     child: Text(
@@ -159,8 +162,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  // Spacer to balance the back button
-                  const SizedBox(width: 40),
+                  // Spacer to balance the back button - only show if back button is visible
+                  if (!widget.isPasswordReset)
+                    const SizedBox(width: 40),
                 ],
               ),
             ),
@@ -177,17 +181,22 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         context,
                         horizontal: horizontalScreenPadding,
                       ),
-                      child: Text(
-                        'Code has been send to ${widget.email}',
-                        style: Responsive.responsiveTextStyle(
-                          context,
-                          fontSize: 16,
-                          fontWeight: FontWeight.normal, // Rubik Regular
-                          color: _primary900,
-                          fontFamily: 'Rubik',
-                          height: 1.4,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Code has been sent to ${widget.email}',
+                          style: TextStyle(
+                            fontSize: Responsive.scaledFont(context, 16),
+                            fontWeight: FontWeight.w400,
+                            color: const Color(0xFF100B3C), // #100B3C
+                            fontFamily: 'Rubik',
+                            letterSpacing: 0,
+                            height: 1.4, // 140%
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ),
 
@@ -229,6 +238,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               final isActive = _focusNodes[index].hasFocus;
                               final isLast = index == _otpLength - 1;
                               final isFirst = index == 0;
+                              final hasError = _errorMessage != null;
                               return GestureDetector(
                                 onTap: () {
                                   setState(() {
@@ -244,14 +254,21 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                     right: isLast ? edgeGap : gap,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: isActive ? _lightBlue : _grey100,
-                                    border: isActive
+                                    color: hasError
+                                        ? _errorBackground
+                                        : (isActive ? _lightBlue : _grey100),
+                                    border: hasError
                                         ? Border.all(
-                                            color: _primaryColor,
-                                            width: 1.5,
+                                            color: _errorRed,
+                                            width: 1,
                                           )
-                                        : null,
-                                    boxShadow: isActive
+                                        : (isActive
+                                            ? Border.all(
+                                                color: _primaryColor,
+                                                width: 1.5,
+                                              )
+                                            : null),
+                                    boxShadow: isActive && !hasError
                                         ? [
                                             BoxShadow(
                                               color: _primaryColor.withOpacity(
@@ -338,57 +355,59 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       ),
                     ),
 
-                    SizedBox(height: Responsive.scaledPadding(context, 35)),
-
-                    // Error message (kept for backend error display)
-                    if (_errorMessage != null)
-                      Padding(
-                        padding: Responsive.responsiveSymmetric(
-                          context,
-                          horizontal: horizontalScreenPadding,
-                        ),
-                        child: Container(
-                          padding: Responsive.responsivePadding(
-                            context,
-                            all: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(
-                              Responsive.responsiveRadius(context, 8),
-                            ),
-                            border: Border.all(
-                              color: Colors.red.withOpacity(0.3),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                color: Colors.red,
-                                size: Responsive.scaledIcon(context, 20),
-                              ),
-                              SizedBox(
-                                width: Responsive.scaledPadding(context, 8),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  _errorMessage!,
-                                  style: Responsive.responsiveTextStyle(
-                                    context,
-                                    fontSize: 14,
-                                    color: Colors.red,
-                                    fontFamily: 'Rubik',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    // Error message - simple text with icon (right underneath input boxes)
+                    // Always reserve space for error message to keep resend code position constant
+                    Padding(
+                      padding: Responsive.responsiveSymmetric(
+                        context,
+                        horizontal: horizontalScreenPadding,
                       ),
-
-                    if (_errorMessage != null)
-                      SizedBox(height: Responsive.scaledPadding(context, 16)),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final double available = constraints.maxWidth;
+                          final double gap = (available * 0.025).clamp(8.0, 12.0);
+                          final double edgeGap = gap;
+                          return Column(
+                            children: [
+                              if (_errorMessage != null)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    left: edgeGap + 4,
+                                    top: Responsive.scaledPadding(context, 8),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline,
+                                        color: _errorRed,
+                                        size: Responsive.scaledIcon(context, 14),
+                                      ),
+                                      SizedBox(
+                                        width: Responsive.scaledPadding(context, 4),
+                                      ),
+                                      Text(
+                                        'invalid OTP',
+                                        style: TextStyle(
+                                          fontSize: Responsive.scaledFont(context, 14),
+                                          fontWeight: FontWeight.w400,
+                                          color: _errorRed,
+                                          fontFamily: 'Inter',
+                                          letterSpacing: 0,
+                                          height: 1.14, // 16px / 14px = 1.14
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                SizedBox(height: Responsive.scaledPadding(context, 8)),
+                              SizedBox(height: Responsive.scaledPadding(context, 24)),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
 
                     // Resend code text
                     Builder(
@@ -453,7 +472,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       },
                     ),
 
-                    SizedBox(height: Responsive.scaledPadding(context, 35)),
+                    SizedBox(height: Responsive.scaledPadding(context, 27)),
 
                     // Continue button
                     Container(

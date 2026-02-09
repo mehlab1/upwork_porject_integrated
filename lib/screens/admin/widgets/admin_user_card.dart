@@ -64,7 +64,7 @@ class AdminUserCard extends StatelessWidget {
           // Username
           Expanded(
             child: Text(
-              username,
+              username.startsWith('@') ? username : '@$username',
               style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,

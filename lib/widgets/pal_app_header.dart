@@ -92,7 +92,7 @@ class PalAppHeader extends StatelessWidget {
                           color: Colors.white,
                           size: Responsive.scaledIcon(context, 16),
                         ),
-                        SizedBox(width: Responsive.scaledPadding(context, 8)),
+                        SizedBox(width: Responsive.scaledPadding(context, 6)),
                         Text(
                           'Post',
                           style: Responsive.responsiveTextStyle(

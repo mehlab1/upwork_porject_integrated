@@ -12,6 +12,7 @@ import '../../../services/post_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/admin_service.dart';
 import '../../../widgets/pal_toast.dart';
+import '../../../utils/error_handler.dart';
 import '../create_post_screen.dart';
 import '../../admin/admin_user_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -46,7 +47,7 @@ const _commentReactionColor = Color(0xFF314158);
 
 const _commentAvatarBackground = Color(0xFFF1F5F9);
 
-enum PostCardVariant { top, hot, newPost, wod }
+enum PostCardVariant { top, topPost2, hot, hotPost2, newPost, wod, moderator, admin }
 
 class PostCardData {
   const PostCardData({
@@ -169,6 +170,8 @@ class CommentData {
     this.status = 'active',
 
     this.userId,
+
+    this.userVote = 0, // 1 = upvoted, -1 = downvoted, 0 = neutral
   });
 
   final String id;
@@ -193,6 +196,8 @@ class CommentData {
 
   final String? userId;
 
+  final int userVote; // 1 = upvoted, -1 = downvoted, 0 = neutral
+
   CommentData copyWith({
     String? id,
 
@@ -215,6 +220,8 @@ class CommentData {
     String? status,
 
     String? userId,
+
+    int? userVote,
   }) {
     return CommentData(
       id: id ?? this.id,
@@ -239,6 +246,8 @@ class CommentData {
       status: status ?? this.status,
 
       userId: userId ?? this.userId,
+
+      userVote: userVote ?? this.userVote,
     );
   }
 }
@@ -252,6 +261,7 @@ class PostCard extends StatefulWidget {
     this.showOverflowMenu = true,
     this.isUpvotedPostsScreen = false,
     this.initialCommentsExpanded = false,
+    this.onPostDeleted,
   });
 
   final PostCardData data;
@@ -265,6 +275,8 @@ class PostCard extends StatefulWidget {
   final bool isUpvotedPostsScreen;
 
   final bool initialCommentsExpanded;
+
+  final ValueChanged<String>? onPostDeleted;
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -328,6 +340,11 @@ class _PostCardState extends State<PostCard> {
 
     // Set initial comments expanded state if requested
     _showComments = widget.initialCommentsExpanded;
+
+    // Hardcode upvote for WOD variant
+    if (data.variant == PostCardVariant.wod) {
+      _userVote = 1;
+    }
 
     _loadCurrentUsername();
     _loadCurrentUserId();
@@ -556,6 +573,15 @@ class _PostCardState extends State<PostCard> {
     final downvotes = _parseInt(commentData['downvote_count'] ?? 0);
     final status = commentData['status']?.toString() ?? 'active';
 
+    // Extract user's vote state from API response
+    int userVote = 0;
+    final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
+    if (userVoteStr == 'upvote') {
+      userVote = 1;
+    } else if (userVoteStr == 'downvote') {
+      userVote = -1;
+    }
+
     // Get replies if present
     final repliesData = commentData['replies'] as List<dynamic>? ?? [];
     final replies = repliesData
@@ -615,6 +641,7 @@ class _PostCardState extends State<PostCard> {
       replies: replies,
       status: status,
       userId: userId,
+      userVote: userVote,
     );
   }
 
@@ -659,13 +686,16 @@ class _PostCardState extends State<PostCard> {
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          customMessage ?? 'Something went wrong while posting your comment.',
-        ),
-      ),
-    );
+    // Check if it's a network error
+    if (ErrorHandler.isNetworkError(error)) {
+      ErrorHandler.showOfflineToast(context);
+    } else {
+      PalToast.show(
+        context,
+        message: customMessage ?? 'Something went wrong while posting your comment.',
+        isError: true,
+      );
+    }
   }
 
   List<CommentData> _cloneComments(List<CommentData> source) {
@@ -713,10 +743,10 @@ class _PostCardState extends State<PostCard> {
 
     if (trimmed.length > 500) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Comment must be 500 characters or less.'),
-          ),
+        PalToast.show(
+          context,
+          message: 'Comment must be 500 characters or less.',
+          isError: true,
         );
       }
 
@@ -808,6 +838,15 @@ class _PostCardState extends State<PostCard> {
 
         final content = commentData['content']?.toString() ?? trimmed;
 
+        // Extract user's vote state from API response
+        int userVote = 0;
+        final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
+        if (userVoteStr == 'upvote') {
+          userVote = 1;
+        } else if (userVoteStr == 'downvote') {
+          userVote = -1;
+        }
+
         setState(() {
           final updatedComments = List<CommentData>.from(_currentComments);
 
@@ -830,6 +869,8 @@ class _PostCardState extends State<PostCard> {
               body: content,
 
               status: status,
+
+              userVote: userVote,
             );
 
             _comments = updatedComments;
@@ -925,10 +966,10 @@ class _PostCardState extends State<PostCard> {
 
     if (trimmed.length > 500) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reply must be 500 characters or less.'),
-          ),
+        PalToast.show(
+          context,
+          message: 'Reply must be 500 characters or less.',
+          isError: true,
         );
       }
 
@@ -1033,6 +1074,15 @@ class _PostCardState extends State<PostCard> {
 
         final content = commentData['content']?.toString() ?? trimmed;
 
+        // Extract user's vote state from API response
+        int userVote = 0;
+        final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
+        if (userVoteStr == 'upvote') {
+          userVote = 1;
+        } else if (userVoteStr == 'downvote') {
+          userVote = -1;
+        }
+
         setState(() {
           final updatedComments = List<CommentData>.from(_currentComments);
 
@@ -1064,6 +1114,8 @@ class _PostCardState extends State<PostCard> {
                 body: content,
 
                 status: status,
+
+                userVote: userVote,
               );
 
               updatedComments[parentIndex] = updatedParent.copyWith(
@@ -1382,13 +1434,203 @@ class _PostCardState extends State<PostCard> {
     );
   }
 
+  Widget _buildPostCardContainer({
+    required PostCardData data,
+    required _PostCardPalette palette,
+    required bool isAdminPinned,
+    required bool allowOverflowMenu,
+    required bool shouldShowMoreButton,
+  }) {
+    final content = Container(
+      margin: const EdgeInsets.only(top: 2),
+      decoration: BoxDecoration(
+        color: data.variant == PostCardVariant.wod ? null : Colors.white,
+        gradient: data.variant == PostCardVariant.wod
+            ? const LinearGradient(
+                colors: [
+                  Color(0xFFB4DDC5), // #B4DDC5
+                  Color(0xFFFFFFFF), // #FFFFFF
+                  Color(0xFFFFFFFF), // #FFFFFF
+                ],
+                stops: [0.0, 0.35, 1.0],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (palette.showHeader)
+            _HighlightHeader(
+              palette: palette,
+              variant: data.variant,
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _PostHeader(
+                  data: data,
+                  palette: palette,
+                  votes: _currentVotes,
+                  isUpvoted: _userVote == 1,
+                  isDownvoted: _userVote == -1,
+                  onUpvote: _handleUpvote,
+                  onDownvote: _handleDownvote,
+                  showMetaBadges: !isAdminPinned,
+                  customBadge: isAdminPinned ? _AdminBadge() : null,
+                  isUpvotedPostsScreen: widget.isUpvotedPostsScreen,
+                ),
+                const SizedBox(height: 24),
+                _PostTitle(
+                  title: data.title,
+                  color: palette.titleColor,
+                ),
+                const SizedBox(height: 16),
+                _PostBody(body: data.body),
+                const SizedBox(height: 24),
+                _PostFooter(
+                  data: data.copyWith(comments: _currentComments),
+                  palette: palette,
+                  onMoreTap: shouldShowMoreButton
+                      ? () => _toggleMenu(context)
+                      : null,
+                  moreButtonKey: shouldShowMoreButton ? _menuKey : null,
+                  onToggleComments: () {
+                    setState(() {
+                      _showComments = !_showComments;
+                    });
+                    if (_showComments &&
+                        (_comments.isEmpty || _actualCommentCount == null) &&
+                        data.id != null) {
+                      _loadComments();
+                    }
+                  },
+                  commentsExpanded: _showComments,
+                  showMoreButton: shouldShowMoreButton,
+                  isYourPosts: widget.isYourPosts,
+                  commentCount: _actualCommentCount ??
+                      (_currentComments.isNotEmpty
+                          ? _totalCommentCount(_currentComments)
+                          : data.commentsCount),
+                ),
+                if (_showComments) ...[
+                  const _PostCommentsDivider(),
+                  _CommentsSection(
+                    palette: palette,
+                    data: data.copyWith(comments: _currentComments),
+                    controller: _commentController,
+                    onSubmitComment: _addComment,
+                    onReplyToComment: _toggleInlineReply,
+                    activeReplyIndex: _activeReplyIndex,
+                    replyController: _replyController,
+                    onSubmitReply: _addReply,
+                    onReportComment: (comment) =>
+                        _showReportCommentSheet(context, comment),
+                    onDeleteComment: (comment) =>
+                        _showDeleteCommentDialog(context, comment),
+                    onBlockComment: (comment) =>
+                        _handleBlockCommentUser(context, comment),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (data.variant == PostCardVariant.moderator) {
+      return Container(
+        padding: const EdgeInsets.all(1.51),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0x80FF0F7B), // rgba(255, 15, 123, 0.5)
+              Color(0x80F89B29), // rgba(248, 155, 41, 0.5)
+            ],
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: Colors.white,
+          ),
+          child: content,
+        ),
+      );
+    } else if (data.variant == PostCardVariant.admin) {
+      return Container(
+        padding: const EdgeInsets.all(1.51),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0x804F39F6), // rgba(79, 57, 246, 0.5)
+              Color(0x809810FA), // rgba(152, 16, 250, 0.5)
+            ],
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: Colors.white,
+          ),
+          child: content,
+        ),
+      );
+    } else if (data.variant == PostCardVariant.wod) {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color(0x80100C08), // #100C0880 = rgba(16, 12, 8, 0.5)
+            width: 1.51,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x40000000), // #00000040 = rgba(0, 0, 0, 0.25)
+              offset: Offset(0, 4),
+              blurRadius: 4,
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        child: content,
+      );
+    } else {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: palette.outerBorderColor,
+            width: 1.51027,
+          ),
+        ),
+        child: content,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = _PostCardPalette.fromVariant(data.variant);
 
     final bool isAdminPinned = widget.isPinnedAdmin;
     final bool allowOverflowMenu = widget.showOverflowMenu;
-    final bool shouldShowMoreButton = !isAdminPinned && allowOverflowMenu;
+    // Hide three dots menu for admin variant
+    final bool shouldShowMoreButton = !isAdminPinned && 
+                                      allowOverflowMenu && 
+                                      data.variant != PostCardVariant.admin;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
@@ -1410,165 +1652,12 @@ class _PostCardState extends State<PostCard> {
             return SizedBox(
               width: cardWidth,
 
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-
-                  border: Border.all(
-                    color: palette.outerBorderColor,
-
-                    width: data.variant == PostCardVariant.wod ? 1 : 1.51027,
-                  ),
-                ),
-
-                child: Container(
-                  margin: const EdgeInsets.only(top: 2),
-
-                  decoration: BoxDecoration(
-                    color: data.variant == PostCardVariant.wod
-                        ? null
-                        : Colors.white,
-                    gradient: data.variant == PostCardVariant.wod
-                        ? LinearGradient(
-                            colors: palette.headerGradient,
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          )
-                        : null,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children: [
-                      if (palette.showHeader)
-                        _HighlightHeader(
-                          palette: palette,
-                          variant: data.variant,
-                        ),
-
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-
-                          children: [
-                            _PostHeader(
-                              data: data,
-
-                              palette: palette,
-
-                              votes: _currentVotes,
-
-                              isUpvoted: _userVote == 1,
-
-                              isDownvoted: _userVote == -1,
-
-                              onUpvote: _handleUpvote,
-
-                              onDownvote: _handleDownvote,
-
-                              showMetaBadges: !isAdminPinned,
-
-                              customBadge: isAdminPinned ? _AdminBadge() : null,
-
-                              isUpvotedPostsScreen: widget.isUpvotedPostsScreen,
-                            ),
-
-                            const SizedBox(height: 24),
-
-                            _PostTitle(
-                              title: data.title,
-
-                              color: palette.titleColor,
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            _PostBody(body: data.body),
-
-                            const SizedBox(height: 24),
-
-                            _PostFooter(
-                              data: data.copyWith(comments: _currentComments),
-
-                              palette: palette,
-
-                              onMoreTap: shouldShowMoreButton
-                                  ? () => _toggleMenu(context)
-                                  : null,
-
-                              moreButtonKey: shouldShowMoreButton
-                                  ? _menuKey
-                                  : null,
-
-                              onToggleComments: () {
-                                setState(() {
-                                  _showComments = !_showComments;
-                                });
-                                // Load comments from API when expanding comments section
-                                // Also reload if we don't have an accurate count yet
-                                if (_showComments &&
-                                    (_comments.isEmpty ||
-                                        _actualCommentCount == null) &&
-                                    data.id != null) {
-                                  _loadComments();
-                                }
-                              },
-
-                              commentsExpanded: _showComments,
-
-                              showMoreButton: shouldShowMoreButton,
-
-                              isYourPosts: widget.isYourPosts,
-
-                              commentCount:
-                                  _actualCommentCount ??
-                                  (_currentComments.isNotEmpty
-                                      ? _totalCommentCount(_currentComments)
-                                      : data.commentsCount),
-                            ),
-
-                            if (_showComments) ...[
-                              const _PostCommentsDivider(),
-
-                              _CommentsSection(
-                                palette: palette,
-
-                                data: data.copyWith(comments: _currentComments),
-
-                                controller: _commentController,
-
-                                onSubmitComment: _addComment,
-
-                                onReplyToComment: _toggleInlineReply,
-
-                                activeReplyIndex: _activeReplyIndex,
-
-                                replyController: _replyController,
-
-                                onSubmitReply: _addReply,
-
-                                onReportComment: (comment) =>
-                                    _showReportCommentSheet(context, comment),
-
-                                onDeleteComment: (comment) =>
-                                    _showDeleteCommentDialog(context, comment),
-
-                                onBlockComment: (comment) =>
-                                    _handleBlockCommentUser(context, comment),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              child: _buildPostCardContainer(
+                data: data,
+                palette: palette,
+                isAdminPinned: isAdminPinned,
+                allowOverflowMenu: allowOverflowMenu,
+                shouldShowMoreButton: shouldShowMoreButton,
               ),
             );
           },
@@ -1645,13 +1734,16 @@ class _PostCardState extends State<PostCard> {
           _userVote = previousVote;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-          ),
-        );
+        // Check if it's a network error
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          PalToast.show(
+            context,
+            message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+            isError: true,
+          );
+        }
       }
     }
   }
@@ -1724,13 +1816,16 @@ class _PostCardState extends State<PostCard> {
           _userVote = previousVote;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-          ),
-        );
+        // Check if it's a network error
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          PalToast.show(
+            context,
+            message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+            isError: true,
+          );
+        }
       }
     }
   }
@@ -1777,8 +1872,9 @@ class _PostCardState extends State<PostCard> {
         }
 
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Comment deleted successfully.')),
+          PalToast.show(
+            context,
+            message: 'Comment deleted successfully.',
           );
         }
       } catch (e) {
@@ -1810,9 +1906,16 @@ class _PostCardState extends State<PostCard> {
                 : 'Failed to delete comment. Please try again.';
           }
 
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(errorMessage)));
+          // Check if it's a network error
+          if (ErrorHandler.isNetworkError(e)) {
+            ErrorHandler.showOfflineToast(context);
+          } else {
+            PalToast.show(
+              context,
+              message: errorMessage,
+              isError: true,
+            );
+          }
         }
       }
     }
@@ -1865,7 +1968,12 @@ class _PostCardState extends State<PostCard> {
           );
           // Show success toast after dialog is closed
           if (context.mounted) {
-            PalToast.show(context, message: 'Post reported successfully');
+            PalToast.show(
+              context,
+              message: 'Report submitted successfully',
+              heading: 'Report submitted successfully',
+              subtext: 'Our moderation team will review your report within 24 hours',
+            );
           }
         }
       } catch (e) {
@@ -1873,29 +1981,42 @@ class _PostCardState extends State<PostCard> {
           final errorStr = e.toString().replaceFirst('Exception: ', '');
           final errorStrLower = errorStr.toLowerCase();
 
-          String errorMessage;
+          String errorHeading;
+          String errorSubtext;
 
           // Check for "cannot report own post" error (case-insensitive)
           if (errorStrLower.contains('cannot report own post') ||
               errorStrLower.contains('cannot report your own post') ||
               errorStrLower.contains('you cannot report your own post')) {
-            errorMessage = 'You cannot report your own post.';
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'You cannot report your own post.';
           } else if (errorStrLower.contains('already reported')) {
-            errorMessage = 'You have already reported this post.';
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'You have already reported this post.';
           } else if (errorStrLower.contains('post not found')) {
-            errorMessage = 'This post no longer exists.';
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'This post no longer exists.';
           } else if (errorStrLower.contains('unauthorized')) {
-            errorMessage = 'You must be logged in to report posts.';
-          } else {
-            // Use the original error message if it's user-friendly, otherwise show generic message
-            errorMessage = errorStr.isNotEmpty
-                ? errorStr
-                : 'Failed to submit report. Please try again.';
-          }
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'You must be logged in to report posts.';
+        } else {
+          // Use generic error message for general failures
+          errorHeading = 'Failed to submit report';
+          errorSubtext = 'Please try again.';
+        }
 
-          ScaffoldMessenger.of(
+        // Check if it's a network error
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          PalToast.show(
             context,
-          ).showSnackBar(SnackBar(content: Text(errorMessage)));
+            message: errorHeading,
+            heading: errorHeading,
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
         }
       }
     }
@@ -1918,6 +2039,10 @@ class _PostCardState extends State<PostCard> {
 
       // Check response from edge function
       if (response['success'] == true) {
+        // Notify parent widget about deletion
+        if (mounted && widget.onPostDeleted != null) {
+          widget.onPostDeleted!(data.id!);
+        }
         // Show success message
         if (mounted) {
           PalToast.show(context, message: 'Post deleted successfully');
@@ -1927,42 +2052,55 @@ class _PostCardState extends State<PostCard> {
         final message =
             response['message']?.toString() ?? 'Failed to delete post.';
         if (mounted) {
-          ScaffoldMessenger.of(
+          PalToast.show(
             context,
-          ).showSnackBar(SnackBar(content: Text(message)));
+            message: 'Failed to delete post',
+            heading: 'Failed to delete post',
+            subtext: 'Please check your connection and try again',
+            isError: true,
+          );
         }
       }
     } catch (e) {
-      // Handle exception
-      final errorStr = e.toString().replaceFirst('Exception: ', '');
-      final errorStrLower = errorStr.toLowerCase();
-
-      String errorMessage;
-
-      if (errorStrLower.contains('cannot delete another user\'s post') ||
-          errorStrLower.contains('you cannot delete another user\'s post')) {
-        errorMessage = 'You cannot delete another user\'s post.';
-      } else if (errorStrLower.contains('cannot delete') ||
-          errorStrLower.contains('not owner') ||
-          errorStrLower.contains('only owner') ||
-          errorStrLower.contains('permission denied') ||
-          errorStrLower.contains('forbidden') ||
-          errorStrLower.contains('not authorized')) {
-        errorMessage = 'You can only delete your own posts.';
-      } else if (errorStrLower.contains('post not found')) {
-        errorMessage = 'This post no longer exists.';
-      } else if (errorStrLower.contains('unauthorized')) {
-        errorMessage = 'You must be logged in to delete posts.';
-      } else {
-        errorMessage = errorStr.isNotEmpty
-            ? errorStr
-            : 'Failed to delete post. Please try again.';
-      }
-
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(errorMessage)));
+        // Check if it's a network error
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          // Handle exception
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorStrLower = errorStr.toLowerCase();
+
+          String errorHeading = 'Failed to delete post';
+          String errorSubtext;
+
+          if (errorStrLower.contains('cannot delete another user\'s post') ||
+              errorStrLower.contains('you cannot delete another user\'s post')) {
+            errorSubtext = 'You cannot delete another user\'s post.';
+          } else if (errorStrLower.contains('cannot delete') ||
+              errorStrLower.contains('not owner') ||
+              errorStrLower.contains('only owner') ||
+              errorStrLower.contains('permission denied') ||
+              errorStrLower.contains('forbidden') ||
+              errorStrLower.contains('not authorized')) {
+            errorSubtext = 'You can only delete your own posts.';
+          } else if (errorStrLower.contains('post not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else if (errorStrLower.contains('unauthorized')) {
+            errorSubtext = 'You must be logged in to delete posts.';
+          } else {
+            // For general failures
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: errorHeading,
+            heading: errorHeading,
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
       }
     }
   }
@@ -1976,10 +2114,10 @@ class _PostCardState extends State<PostCard> {
     if (blockedUserId == null || blockedUserId.isEmpty) {
       // If we don't have userId, we can't block - show error
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to block user: user ID not available'),
-          ),
+        PalToast.show(
+          context,
+          message: 'Unable to block user: user ID not available',
+          isError: true,
         );
       }
       return;
@@ -2003,10 +2141,17 @@ class _PostCardState extends State<PostCard> {
         }
       } catch (e) {
         if (mounted) {
-          final errorMessage = e.toString().replaceFirst('Exception: ', '');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to block user: $errorMessage')),
-          );
+          // Check if it's a network error
+          if (ErrorHandler.isNetworkError(e)) {
+            ErrorHandler.showOfflineToast(context);
+          } else {
+            final errorMessage = e.toString().replaceFirst('Exception: ', '');
+            PalToast.show(
+              context,
+              message: 'Failed to block user: $errorMessage',
+              isError: true,
+            );
+          }
         }
       }
     }
@@ -2024,10 +2169,10 @@ class _PostCardState extends State<PostCard> {
     if (blockedUserId == null || blockedUserId.isEmpty) {
       // If we don't have userId, we can't block - show error
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to block user: user ID not available'),
-          ),
+        PalToast.show(
+          context,
+          message: 'Unable to block user: user ID not available',
+          isError: true,
         );
       }
       return;
@@ -2051,10 +2196,17 @@ class _PostCardState extends State<PostCard> {
         }
       } catch (e) {
         if (mounted) {
-          final errorMessage = e.toString().replaceFirst('Exception: ', '');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to block user: $errorMessage')),
-          );
+          // Check if it's a network error
+          if (ErrorHandler.isNetworkError(e)) {
+            ErrorHandler.showOfflineToast(context);
+          } else {
+            final errorMessage = e.toString().replaceFirst('Exception: ', '');
+            PalToast.show(
+              context,
+              message: 'Failed to block user: $errorMessage',
+              isError: true,
+            );
+          }
         }
       }
     }
@@ -2124,9 +2276,16 @@ class _PostCardState extends State<PostCard> {
                 : 'Failed to submit report. Please try again.';
           }
 
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(errorMessage)));
+          // Check if it's a network error
+          if (ErrorHandler.isNetworkError(e)) {
+            ErrorHandler.showOfflineToast(context);
+          } else {
+            PalToast.show(
+              context,
+              message: errorMessage,
+              isError: true,
+            );
+          }
         }
       }
     }
@@ -2146,7 +2305,7 @@ class _HighlightHeader extends StatelessWidget {
 
       width: double.infinity,
 
-      child: DecoratedBox(
+        child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(24),
@@ -2154,13 +2313,15 @@ class _HighlightHeader extends StatelessWidget {
             topRight: Radius.circular(24),
           ),
 
-          gradient: LinearGradient(
-            colors: palette.headerGradient,
-
-            begin: Alignment.centerLeft,
-
-            end: Alignment.centerRight,
-          ),
+          // For WOD variant, make background transparent so parent gradient shows through
+          color: variant == PostCardVariant.wod ? Colors.transparent : null,
+          gradient: variant == PostCardVariant.wod
+              ? null  // No gradient for WOD - use parent's gradient
+              : LinearGradient(
+                  colors: palette.headerGradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
           border: variant == PostCardVariant.wod
               ? const Border(
                   bottom: BorderSide(color: Color(0x4D010B13), width: 1),
@@ -2286,7 +2447,7 @@ class _PostHeader extends StatelessWidget {
                 padding: const EdgeInsets.all(1),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF545E65), width: 3),
+                  border: Border.all(color: const Color(0xFF0EA54D), width: 3), // #0EA54D
                 ),
                 child: _Avatar(
                   asset: data.avatarAsset,
@@ -2296,13 +2457,51 @@ class _PostHeader extends StatelessWidget {
                   variant: data.variant,
                 ),
               )
-            : _Avatar(
-                asset: data.avatarAsset,
-                profilePictureUrl: data.profilePictureUrl,
-                initials: data.initials,
-                borderColor: palette.avatarBorderColor,
-                variant: data.variant,
-              ),
+            : data.variant == PostCardVariant.moderator
+                ? Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xFFFF0F7B), Color(0xFFF89B29)],
+                      ),
+                    ),
+                    child: _Avatar(
+                      asset: data.avatarAsset,
+                      profilePictureUrl: data.profilePictureUrl,
+                      initials: data.initials,
+                      borderColor: palette.avatarBorderColor,
+                      variant: data.variant,
+                    ),
+                  )
+                : data.variant == PostCardVariant.admin
+                    ? Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0xFF4F39F6), Color(0xFF9810FA)],
+                          ),
+                        ),
+                        child: _Avatar(
+                          asset: data.avatarAsset,
+                          profilePictureUrl: data.profilePictureUrl,
+                          initials: data.initials,
+                          borderColor: palette.avatarBorderColor,
+                          variant: data.variant,
+                        ),
+                      )
+                    : _Avatar(
+                    asset: data.avatarAsset,
+                    profilePictureUrl: data.profilePictureUrl,
+                    initials: data.initials,
+                    borderColor: palette.avatarBorderColor,
+                    variant: data.variant,
+                  ),
 
         const SizedBox(width: 12),
 
@@ -2315,7 +2514,13 @@ class _PostHeader extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Text(
-                      data.username,
+                      data.variant == PostCardVariant.moderator
+                          ? '@moderator'
+                          : data.variant == PostCardVariant.admin
+                              ? '@admin'
+                              : data.variant == PostCardVariant.wod
+                                  ? '@moderator'
+                                  : data.username.startsWith('@') ? data.username : '@${data.username}',
 
                       style: const TextStyle(
                         fontSize: 14,
@@ -2365,7 +2570,29 @@ class _PostHeader extends StatelessWidget {
                 ],
               ),
 
-              if (hasBadges) ...[
+              if (data.variant == PostCardVariant.moderator) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: 102,
+                  height: 29,
+                  child: SvgPicture.asset(
+                    'assets/moderator-icons/settings-icons/Moderator-badge.svg',
+                    width: 102,
+                    height: 29,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      // Return empty container if asset fails to load
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ),
+              ] else if (data.variant == PostCardVariant.admin) ...[
+                const SizedBox(height: 12),
+                const _AdminBadge(),
+              ] else if (data.variant == PostCardVariant.wod) ...[
+                const SizedBox(height: 12),
+                const _AdminBadge(),
+              ] else if (hasBadges) ...[
                 const SizedBox(height: 12),
 
                 if (showMetaBadges)
@@ -2659,8 +2886,9 @@ Future<void> _showDeleteDialog(BuildContext context, String title) async {
   if (result?.confirmed == true && context.mounted) {
     // TODO: Hook into actual delete logic when available.
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post deleted (placeholder).')),
+    PalToast.show(
+      context,
+      message: 'Post deleted (placeholder).',
     );
   }
 }
@@ -2682,51 +2910,149 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Prefer network image (profilePictureUrl), then asset, then initials
+    // Determine if this is a special role (admin/moderator/wod) or regular user
+    final isSpecialRole = variant == PostCardVariant.moderator ||
+        variant == PostCardVariant.admin ||
+        variant == PostCardVariant.wod;
+    
+    // Check if this is a hardcoded post (has asset)
+    // PNG files like 'assets/feedPage/profile.png' are valid hardcoded assets for seed posts
+    final isDefaultProfileAsset = asset != null && (
+      asset!.contains('profile.svg') ||
+      asset == 'assets/feedPage/profile.svg' ||
+      asset == 'assets/images/profile.svg'
+    );
+    final hasAsset = asset != null && !isDefaultProfileAsset;
+    
+    // For regular users (not special roles and not hardcoded posts):
+    // - Show profile picture if available
+    // - If profile picture fails to load or doesn't exist, show initials
+    // For hardcoded posts: use asset
+    // For special roles: use their specific initials if no profile picture
+    
     final hasNetworkImage =
         profilePictureUrl != null && profilePictureUrl!.isNotEmpty;
-    final hasAsset = asset != null;
-    final displayInitials = initials ?? 'U';
+    
+    // For moderator variant, always use 'MO' as initials if no profile picture or asset
+    // For admin variant, always use 'AD' as initials if no profile picture or asset
+    // For WOD variant, always use 'MO' as initials if no profile picture or asset
+    // For regular users, use provided initials or 'U' as fallback
+    final displayInitials = variant == PostCardVariant.moderator
+        ? 'MO'
+        : variant == PostCardVariant.admin
+            ? 'AD'
+            : variant == PostCardVariant.wod
+                ? 'MO'
+                : (initials ?? 'U');
 
-    final backgroundColor = variant == PostCardVariant.wod
+    final backgroundColor = (variant == PostCardVariant.wod ||
+            variant == PostCardVariant.moderator ||
+            variant == PostCardVariant.admin ||
+            variant == PostCardVariant.newPost ||
+            variant == PostCardVariant.top ||
+            variant == PostCardVariant.topPost2 ||
+            variant == PostCardVariant.hot ||
+            variant == PostCardVariant.hotPost2)
         ? const Color(0xFFF1F5F9)
         : Colors.white;
 
-    final borderWidth = variant == PostCardVariant.wod ? 0.0 : 3.0;
+    final borderWidth = (variant == PostCardVariant.wod ||
+            variant == PostCardVariant.moderator ||
+            variant == PostCardVariant.admin)
+        ? 0.0
+        : 3.0;
 
-    return Container(
-      width: 47,
-      height: 47,
+    // For newPost variant, apply exact positioning (top: 0.39px, left: 0.25px)
+    final isNewPost = variant == PostCardVariant.newPost;
+    
+    // Inner content size (excluding border)
+    final innerSize = borderWidth > 0 ? 47.0 - (borderWidth * 2) : 47.0;
+    
+    // Build the inner content (image or initials) with clipping
+    Widget innerContent = Container(
+      width: innerSize,
+      height: innerSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: backgroundColor,
-        border: borderWidth > 0
-            ? Border.all(color: borderColor, width: borderWidth)
-            : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasNetworkImage
+      child: hasAsset
+          // Hardcoded posts: use asset (for seed posts with avatarAsset set)
+          ? _Avatar._buildImage(asset!, displayInitials, _buildInitialsPlaceholder)
+          : hasNetworkImage
+          // Regular users and special roles: try to load profile picture, fallback to initials on error
           ? Image.network(
               profilePictureUrl!,
               fit: BoxFit.cover,
               loadingBuilder: (context, child, loadingProgress) {
+                // Show initials while loading
                 if (loadingProgress == null) return child;
                 return _buildInitialsPlaceholder(displayInitials);
               },
-              errorBuilder: (context, error, stackTrace) =>
-                  _buildInitialsPlaceholder(displayInitials),
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback to initials if profile picture fails to load
+                // This ensures regular users always see initials when image fails
+                return _buildInitialsPlaceholder(displayInitials);
+              },
             )
-          : hasAsset
-          ? _Avatar._buildImage(asset!)
+          // No profile picture and no asset: show initials
+          // This ensures regular users without profile pictures always see initials
           : _buildInitialsPlaceholder(displayInitials),
     );
+    
+    // Wrap with border container (border is separate from clipped content)
+    Widget avatarContent = borderWidth > 0
+        ? Container(
+            width: 47,
+            height: 47,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: borderColor, width: borderWidth),
+            ),
+            child: Center(child: innerContent),
+          )
+        : Container(
+            width: 47,
+            height: 47,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: backgroundColor,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: innerContent,
+          );
+    
+    // For newPost variant, apply exact positioning (top: 0.39px, left: 0.25px)
+    if (isNewPost) {
+      return Transform.translate(
+        offset: const Offset(0.25, 0.39),
+        child: avatarContent,
+      );
+    }
+    
+    return avatarContent;
   }
 
   Widget _buildInitialsPlaceholder(String initials) {
-    final backgroundColor = variant == PostCardVariant.wod
+    final backgroundColor = (variant == PostCardVariant.wod ||
+            variant == PostCardVariant.moderator ||
+            variant == PostCardVariant.admin ||
+            variant == PostCardVariant.newPost ||
+            variant == PostCardVariant.top ||
+            variant == PostCardVariant.topPost2 ||
+            variant == PostCardVariant.hot ||
+            variant == PostCardVariant.hotPost2)
         ? const Color(0xFFF1F5F9)
         : const Color(0xFF155DFC);
-    final textColor = variant == PostCardVariant.wod
+    final textColor = (variant == PostCardVariant.wod ||
+            variant == PostCardVariant.moderator ||
+            variant == PostCardVariant.admin ||
+            variant == PostCardVariant.newPost ||
+            variant == PostCardVariant.top ||
+            variant == PostCardVariant.topPost2 ||
+            variant == PostCardVariant.hot ||
+            variant == PostCardVariant.hotPost2)
         ? const Color(0xFF314158)
         : Colors.white;
 
@@ -2746,21 +3072,21 @@ class _Avatar extends StatelessWidget {
     );
   }
 
-  static Widget _buildImage(String path) {
+  static Widget _buildImage(String path, String initials, Widget Function(String) buildInitialsPlaceholder) {
     if (path.toLowerCase().endsWith('.svg')) {
       return SvgPicture.asset(
         path,
         fit: BoxFit.cover,
         placeholderBuilder: (_) =>
             Image.asset('assets/feedPage/profile.png', fit: BoxFit.cover),
+        errorBuilder: (_, __, ___) => buildInitialsPlaceholder(initials),
       );
     }
 
     return Image.asset(
       path,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) =>
-          SvgPicture.asset('assets/feedPage/profile.svg', fit: BoxFit.cover),
+      errorBuilder: (_, __, ___) => buildInitialsPlaceholder(initials),
     );
   }
 }
@@ -2805,7 +3131,6 @@ class _Badge extends StatelessWidget {
 
       child: Row(
         mainAxisSize: MainAxisSize.min,
-
         children: [
           SvgPicture.asset(
             icon,
@@ -2974,9 +3299,11 @@ class _VotePanel extends StatelessWidget {
     Color voteBackgroundColor;
     switch (data.variant) {
       case PostCardVariant.hot:
+      case PostCardVariant.hotPost2:
         voteBackgroundColor = const Color(0xFFF54900); // #F54900 for hot posts
         break;
       case PostCardVariant.top:
+      case PostCardVariant.topPost2:
         voteBackgroundColor =
             palette.voteButtonBackground; // Blue for top posts
         break;
@@ -2984,7 +3311,13 @@ class _VotePanel extends StatelessWidget {
         voteBackgroundColor = const Color(0xFF0F172B); // Dark for new posts
         break;
       case PostCardVariant.wod:
-        voteBackgroundColor = const Color(0xFF0F172B); // Dark for wod posts
+        voteBackgroundColor = const Color(0xFF008236); // #008236 for wod posts
+        break;
+      case PostCardVariant.moderator:
+        voteBackgroundColor = const Color(0xFF0F172B); // Dark for moderator posts
+        break;
+      case PostCardVariant.admin:
+        voteBackgroundColor = const Color(0xFF0F172B); // Dark for admin posts
         break;
     }
 
@@ -3000,9 +3333,11 @@ class _VotePanel extends StatelessWidget {
     Color defaultIconColor;
     switch (data.variant) {
       case PostCardVariant.top:
+      case PostCardVariant.topPost2:
         defaultIconColor = const Color(0xFF1447E6); // rgba(20, 71, 230, 1)
         break;
       case PostCardVariant.hot:
+      case PostCardVariant.hotPost2:
         defaultIconColor = const Color(0xFFCA3500); // #CA3500 for hot posts
         break;
       case PostCardVariant.newPost:
@@ -3011,9 +3346,13 @@ class _VotePanel extends StatelessWidget {
         ); // Default color for new posts
         break;
       case PostCardVariant.wod:
-        defaultIconColor = const Color(
-          0xFF0F172B,
-        ); // Default color for wod posts
+        defaultIconColor = const Color(0xFF008236); // #008236 for wod posts
+        break;
+      case PostCardVariant.moderator:
+        defaultIconColor = const Color(0xFF0F172B); // Default color for moderator posts
+        break;
+      case PostCardVariant.admin:
+        defaultIconColor = const Color(0xFF0F172B); // Default color for admin posts
         break;
     }
 
@@ -3022,6 +3361,165 @@ class _VotePanel extends StatelessWidget {
         ? Colors.white
         : (isUpvoted ? Colors.white : defaultIconColor);
     final Color downIconColor = isDownvoted ? Colors.white : defaultIconColor;
+
+    // For moderator and admin variants, use different spacing
+    final bool isModeratorOrAdmin = data.variant == PostCardVariant.moderator || 
+                                     data.variant == PostCardVariant.admin;
+    final double gapSize = isModeratorOrAdmin ? 3.99 : 10.0;
+    final double verticalPadding = isModeratorOrAdmin ? 7.99 : 12.0;
+
+    final votePanelContent = Column(
+      mainAxisSize: MainAxisSize.min,
+
+      children: [
+        _VoteButton(
+          icon: 'assets/images/upArrow.svg',
+
+          background: upBackground,
+
+          borderColor: isUpvoted
+              ? palette.voteBorderColor
+              : Colors.transparent,
+
+          iconColor: upIconColor,
+
+          size: 34,
+
+          iconSize: 16,
+
+          onPressed: onUpvote,
+        ),
+
+        SizedBox(height: gapSize),
+
+        Text(
+          '$votes',
+
+          style: TextStyle(
+            fontSize: 16,
+
+            fontWeight: FontWeight.bold,
+
+            color: (data.variant == PostCardVariant.hot ||
+                    data.variant == PostCardVariant.hotPost2)
+                ? const Color(0xFFCA3500) // #CA3500 for hot posts
+                : (data.variant == PostCardVariant.wod
+                    ? const Color(0xFF008236) // #008236 for WOD posts
+                    : (data.variant == PostCardVariant.newPost
+                        ? defaultIconColor // Match arrow color for normal posts
+                        : palette.accentColor)), // Original color for other variants
+
+            fontFamily: 'Inter',
+          ),
+        ),
+
+        SizedBox(height: gapSize),
+
+        _VoteButton(
+          icon: 'assets/images/downArrow.svg',
+
+          background: downBackground,
+
+          borderColor: isDownvoted
+              ? palette.voteBorderColor
+              : Colors.transparent,
+
+          iconColor: downIconColor,
+
+          size: 34,
+
+          iconSize: 16,
+
+          onPressed: onDownvote,
+        ),
+      ],
+    );
+
+    if (data.variant == PostCardVariant.moderator) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // Base dimensions from design
+          const double baseWidth = 51.79672622680664;
+          const double baseScreenWidth = 360.0; // Common mobile screen width
+          
+          // Calculate responsive width based on screen width
+          final screenWidth = MediaQuery.of(context).size.width;
+          final scaleFactor = screenWidth / baseScreenWidth;
+          final responsiveWidth = baseWidth * scaleFactor.clamp(0.8, 1.2); // Clamp to prevent extreme scaling
+          
+          return Container(
+            width: responsiveWidth,
+            padding: const EdgeInsets.all(0.76),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFF0F7B), // #FF0F7B
+                  Color(0xFFF89B29), // #F89B29
+                ],
+              ),
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: palette.votePanelGradient,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: EdgeInsets.only(top: verticalPadding, bottom: verticalPadding),
+              child: votePanelContent,
+            ),
+          );
+        },
+      );
+    }
+
+    if (data.variant == PostCardVariant.admin) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // Base dimensions from design
+          const double baseWidth = 51.79672622680664;
+          const double baseScreenWidth = 360.0; // Common mobile screen width
+          
+          // Calculate responsive width based on screen width
+          final screenWidth = MediaQuery.of(context).size.width;
+          final scaleFactor = screenWidth / baseScreenWidth;
+          final responsiveWidth = baseWidth * scaleFactor.clamp(0.8, 1.2); // Clamp to prevent extreme scaling
+          
+          return Container(
+            width: responsiveWidth,
+            padding: const EdgeInsets.all(0.76),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF4F39F6), // #4F39F6
+                  Color(0xFF9810FA), // #9810FA
+                ],
+              ),
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: palette.votePanelGradient,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              padding: EdgeInsets.only(top: verticalPadding, bottom: verticalPadding),
+              child: votePanelContent,
+            ),
+          );
+        },
+      );
+    }
 
     return Container(
       width: 65,
@@ -3037,72 +3535,14 @@ class _VotePanel extends StatelessWidget {
 
         borderRadius: BorderRadius.circular(16),
 
-        border: Border.all(color: palette.votePanelBorderColor, width: 1.2),
+        border: data.variant == PostCardVariant.wod
+            ? Border.all(color: const Color(0xFF008236), width: 0.76) // #008236 on all sides
+            : Border.all(color: palette.votePanelBorderColor, width: 1.2),
       ),
 
       padding: const EdgeInsets.symmetric(vertical: 12),
 
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-
-        children: [
-          _VoteButton(
-            icon: 'assets/images/upArrow.svg',
-
-            background: upBackground,
-
-            borderColor: isUpvoted
-                ? palette.voteBorderColor
-                : Colors.transparent,
-
-            iconColor: upIconColor,
-
-            size: 34,
-
-            iconSize: 16,
-
-            onPressed: onUpvote,
-          ),
-
-          const SizedBox(height: 10),
-
-          Text(
-            '$votes',
-
-            style: TextStyle(
-              fontSize: 16,
-
-              fontWeight: FontWeight.bold,
-
-              color: data.variant == PostCardVariant.hot
-                  ? const Color(0xFFCA3500) // #CA3500 for hot posts
-                  : palette.accentColor, // Original color for other variants
-
-              fontFamily: 'Inter',
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          _VoteButton(
-            icon: 'assets/images/downArrow.svg',
-
-            background: downBackground,
-
-            borderColor: isDownvoted
-                ? palette.voteBorderColor
-                : Colors.transparent,
-
-            iconColor: downIconColor,
-
-            size: 34,
-
-            iconSize: 16,
-
-            onPressed: onDownvote,
-          ),
-        ],
-      ),
+      child: votePanelContent,
     );
   }
 }
@@ -3172,14 +3612,13 @@ class _VoteButton extends StatelessWidget {
       return child;
     }
 
-    return Material(
-      color: Colors.transparent,
-
-      child: InkWell(
-        onTap: onPressed,
-
-        borderRadius: BorderRadius.circular(12),
-
+    // Use GestureDetector instead of InkWell for better cross-platform compatibility
+    // InkWell can have hit testing issues on iOS, especially with small buttons
+    return GestureDetector(
+      onTap: onPressed,
+      behavior: HitTestBehavior.opaque, // Ensures entire area is tappable on iOS
+      child: Material(
+        color: Colors.transparent,
         child: child,
       ),
     );
@@ -3484,16 +3923,34 @@ class _CommentsSection extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(left: 28, top: 8),
 
-                    child: _CommentInputField(
-                      palette: palette,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Replying to indicator
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'Replying to ${comments[i].author}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: Color(0xFF62748E),
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ),
+                        _CommentInputField(
+                          palette: palette,
 
-                      controller: replyController!,
+                          controller: replyController!,
 
-                      buttonLabel: 'Reply',
+                          buttonLabel: 'Reply',
 
-                      onSubmit: (value) => onSubmitReply!(i, value),
+                          onSubmit: (value) => onSubmitReply!(i, value),
 
-                      autoClear: false,
+                          autoClear: false,
+                        ),
+                      ],
                     ),
                   ),
 
@@ -4091,11 +4548,16 @@ class _CommentCardState extends State<_CommentCard> {
 
   String? _currentUserId;
 
+  bool _isVoting = false; // Flag to prevent multiple simultaneous votes
+
   @override
   void initState() {
     super.initState();
 
     _currentVotes = _initialVotes;
+    // Initialize user vote from comment data (persisted state from backend)
+    // This ensures the vote highlight is shown when user reopens the app
+    _userVote = widget.comment.userVote;
     _loadCurrentUserId();
   }
 
@@ -4119,6 +4581,13 @@ class _CommentCardState extends State<_CommentCard> {
     return _currentUserId == widget.comment.userId;
   }
 
+  int _parseInt(Object? value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
   @override
   void didUpdateWidget(covariant _CommentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -4126,8 +4595,11 @@ class _CommentCardState extends State<_CommentCard> {
     if (oldWidget.comment.upvotes != widget.comment.upvotes ||
         oldWidget.comment.downvotes != widget.comment.downvotes) {
       _currentVotes = _initialVotes;
-
-      _userVote = 0;
+    }
+    
+    // Update user vote state from new comment data
+    if (oldWidget.comment.userVote != widget.comment.userVote) {
+      _userVote = widget.comment.userVote;
     }
   }
 
@@ -4138,11 +4610,15 @@ class _CommentCardState extends State<_CommentCard> {
   String get _currentVotesLabel => _currentVotesValue.toString();
 
   Future<void> _handleUpvote() async {
+    // Prevent multiple simultaneous votes
+    if (_isVoting) return;
+    
     final previousVote = _userVote;
 
     final previousVotes = _currentVotes;
 
     setState(() {
+      _isVoting = true;
       int updated = _currentVotesValue;
 
       if (_userVote == 1) {
@@ -4171,37 +4647,112 @@ class _CommentCardState extends State<_CommentCard> {
     try {
       final voteType = previousVote == 1 ? 'remove' : 'upvote';
 
-      await _postService.voteComment(
+      final response = await _postService.voteComment(
         commentId: widget.comment.id,
         voteType: voteType,
       );
-    } catch (e) {
-      // Revert on error
 
-      if (mounted) {
+      // Check if response indicates an error
+      if (mounted && response['success'] == false) {
+        final errorMessage = (response['message'] ?? response['error'] ?? 'Failed to vote').toString().toLowerCase();
+        
+        // Handle specific error gracefully - don't show error for duplicate vote attempts
+        final isDuplicateVoteError = errorMessage.contains('you have not voted') ||
+            errorMessage.contains('not voted on this comment') ||
+            errorMessage.contains('already voted') ||
+            errorMessage.contains('have not voted') ||
+            errorMessage.contains('failed to vote you have not voted') ||
+            errorMessage.contains('you have not voted on this comment');
+        
         setState(() {
           _currentVotes = previousVotes;
-
           _userVote = previousVote;
+          _isVoting = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-          ),
-        );
+        // Only show error if it's not a duplicate vote error
+        if (!isDuplicateVoteError) {
+          PalToast.show(
+            context,
+            message: 'Failed to vote: ${response['message'] ?? response['error'] ?? 'Unknown error'}',
+            isError: true,
+          );
+        }
+        return;
+      }
+
+      // Sync with backend response to ensure consistency
+      if (mounted && response['upvote_count'] != null) {
+        final upvotes = _parseInt(response['upvote_count']);
+        final downvotes = _parseInt(response['downvote_count'] ?? 0);
+        final userVoteStr = response['user_vote']?.toString().toLowerCase();
+
+        setState(() {
+          // Update vote counts from backend
+          final netScore = upvotes - downvotes;
+          _currentVotes = netScore;
+
+          // Map backend user_vote string to our integer state
+          if (userVoteStr == 'upvote') {
+            _userVote = 1;
+          } else if (userVoteStr == 'downvote') {
+            _userVote = -1;
+          } else {
+            _userVote = 0;
+          }
+          _isVoting = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isVoting = false;
+        });
+      }
+    } catch (e) {
+      // Revert on error
+      if (mounted) {
+        final errorMessage = e.toString().toLowerCase();
+        
+        // Handle specific error gracefully - don't show error for duplicate vote attempts
+        final isDuplicateVoteError = errorMessage.contains('you have not voted') ||
+            errorMessage.contains('not voted on this comment') ||
+            errorMessage.contains('already voted') ||
+            errorMessage.contains('have not voted') ||
+            errorMessage.contains('failed to vote you have not voted') ||
+            errorMessage.contains('you have not voted on this comment');
+        
+        setState(() {
+          _currentVotes = previousVotes;
+          _userVote = previousVote;
+          _isVoting = false;
+        });
+
+        // Only show error if it's not a duplicate vote error
+        if (!isDuplicateVoteError) {
+          // Check if it's a network error
+          if (ErrorHandler.isNetworkError(e)) {
+            ErrorHandler.showOfflineToast(context);
+          } else {
+            PalToast.show(
+              context,
+              message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+              isError: true,
+            );
+          }
+        }
       }
     }
   }
 
   Future<void> _handleDownvote() async {
+    // Prevent multiple simultaneous votes
+    if (_isVoting) return;
+    
     final previousVote = _userVote;
 
     final previousVotes = _currentVotes;
 
     setState(() {
+      _isVoting = true;
       int updated = _currentVotesValue;
 
       if (_userVote == -1) {
@@ -4230,27 +4781,98 @@ class _CommentCardState extends State<_CommentCard> {
     try {
       final voteType = previousVote == -1 ? 'remove' : 'downvote';
 
-      await _postService.voteComment(
+      final response = await _postService.voteComment(
         commentId: widget.comment.id,
         voteType: voteType,
       );
-    } catch (e) {
-      // Revert on error
 
-      if (mounted) {
+      // Check if response indicates an error
+      if (mounted && response['success'] == false) {
+        final errorMessage = (response['message'] ?? response['error'] ?? 'Failed to vote').toString().toLowerCase();
+        
+        // Handle specific error gracefully - don't show error for duplicate vote attempts
+        final isDuplicateVoteError = errorMessage.contains('you have not voted') ||
+            errorMessage.contains('not voted on this comment') ||
+            errorMessage.contains('already voted') ||
+            errorMessage.contains('have not voted') ||
+            errorMessage.contains('failed to vote you have not voted') ||
+            errorMessage.contains('you have not voted on this comment');
+        
         setState(() {
           _currentVotes = previousVotes;
-
           _userVote = previousVote;
+          _isVoting = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
-            ),
-          ),
-        );
+        // Only show error if it's not a duplicate vote error
+        if (!isDuplicateVoteError) {
+          PalToast.show(
+            context,
+            message: 'Failed to vote: ${response['message'] ?? response['error'] ?? 'Unknown error'}',
+            isError: true,
+          );
+        }
+        return;
+      }
+
+      // Sync with backend response to ensure consistency
+      if (mounted && response['upvote_count'] != null) {
+        final upvotes = _parseInt(response['upvote_count']);
+        final downvotes = _parseInt(response['downvote_count'] ?? 0);
+        final userVoteStr = response['user_vote']?.toString().toLowerCase();
+
+        setState(() {
+          // Update vote counts from backend
+          final netScore = upvotes - downvotes;
+          _currentVotes = netScore;
+
+          // Map backend user_vote string to our integer state
+          if (userVoteStr == 'upvote') {
+            _userVote = 1;
+          } else if (userVoteStr == 'downvote') {
+            _userVote = -1;
+          } else {
+            _userVote = 0;
+          }
+          _isVoting = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isVoting = false;
+        });
+      }
+    } catch (e) {
+      // Revert on error
+      if (mounted) {
+        final errorMessage = e.toString().toLowerCase();
+        
+        // Handle specific error gracefully - don't show error for duplicate vote attempts
+        final isDuplicateVoteError = errorMessage.contains('you have not voted') ||
+            errorMessage.contains('not voted on this comment') ||
+            errorMessage.contains('already voted') ||
+            errorMessage.contains('have not voted') ||
+            errorMessage.contains('failed to vote you have not voted') ||
+            errorMessage.contains('you have not voted on this comment');
+        
+        setState(() {
+          _currentVotes = previousVotes;
+          _userVote = previousVote;
+          _isVoting = false;
+        });
+
+        // Only show error if it's not a duplicate vote error
+        if (!isDuplicateVoteError) {
+          // Check if it's a network error
+          if (ErrorHandler.isNetworkError(e)) {
+            ErrorHandler.showOfflineToast(context);
+          } else {
+            PalToast.show(
+              context,
+              message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+              isError: true,
+            );
+          }
+        }
       }
     }
   }
@@ -4508,7 +5130,7 @@ class _CommentCardState extends State<_CommentCard> {
 
                           isActive: hasUpvoted,
 
-                          onTap: _handleUpvote,
+                          onTap: _isVoting ? () {} : _handleUpvote,
 
                           activeColor: palette.commentAccentColor,
                         ),
@@ -4538,7 +5160,7 @@ class _CommentCardState extends State<_CommentCard> {
 
                           isActive: hasDownvoted,
 
-                          onTap: _handleDownvote,
+                          onTap: _isVoting ? () {} : _handleDownvote,
 
                           activeColor: palette.downvoteColor,
                         ),
@@ -4714,7 +5336,16 @@ class _CommentAvatar extends StatelessWidget {
     // Prefer network image (profilePictureUrl), then asset, then initials
     final hasNetworkImage =
         profilePictureUrl != null && profilePictureUrl!.isNotEmpty;
-    final hasAsset = asset != null && asset!.isNotEmpty;
+    
+    // Check if asset is a default profile image (SVG only) - if so, treat it as no asset and show initials
+    // PNG files like 'assets/feedPage/profile.png' are valid hardcoded assets for seed posts
+    final isDefaultProfileAsset = asset != null && (
+      asset!.contains('profile.svg') ||
+      asset == 'assets/feedPage/profile.svg' ||
+      asset == 'assets/images/profile.svg'
+    );
+    
+    final hasAsset = asset != null && asset!.isNotEmpty && !isDefaultProfileAsset;
     final displayInitials = initials ?? 'U';
 
     Widget buildImageWidget(String path) {
@@ -4728,31 +5359,14 @@ class _CommentAvatar extends StatelessWidget {
           width: 32,
           height: 32,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => SvgPicture.asset(
-            'assets/feedPage/profile.svg',
-            width: 32,
-            height: 32,
-            fit: BoxFit.cover,
-          ),
+          errorBuilder: (_, __, ___) => _buildInitialsPlaceholder(displayInitials),
         ),
       );
     }
 
     return ClipOval(
-      child: hasNetworkImage
-          ? Image.network(
-              profilePictureUrl!,
-              width: 32,
-              height: 32,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return _buildInitialsPlaceholder(displayInitials);
-              },
-              errorBuilder: (context, error, stackTrace) =>
-                  _buildInitialsPlaceholder(displayInitials),
-            )
-          : hasAsset && asset!.startsWith('http')
+      child: hasAsset && asset!.startsWith('http')
+          // Network asset (unlikely but handle it)
           ? CircleAvatar(
               radius: 16,
               backgroundImage: NetworkImage(asset!),
@@ -4760,7 +5374,28 @@ class _CommentAvatar extends StatelessWidget {
               child: _buildInitialsPlaceholder(displayInitials),
             )
           : hasAsset
+          // Hardcoded comments: use asset (for seed posts with avatarAsset set)
           ? ClipOval(child: buildImageWidget(asset!))
+          : hasNetworkImage
+          // Regular users: try to load profile picture, fallback to initials on error
+          ? Image.network(
+              profilePictureUrl!,
+              width: 32,
+              height: 32,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                // Show initials while loading
+                if (loadingProgress == null) return child;
+                return _buildInitialsPlaceholder(displayInitials);
+              },
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback to initials if profile picture fails to load
+                // This ensures regular users always see initials when image fails
+                return _buildInitialsPlaceholder(displayInitials);
+              },
+            )
+          // No profile picture and no asset: show initials
+          // This ensures regular users without profile pictures always see initials
           : _buildInitialsPlaceholder(displayInitials),
     );
   }
@@ -4999,6 +5634,91 @@ class _PostCardPalette {
           commentBubbleBorderColor: const Color(0xFFBDD6FF),
         );
 
+      case PostCardVariant.topPost2:
+        return _PostCardPalette(
+          borderColor: const Color(0x4DBEDBFF),
+
+          titleColor: const Color(0xFF0F172A),
+
+          accentColor: const Color(0xFF1447E6),
+
+          metaColor: const Color(0xFF94A3B8),
+
+          commentBackground: const Color(0x1A2B7FFF),
+
+          commentBorderColor: const Color(0xFF2B7FFF),
+
+          commentAccentColor: const Color(0xFF1447E6),
+
+          voteButtonBackground: const Color(0xFF2B7FFF),
+
+          voteBorderColor: Colors.transparent,
+
+          downvoteColor: const Color(0xFF1D4ED8),
+
+          avatarBorderColor: const Color(0xFF5A8DFC),
+
+          votePanelGradient: const [Color(0xFFF0F6FF), Color(0xFFE3ECFF)],
+
+          votePanelBorderColor: const Color(0xFF8EC5FF),
+
+          outerBorderColor: const Color(0xFF8EC5FF),
+
+          outerShadowPrimary: Colors.transparent,
+
+          outerShadowSecondary: Colors.transparent,
+
+          outerShadowTertiary: Colors.transparent,
+
+          showHeader: false, // No header badge for topPost2
+
+          headerGradient: const [
+            Color(0xFFEFF6FF),
+
+            Color(0xB8EEF2F8),
+
+            Color(0x00ECE8E8),
+          ],
+
+          headerBorderColor: Colors.transparent,
+
+          headerPillColor: const Color(0xFF2B7FFF),
+
+          headerPillShadows: const [
+            BoxShadow(
+              color: Color(0x332B7FFF),
+
+              blurRadius: 4,
+
+              offset: Offset(0, 2),
+            ),
+
+            BoxShadow(
+              color: Color(0x332B7FFF),
+
+              blurRadius: 6,
+
+              offset: Offset(0, 3),
+            ),
+          ],
+
+          headerLabel: '👑 Top Post',
+
+          headerIconAsset: 'assets/images/topIcon.svg',
+
+          locationBackground: const Color.fromRGBO(239, 246, 255, 1),
+
+          locationBorder: const Color.fromRGBO(165, 210, 255, 1),
+
+          locationForeground: const Color(0xFF1447E6),
+
+          upvoteIconColor: Colors.white,
+
+          commentsSectionBackground: const Color.fromRGBO(239, 246, 255, 0.35),
+
+          commentBubbleBorderColor: const Color(0xFFBDD6FF),
+        );
+
       case PostCardVariant.hot:
         return _PostCardPalette(
           borderColor: const Color(0xFFFFD0A6),
@@ -5086,6 +5806,93 @@ class _PostCardPalette {
           commentBubbleBorderColor: const Color(0xFFFFB86A),
         );
 
+      case PostCardVariant.hotPost2:
+        return _PostCardPalette(
+          borderColor: const Color(0xFFFFD0A6),
+
+          titleColor: const Color(0xFF331B09),
+
+          accentColor: const Color(0xFFFF7A00),
+
+          metaColor: const Color(0xFFB4692E),
+
+          commentBackground: const Color(0x1AFF6900),
+
+          commentBorderColor: const Color(0xFFFF6900),
+
+          commentAccentColor: const Color(0xFFCA3500),
+
+          voteButtonBackground: const Color(0xFFFF6900),
+
+          voteBorderColor: Colors.transparent,
+
+          downvoteColor: const Color(0xFFF97316),
+
+          avatarBorderColor: const Color(0xFFFFB86A),
+
+          votePanelGradient: const [
+            Color.fromRGBO(255, 237, 212, 1),
+
+            Color.fromRGBO(255, 247, 237, 1),
+          ],
+
+          votePanelBorderColor: const Color(0xFFFFB86A),
+
+          outerBorderColor: const Color(0xFFFFB86A), // #FFB86A
+
+          outerShadowPrimary: Colors.transparent,
+
+          outerShadowSecondary: Colors.transparent,
+
+          outerShadowTertiary: Colors.transparent,
+
+          showHeader: false, // No header badge for hotPost2
+
+          headerGradient: const [
+            Color.fromRGBO(255, 247, 237, 1),
+
+            Color.fromRGBO(236, 232, 232, 0),
+          ],
+
+          headerBorderColor: Colors.transparent,
+
+          headerPillColor: const Color(0xFFFF6900),
+
+          headerPillShadows: const [
+            BoxShadow(
+              color: Color(0x33FF6900),
+
+              blurRadius: 4,
+
+              offset: Offset(0, 2),
+            ),
+
+            BoxShadow(
+              color: Color(0x33FF6900),
+
+              blurRadius: 6,
+
+              offset: Offset(0, 3),
+            ),
+          ],
+
+          headerLabel: '🔥 Hottest Post',
+
+          headerIconAsset: 'assets/images/hotIcon.svg',
+
+          locationBackground: const Color.fromRGBO(255, 247, 237, 1),
+
+          locationBorder: const Color.fromRGBO(255, 184, 106, 1),
+
+          locationForeground: const Color.fromRGBO(202, 53, 0, 1),
+
+          upvoteIconColor: Colors.white,
+
+          commentsSectionBackground: const Color.fromRGBO(255, 247, 237, 0.4),
+
+          commentBubbleBorderColor: const Color(0xFFFFB86A),
+        );
+
       case PostCardVariant.newPost:
         return _PostCardPalette(
           borderColor: const Color(0xFFD1D6DE),
@@ -5108,7 +5915,7 @@ class _PostCardPalette {
 
           downvoteColor: const Color(0xFF64748B),
 
-          avatarBorderColor: const Color(0xFF45556C),
+          avatarBorderColor: const Color(0xFF0F172B), // #0F172B
 
           votePanelGradient: const [
             Color.fromRGBO(248, 250, 252, 1),
@@ -5167,7 +5974,7 @@ class _PostCardPalette {
 
           commentBorderColor: const Color(0xFF45556C),
 
-          commentAccentColor: const Color(0xFF45556C),
+          commentAccentColor: const Color(0xFF008236), // #008236
 
           voteButtonBackground: Colors.transparent,
 
@@ -5175,15 +5982,14 @@ class _PostCardPalette {
 
           downvoteColor: const Color(0xFF64748B),
 
-          avatarBorderColor: const Color(0xFF545E65),
+          avatarBorderColor: const Color(0xFF0EA54D), // #0EA54D
 
           votePanelGradient: const [
-            Color.fromRGBO(228, 229, 230, 1),
-
-            Color.fromRGBO(248, 250, 252, 1),
+            Color(0xFFF8FFFB), // #F8FFFB
+            Color(0xFFF8FFFB), // #F8FFFB
           ],
 
-          votePanelBorderColor: const Color.fromRGBO(226, 232, 240, 1),
+          votePanelBorderColor: const Color(0xFF008236), // #008236
 
           outerBorderColor: const Color(0x4D010B13),
 
@@ -5199,7 +6005,7 @@ class _PostCardPalette {
 
           headerBorderColor: Colors.transparent,
 
-          headerPillColor: const Color(0xFF100C08),
+          headerPillColor: const Color(0xFF409965), // #409965
 
           headerPillShadows: const [
             BoxShadow(
@@ -5233,6 +6039,80 @@ class _PostCardPalette {
 
           commentsSectionBackground: const Color.fromRGBO(248, 250, 252, 0.6),
 
+          commentBubbleBorderColor: const Color(0xFFE2E8F0),
+        );
+
+      case PostCardVariant.moderator:
+        return _PostCardPalette(
+          borderColor: const Color(0xFFD1D6DE),
+          titleColor: const Color(0xFF0F172A),
+          accentColor: const Color.fromRGBO(15, 23, 43, 1),
+          metaColor: const Color(0xFF94A3B8),
+          commentBackground: const Color(0x1A45556C),
+          commentBorderColor: const Color(0xFF45556C),
+          commentAccentColor: const Color(0xFF45556C),
+          voteButtonBackground: Colors.transparent,
+          voteBorderColor: Colors.transparent,
+          downvoteColor: const Color(0xFF64748B),
+          avatarBorderColor: const Color(0xFF45556C), // Not used for moderator, gradient border instead
+          votePanelGradient: const [
+            Color.fromRGBO(248, 250, 252, 1),
+            Color.fromRGBO(248, 250, 252, 1),
+          ],
+          votePanelBorderColor: const Color.fromRGBO(226, 232, 240, 1),
+          outerBorderColor: const Color(0xFFE2E8F0),
+          outerShadowPrimary: Colors.transparent,
+          outerShadowSecondary: Colors.transparent,
+          outerShadowTertiary: Colors.transparent,
+          showHeader: false,
+          headerGradient: const [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
+          headerBorderColor: Colors.transparent,
+          headerPillColor: Colors.transparent,
+          headerPillShadows: const [],
+          headerLabel: '',
+          headerIconAsset: '',
+          locationBackground: const Color.fromRGBO(248, 250, 252, 1),
+          locationBorder: const Color.fromRGBO(226, 232, 240, 1),
+          locationForeground: const Color(0xFF334155),
+          upvoteIconColor: const Color.fromRGBO(15, 23, 43, 1),
+          commentsSectionBackground: const Color.fromRGBO(248, 250, 252, 0.6),
+          commentBubbleBorderColor: const Color(0xFFE2E8F0),
+        );
+
+      case PostCardVariant.admin:
+        return _PostCardPalette(
+          borderColor: const Color(0xFFD1D6DE),
+          titleColor: const Color(0xFF0F172A),
+          accentColor: const Color.fromRGBO(15, 23, 43, 1),
+          metaColor: const Color(0xFF94A3B8),
+          commentBackground: const Color(0x1A45556C),
+          commentBorderColor: const Color(0xFF45556C),
+          commentAccentColor: const Color(0xFF45556C),
+          voteButtonBackground: Colors.transparent,
+          voteBorderColor: Colors.transparent,
+          downvoteColor: const Color(0xFF64748B),
+          avatarBorderColor: const Color(0xFF45556C), // Not used for admin, gradient border instead
+          votePanelGradient: const [
+            Color.fromRGBO(248, 250, 252, 1),
+            Color.fromRGBO(248, 250, 252, 1),
+          ],
+          votePanelBorderColor: const Color.fromRGBO(226, 232, 240, 1),
+          outerBorderColor: const Color(0xFFE2E8F0),
+          outerShadowPrimary: Colors.transparent,
+          outerShadowSecondary: Colors.transparent,
+          outerShadowTertiary: Colors.transparent,
+          showHeader: false,
+          headerGradient: const [Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
+          headerBorderColor: Colors.transparent,
+          headerPillColor: Colors.transparent,
+          headerPillShadows: const [],
+          headerLabel: '',
+          headerIconAsset: '',
+          locationBackground: const Color.fromRGBO(248, 250, 252, 1),
+          locationBorder: const Color.fromRGBO(226, 232, 240, 1),
+          locationForeground: const Color(0xFF334155),
+          upvoteIconColor: const Color.fromRGBO(15, 23, 43, 1),
+          commentsSectionBackground: const Color.fromRGBO(248, 250, 252, 0.6),
           commentBubbleBorderColor: const Color(0xFFE2E8F0),
         );
     }

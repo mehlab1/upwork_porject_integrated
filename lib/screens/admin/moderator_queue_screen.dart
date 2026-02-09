@@ -52,10 +52,12 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
                     child: Text(
                       'Moderator Queue',
                       style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF0F172B),
                         fontFamily: 'Inter',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 20,
+                        height: 36 / 20, // line-height: 36px
+                        letterSpacing: 0.07,
+                        color: Color(0xFF0F172B),
                       ),
                     ),
                   ),
@@ -111,7 +113,6 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
             MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
           );
         },
-        showNotificationDot: true,
       ),
     );
   }
@@ -136,11 +137,13 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
         const Text(
           'NEW QUEUE',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF62748E),
-            letterSpacing: 0.6,
             fontFamily: 'Inter',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontStyle: FontStyle.normal,
+            height: 16 / 14, // line-height: 16px
+            letterSpacing: 0.6,
+            color: Color(0xFF62748E),
           ),
         ),
         const SizedBox(height: 12),
@@ -161,11 +164,13 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
         const Text(
           'HISTORY',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF62748E),
-            letterSpacing: 0.6,
             fontFamily: 'Inter',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontStyle: FontStyle.normal,
+            height: 16 / 14, // line-height: 16px
+            letterSpacing: 0.6,
+            color: Color(0xFF62748E),
           ),
         ),
         const SizedBox(height: 12),
@@ -206,11 +211,13 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
         const Text(
           'NEW QUEUE',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF62748E),
-            letterSpacing: 0.6,
             fontFamily: 'Inter',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontStyle: FontStyle.normal,
+            height: 16 / 14, // line-height: 16px
+            letterSpacing: 0.6,
+            color: Color(0xFF62748E),
           ),
         ),
         const SizedBox(height: 12),
@@ -236,11 +243,13 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
         const Text(
           'HISTORY',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF62748E),
-            letterSpacing: 0.6,
             fontFamily: 'Inter',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontStyle: FontStyle.normal,
+            height: 16 / 14, // line-height: 16px
+            letterSpacing: 0.6,
+            color: Color(0xFF62748E),
           ),
         ),
         const SizedBox(height: 12),
@@ -281,11 +290,13 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
         const Text(
           'PENDING REVIEW',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF62748E),
-            letterSpacing: 0.6,
             fontFamily: 'Inter',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontStyle: FontStyle.normal,
+            height: 16 / 14, // line-height: 16px
+            letterSpacing: 0.6,
+            color: Color(0xFF62748E),
           ),
         ),
         const SizedBox(height: 12),
@@ -307,11 +318,13 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
         const Text(
           'RESOLVED',
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF62748E),
-            letterSpacing: 0.6,
             fontFamily: 'Inter',
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontStyle: FontStyle.normal,
+            height: 16 / 14, // line-height: 16px
+            letterSpacing: 0.6,
+            color: Color(0xFF62748E),
           ),
         ),
         const SizedBox(height: 12),
@@ -420,7 +433,7 @@ class _ModeratorQueueScreenState extends State<ModeratorQueueScreen> {
                     Row(
                       children: [
                         Text(
-                          username,
+                          username.startsWith('@') ? username : '@$username',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,

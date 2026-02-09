@@ -64,7 +64,7 @@ class CommentItem extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      username,
+                      username.startsWith('@') ? username : '@$username',
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

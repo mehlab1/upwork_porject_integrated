@@ -1,8 +1,46 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../widgets/error_dialog.dart';
+import '../widgets/pal_toast.dart';
 
 /// Error handling utility class that converts technical errors to human-readable messages
 class ErrorHandler {
+  /// Checks if an error is a network/offline error
+  static bool isNetworkError(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+    
+    // Check for common network error patterns
+    return errorStr.contains('clientexception') ||
+        errorStr.contains('socketexception') ||
+        errorStr.contains('failed host lookup') ||
+        errorStr.contains('socket failed') ||
+        errorStr.contains('network is unreachable') ||
+        errorStr.contains('connection refused') ||
+        errorStr.contains('connection closed') ||
+        errorStr.contains('connection reset') ||
+        errorStr.contains('connection timed out') ||
+        errorStr.contains('no internet') ||
+        errorStr.contains('network error') ||
+        errorStr.contains('xmlhttprequest') ||
+        errorStr.contains('httpclientexception') ||
+        errorStr.contains('timeout') ||
+        error is SocketException ||
+        error is HttpException;
+  }
+  
+  /// Gets a user-friendly offline message
+  static String getOfflineMessage() {
+    return 'No internet connection. Please check your network and try again.';
+  }
+  
+  /// Shows a user-friendly offline toast notification
+  static void showOfflineToast(BuildContext context) {
+    PalToast.show(
+      context,
+      message: getOfflineMessage(),
+      isError: true,
+    );
+  }
   /// Maps technical error messages to human-readable formats with 15+ scenarios
   static Future<void> showHumanReadableError(
     BuildContext context, {
@@ -24,15 +62,15 @@ class ErrorHandler {
         errorLower.contains('failed host lookup') ||
         errorLower.contains('connection refused') ||
         errorLower.contains('network is unreachable')) {
-      title = customTitle ?? 'Connection Error';
-      subtitle = customSubtitle ?? 'Unable to connect';
-      message = 'Your internet connection was lost or is unstable. Please check your connection and try again.';
+      title = customTitle ?? 'No Network';
+      subtitle = customSubtitle ?? 'Connection issue';
+      message = 'No Network, check your internet connection';
     }
     // 2. Timeout Errors
     else if (errorLower.contains('timeout')) {
-      title = customTitle ?? 'Request Timeout';
-      subtitle = customSubtitle ?? 'Request took too long';
-      message = 'The request took too long to complete. Please check your connection and try again.';
+      title = customTitle ?? 'No Network';
+      subtitle = customSubtitle ?? 'Connection issue';
+      message = 'No Network, check your internet connection';
     }
     // 3. Authentication/Session Errors
     else if (errorLower.contains('unauthorized') ||
@@ -172,13 +210,13 @@ class ErrorHandler {
     
     // Handle XMLHttpRequest errors specifically
     if (errorLower.contains('xmlhttprequest')) {
-      return 'Your internet connection was lost or is unstable. Please check your connection and try again.';
+      return 'No Network, check your internet connection';
     }
     
     // Handle other HTTP-related technical errors
     if (errorLower.contains('http') && 
         (errorLower.contains('error') || errorLower.contains('failed') || errorLower.contains('exception'))) {
-      return 'We couldn\'t connect to the server. Please check your internet connection and try again.';
+      return 'No Network, check your internet connection';
     }
     
     // Remove common technical prefixes
@@ -194,7 +232,7 @@ class ErrorHandler {
         readable.toLowerCase().contains('xmlhttprequest') ||
         readable.toLowerCase().contains('httpclient') ||
         readable.toLowerCase().startsWith('http')) {
-      return 'We encountered an unexpected issue. Please try again.';
+      return 'No Network, check your internet connection';
     }
 
     // Capitalize first letter

@@ -54,10 +54,12 @@ class _JuniorModeratorQueueScreenState
                     child: Text(
                       'Junior Moderator Queue',
                       style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF0F172B),
                         fontFamily: 'Inter',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 20,
+                        height: 36 / 20, // line-height: 36px
+                        letterSpacing: 0.07,
+                        color: Color(0xFF0F172B),
                       ),
                     ),
                   ),
@@ -110,7 +112,6 @@ class _JuniorModeratorQueueScreenState
               MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
             );
           },
-          showNotificationDot: true,
         ),
     );
   }
@@ -308,16 +309,41 @@ class _JuniorModeratorQueueScreenState
     required int voteCount,
     required int commentCount,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 0.756),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final maxCardWidth = 360.0;
+        final cardWidth = screenWidth < maxCardWidth 
+            ? screenWidth - 30 // Account for padding (15 on each side)
+            : maxCardWidth;
+        
+        return Container(
+          width: cardWidth,
+          constraints: BoxConstraints(
+            maxWidth: maxCardWidth,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFE2E8F0),
+              width: 0.76,
+            ),
+          ),
+          padding: const EdgeInsets.only(
+            top: 0,
+            left: 0,
+            right: 16,
+            bottom: 16,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(
+              left: 16,
+              top: 16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           // Header with avatar, username, badges, and voting
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,7 +374,7 @@ class _JuniorModeratorQueueScreenState
                     Row(
                       children: [
                         Text(
-                          username,
+                          username.startsWith('@') ? username : '@$username',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -577,7 +603,10 @@ class _JuniorModeratorQueueScreenState
             ],
           ),
         ],
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 

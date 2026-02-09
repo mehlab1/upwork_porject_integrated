@@ -127,11 +127,14 @@ class NotificationMapper {
     Color? tileBackgroundColor,
   ) {
     final commenterUsername = data['commenter_username']?.toString() ?? 'Someone';
+    final formattedUsername = commenterUsername == 'Someone' 
+        ? commenterUsername 
+        : (commenterUsername.startsWith('@') ? commenterUsername : '@$commenterUsername');
     final postContent = data['post_content']?.toString() ?? '';
 
     return NotificationItem(
       headlineParts: [
-        HeadlinePart(commenterUsername, isEmphasized: true),
+        HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' commented on your post'),
       ],
       subtitle: postContent.isNotEmpty && postContent.length <= 100 
@@ -156,10 +159,13 @@ class NotificationMapper {
     final replierUsername = data['replier_username']?.toString() ?? 
                             data['username']?.toString() ?? 
                             'Someone';
+    final formattedUsername = replierUsername == 'Someone' 
+        ? replierUsername 
+        : (replierUsername.startsWith('@') ? replierUsername : '@$replierUsername');
 
     return NotificationItem(
       headlineParts: [
-        HeadlinePart(replierUsername, isEmphasized: true),
+        HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' replied to your comment'),
       ],
       subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
@@ -183,10 +189,13 @@ class NotificationMapper {
     final voterUsername = data['voter_username']?.toString() ?? 
                           data['username']?.toString() ?? 
                           'Someone';
+    final formattedUsername = voterUsername == 'Someone' 
+        ? voterUsername 
+        : (voterUsername.startsWith('@') ? voterUsername : '@$voterUsername');
 
     return NotificationItem(
       headlineParts: [
-        HeadlinePart(voterUsername, isEmphasized: true),
+        HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' upvoted your post'),
       ],
       subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
@@ -210,10 +219,13 @@ class NotificationMapper {
     final voterUsername = data['voter_username']?.toString() ?? 
                           data['username']?.toString() ?? 
                           'Someone';
+    final formattedUsername = voterUsername == 'Someone' 
+        ? voterUsername 
+        : (voterUsername.startsWith('@') ? voterUsername : '@$voterUsername');
 
     return NotificationItem(
       headlineParts: [
-        HeadlinePart(voterUsername, isEmphasized: true),
+        HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' upvoted your comment'),
       ],
       body: data['comment_content']?.toString() ?? data['content']?.toString(),
@@ -240,11 +252,14 @@ class NotificationMapper {
     final mentionerUsername = data['mentioner_username']?.toString() ?? 
                               data['username']?.toString() ?? 
                               'Someone';
+    final formattedUsername = mentionerUsername == 'Someone' 
+        ? mentionerUsername 
+        : (mentionerUsername.startsWith('@') ? mentionerUsername : '@$mentionerUsername');
     final isInPost = notificationType == 'mention_in_post';
 
     return NotificationItem(
       headlineParts: [
-        HeadlinePart(mentionerUsername, isEmphasized: true),
+        HeadlinePart(formattedUsername, isEmphasized: true),
         HeadlinePart(isInPost ? ' mentioned you in a post' : ' mentioned you in a comment'),
       ],
       subtitle: data['post_content']?.toString() ?? data['content']?.toString(),

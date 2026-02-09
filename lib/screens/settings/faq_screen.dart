@@ -206,6 +206,16 @@ class _FaqScreenState extends State<FaqScreen> {
                             onTap: () => _toggleItem(
                               _getGlobalIndex(sectionIndex, itemIndex),
                             ),
+                            customHeight: (_faqSections[sectionIndex]['items']
+                                    as List<Map<String, String>>)[itemIndex]['question'] ==
+                                'What is \'Wahala of the Day\'?'
+                                ? 211.0
+                                : null,
+                            customSpacing: (_faqSections[sectionIndex]['items']
+                                    as List<Map<String, String>>)[itemIndex]['question'] ==
+                                'What is \'Wahala of the Day\'?'
+                                ? 16.0
+                                : null,
                           ),
                           if (itemIndex <
                               (_faqSections[sectionIndex]['items'] as List)
@@ -235,7 +245,6 @@ class _FaqScreenState extends State<FaqScreen> {
           Navigator.pushNamed(context, '/notifications');
         },
         onSettingsTap: () {},
-        showNotificationDot: true,
       ),
     );
   }
@@ -248,43 +257,61 @@ class _FaqAppBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.95),
         border: const Border(
-          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.755),
+          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.74),
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A000000),
+            offset: Offset(0, 1),
+            blurRadius: 2,
+            spreadRadius: -1,
+          ),
+          BoxShadow(
+            color: Color(0x1A000000),
+            offset: Offset(0, 1),
+            blurRadius: 3,
+            spreadRadius: 0,
+          ),
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 38, 16, 0),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Transform.rotate(
-              angle: 3.14159, // 180 degrees to face left (backwards)
-              child: SvgPicture.asset(
-                'assets/settings/dropDownIcon.svg',
-                width: 16,
-                height: 16,
-                colorFilter: const ColorFilter.mode(
-                  Color(0xFF0F172B),
-                  BlendMode.srcIn,
+      child: Transform.translate(
+        offset: const Offset(0, -15),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: Transform.rotate(
+                angle: 3.14159, // 180 degrees to face left (backwards)
+                child: SvgPicture.asset(
+                  'assets/settings/dropDownIcon.svg',
+                  width: 16,
+                  height: 16,
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xFF0F172B),
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Frequently Asked Questions',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF0F172B),
+                  letterSpacing: -0.38,
+                  height: 28.57 / 20, // line-height: 28.57px
                 ),
               ),
             ),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Frequently Asked Questions',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0F172B),
-                letterSpacing: 0.07,
-                height: 1.2,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -296,12 +323,16 @@ class _FaqItem extends StatelessWidget {
     required this.answer,
     required this.isExpanded,
     required this.onTap,
+    this.customHeight,
+    this.customSpacing,
   });
 
   final String question;
   final String answer;
   final bool isExpanded;
   final VoidCallback onTap;
+  final double? customHeight;
+  final double? customSpacing;
 
   @override
   Widget build(BuildContext context) {
@@ -315,62 +346,79 @@ class _FaqItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border(bottom: BorderSide(color: borderColor, width: 0.5)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Use specified width, but ensure it doesn't exceed available space
+          final cardWidth = constraints.maxWidth < 360.7061462402344
+              ? constraints.maxWidth
+              : 360.7061462402344;
+          
+          return Container(
+            width: cardWidth,
+            height: isExpanded && hasAnswer 
+                ? (customHeight ?? 184.45513916015625) 
+                : null,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(14),
+              border: isExpanded && hasAnswer
+                  ? Border.all(color: borderColor, width: 0.74)
+                  : Border(bottom: BorderSide(color: borderColor, width: 0.5)),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    question,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        question,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF0F172B),
+                          fontFamily: 'Inter',
+                          letterSpacing: -0.3,
+                          height: 20 / 14, // line-height: 20px
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Transform.rotate(
+                      angle: isExpanded
+                          ? -1.5708 // -90 degrees - point up when expanded
+                          : 1.5708, // 90 degrees - point down when collapsed
+                      child: SvgPicture.asset(
+                        'assets/settings/dropDownIcon.svg',
+                        width: 18,
+                        height: 18,
+                        colorFilter: ColorFilter.mode(
+                          const Color(0xFF0F172B).withOpacity(0.6),
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (isExpanded && hasAnswer) ...[
+                  SizedBox(height: customSpacing ?? 24),
+                  Text(
+                    answer,
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF0F172B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      color: Color(0xFF45556C),
+                      fontFamily: 'Inter',
                       letterSpacing: -0.15,
-                      height: 1.43,
+                      height: 22.75 / 12, // line-height: 22.75px
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Transform.rotate(
-                  angle: isExpanded
-                      ? -1.5708 // -90 degrees - point up when expanded
-                      : 1.5708, // 90 degrees - point down when collapsed
-                  child: SvgPicture.asset(
-                    'assets/settings/dropDownIcon.svg',
-                    width: 18,
-                    height: 18,
-                    colorFilter: ColorFilter.mode(
-                      const Color(0xFF0F172B).withOpacity(0.6),
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                ),
+                ],
               ],
             ),
-            if (isExpanded && hasAnswer) ...[
-              const SizedBox(height: 20),
-              Text(
-                answer,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  color: Color(0xFF45556C),
-                  letterSpacing: -0.15,
-                  height: 1.9,
-                ),
-              ),
-            ],
-          ],
-        ),
+          );
+        },
       ),
     );
   }

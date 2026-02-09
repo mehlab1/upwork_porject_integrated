@@ -57,7 +57,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 1. Logo fade in (standard)
     _logoAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -66,7 +66,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 2. Text fade out
     _textAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _textFadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
@@ -78,7 +78,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 3. Pal Color Animation
     _palColorAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _palColorAnimation =
@@ -91,7 +91,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 4. Kobi Fade In
     _kobiFadeAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _kobiFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -103,7 +103,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 5. Dot Color
     _dotColorAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _dotColorAnimation =
@@ -116,7 +116,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 6. Button Color
     _buttonColorAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
     _buttonColorAnimation = ColorTween(begin: Colors.white, end: _brightBlue)
@@ -129,7 +129,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 7. Slide Animation
     _kobiPalSlideAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
     _kobiPalSlideYAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -208,17 +208,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // --- TIMING SEQUENCE ---
 
-    // T=800ms: Start "pal" color change
-    Timer(const Duration(milliseconds: 800), () {
+    // T=1000ms: Start "pal" color change
+    Timer(const Duration(milliseconds: 1000), () {
       if (mounted && _showText) {
         _palColorAnimationController.forward();
       }
     });
 
-    // T=1100ms: PREPARE KOBI
+    // T=2500ms: PREPARE KOBI
     // We show it immediately so it rests at the "Initial Position" (bottom)
     // before sliding. This prevents the "starts from bottom" jump.
-    Timer(const Duration(milliseconds: 1100), () {
+    // Increased delay to allow pal color animation to complete (1000ms + 1200ms = 2200ms, then add 300ms gap)
+    Timer(const Duration(milliseconds: 2500), () {
       if (mounted && _showText) {
         setState(() {
           _showKobi = true;
@@ -229,10 +230,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
     });
 
-    // T=1700ms: TRANSITION
+    // T=4000ms: TRANSITION
     // Only trigger the first step of the chain.
     // The rest is handled by the StatusListener above.
-    Timer(const Duration(milliseconds: 1700), () {
+    // Increased delay to allow kobi/dot/button animations to complete (2500ms + 1200ms = 3700ms, then add 300ms gap)
+    Timer(const Duration(milliseconds: 4000), () {
       if (mounted) {
         _textAnimationController.forward();
       }
@@ -313,10 +315,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               40,
                             ).clamp(24.0, 60.0),
                             bottom: Responsive.scaledPadding(context, 40),
-                            top: Responsive.scaledPadding(context, 40),
+                            top: Responsive.scaledPadding(
+                              context,
+                              isSmallDevice ? 60 : 80,
+                            ).clamp(60.0, 100.0),
                           ),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.start,
                             children: [
                               // Logo section - centered (shows icon, animated text slides next to it)
                               Center(
@@ -334,7 +339,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                         transform: Matrix4.translationValues(
                                           -((MediaQuery.of(context).size.width /
                                                   100) *
-                                              5),
+                                              5) + 18,
                                           195,
                                           0,
                                         ), // Use transform to move visually without affecting layout flow
@@ -421,6 +426,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                       final outerPadding =
                                           24.0; // Approximation
 
+                                      // Start X should be 0 to align with "Your Every Day" text
+                                      // Both are in the same Stack with centerLeft alignment
                                       final startX = 0.0;
 
                                       // Target is center of the Card
@@ -436,11 +443,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                           outerPadding + paddingLeft;
                                       final childHalfWidth = containerWidth / 2;
 
+                                      // Account for logo icon (60px) + gap (12px) = 72px total
+                                      // To center logo+text together, adjust positioning
+                                      // Add 10px offset for final centered position
                                       final endX =
                                           (cardWidth / 2) -
                                           (totalLeftOffset + childHalfWidth) +
-                                          25;
+                                          36 +
+                                          10;
                                       // print(endX);
+                                      // Interpolate smoothly from start (aligned left) to end (centered)
                                       final currentX =
                                           startX +
                                           (endX - startX) *
@@ -484,7 +496,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                                         children: [
                                                           Text(
                                                             'pal',
-                                                            style: GoogleFonts.inter(
+                                                            style: TextStyle(
                                                               fontSize:
                                                                   isSmallDevice
                                                                   ? 42
@@ -497,11 +509,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                                               letterSpacing:
                                                                   -1.273,
                                                               height: 1.0,
+                                                              fontFamily: 'Montserrat',
                                                             ),
                                                           ),
                                                           Text(
                                                             '.',
-                                                            style: GoogleFonts.inter(
+                                                            style: TextStyle(
                                                               fontSize:
                                                                   isSmallDevice
                                                                   ? 42
@@ -513,6 +526,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                                               letterSpacing:
                                                                   -1.273,
                                                               height: 1.0,
+                                                              fontFamily: 'Montserrat',
                                                             ),
                                                           ),
                                                         ],
@@ -596,7 +610,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                                   height:
                                                       Responsive.scaledPadding(
                                                         context,
-                                                        12,
+                                                        15,
                                                       ),
                                                 ),
                                                 // "Every"
@@ -670,14 +684,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             context,
                             top: Responsive.scaledPadding(
                               context,
-                              30,
-                            ).clamp(20.0, 40.0),
+                              isSmallDevice ? 40 : 60,
+                            ).clamp(40.0, 80.0),
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              // Log In button
+                          child: Transform.translate(
+                            offset: const Offset(0, -2),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // Log In button
                               SizedBox(
                                 width: Responsive.widthPercent(
                                   context,
@@ -855,6 +871,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 height: Responsive.scaledPadding(context, 16),
                               ),
                             ],
+                            ),
                           ),
                         ),
                       ),

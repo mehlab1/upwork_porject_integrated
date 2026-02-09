@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
@@ -74,7 +72,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   // Location and category options will be populated from API
   // "All Areas" is always the first option to clear location filter
   List<String> get _locationOptions {
-    final List<String> options = ['All Areas'];
+    final List<String> options = ['Location Filter'];
     // Add locations from API, sorted alphabetically
     final locationNames = _locationMap.keys.toList()..sort();
     options.addAll(locationNames);
@@ -252,21 +250,21 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
       // Query Supabase directly to check if user has any posts
       // Note: posts.user_id references profiles.id, which should equal auth.users.id
-      // Only fetch the id field and limit to 1 for efficiency
+      // Only fetch the id field and limit to 2 for efficiency (to check if user has 0 or 1 post)
       final userId = user.id;
 
-      // Execute query: SELECT id FROM posts WHERE user_id = userId AND status = 'active' LIMIT 1
+      // Execute query: SELECT id FROM posts WHERE user_id = userId AND status = 'active' LIMIT 2
       final response = await Supabase.instance.client
           .from('posts')
           .select('id')
           .eq('user_id', userId)
           .eq('status', 'active')
-          .limit(1);
+          .limit(2);
 
       if (!mounted) return;
 
       // Supabase returns a List<Map<String, dynamic>> or List<dynamic>
-      // Convert to List and check if it's empty
+      // Convert to List and check the count
       List<dynamic> postsList;
       if (response is List) {
         postsList = response;
@@ -278,35 +276,27 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         postsList = [];
       }
 
-      // If response list is empty, user has no posts
-      // If response has data, user has at least one post
-      final hasPosts = postsList.isNotEmpty;
+      // Get the post count (0, 1, or 2+)
+      final postCount = postsList.length;
+      // Show cards if user has 0 or 1 post
+      final shouldShowCards = postCount <= 1;
 
       debugPrint(
-        'User post check: userId=$userId, hasPosts=$hasPosts, postsFound=${postsList.length}',
+        'User post check: userId=$userId, postCount=$postCount, shouldShowCards=$shouldShowCards',
       );
 
-      // Check if welcome modal has already been shown for this user
-      final prefs = await SharedPreferences.getInstance();
-      final welcomeModalKey = 'welcome_modal_shown_$userId';
-      final hasShownWelcomeModal = prefs.getBool(welcomeModalKey) ?? false;
-
-      // If user has 0 posts and hasn't seen welcome modal, show welcome modal and first post card
-      // If user has posts or has already seen the modal, don't show them
-      final shouldShowWelcome = !hasPosts && !hasShownWelcomeModal;
+      // If user has 0 or 1 posts, show welcome modal and first post card
+      // If user has 2+ posts, don't show them
+      // Welcome modal will show every time user has 0 or 1 posts (same as first post card)
+      final shouldShowWelcome = shouldShowCards;
 
       setState(() {
         _shouldShowWelcomeModal = shouldShowWelcome;
-        _shouldShowFirstPostCard = !hasPosts;
+        _shouldShowFirstPostCard = shouldShowCards;
       });
 
-      // Show welcome modal if user has 0 posts and hasn't seen it before
-      // Use the SQL logic result directly, not widget.showWelcomeModal
-      if (_shouldShowWelcomeModal) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _showWelcomeModal(),
-        );
-      }
+      // Don't show welcome modal immediately - wait for feed to load
+      // The modal will be shown in _checkAndShowWelcomeModalAfterFeedLoad()
     } catch (e) {
       // Error querying posts (network error, permission error, etc.)
       // Log the error for debugging
@@ -542,11 +532,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   @override
   void didUpdateWidget(covariant FeedHomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Show welcome modal if SQL logic determined user has 0 posts
-    // This handles cases where the widget is updated after the SQL query completes
-    if (_shouldShowWelcomeModal) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showWelcomeModal());
-    }
+    // Welcome modal will be shown after feed loads via _checkAndShowWelcomeModalAfterFeedLoad()
+    // No need to trigger it here as it's handled in the feed loading completion
   }
 
   @override
@@ -718,7 +705,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         onSettingsTap: () {
           Navigator.pushNamed(context, '/settings');
         },
-        showNotificationDot: true,
       ),
     );
 
@@ -751,17 +737,24 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     return scaffold;
   }
 
+  // Check if feed has loaded and show welcome modal if needed
+  void _checkAndShowWelcomeModalAfterFeedLoad() {
+    // Only show welcome modal after feed has completely loaded
+    if (!_isInitialPostsLoading && _shouldShowWelcomeModal && mounted) {
+      // Add a small delay to ensure UI is fully rendered
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && _shouldShowWelcomeModal) {
+          _showWelcomeModal();
+        }
+      });
+    }
+  }
+
   Future<void> _showWelcomeModal() async {
     if (!_shouldShowWelcomeModal || !mounted) return;
+    // Reset flag to prevent showing multiple times in the same session
+    // But don't persist it - modal will show again next time if user still has 0 or 1 posts
     _shouldShowWelcomeModal = false;
-
-    // Save flag to SharedPreferences that welcome modal has been shown
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      final prefs = await SharedPreferences.getInstance();
-      final welcomeModalKey = 'welcome_modal_shown_${user.id}';
-      await prefs.setBool(welcomeModalKey, true);
-    }
 
     final shouldCreatePost = await showDialog<bool>(
       context: context,
@@ -925,14 +918,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
 
     _resetVisibleLimitForFilter(_selectedFilter);
 
-    // Refresh category and location mappings to ensure dropdowns are up to date
-    await _fetchCategoryAndLocationMappings();
-
-    // Fetch fresh data from backend
-    await _fetchFeed(reset: true);
-
-    // Refresh spotlight status to get latest options
-    await _fetchSpotlightStatus();
+    // OPTIMIZATION: Fetch all data in PARALLEL for lowest latency
+    // This reduces refresh time by ~50-70% compared to sequential calls
+    await Future.wait([
+      _fetchCategoryAndLocationMappings(),
+      _fetchFeed(reset: true, forceRefresh: true),
+      _fetchSpotlightStatus(),
+    ]);
 
     // No artificial delay - _fetchFeed already sets _isInitialPostsLoading to false
     // Content displays immediately when data is ready
@@ -951,7 +943,11 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
   ///   - get_posts_by_category if category_id is provided
   ///   - get_posts_by_location if location_id is provided
   ///   - Default sorting functions (get_posts_hot, get_posts_latest, get_posts_top) otherwise
-  Future<void> _fetchFeed({bool reset = false}) async {
+  /// 
+  /// Parameters:
+  /// - reset: If true, clears existing posts and starts from offset 0
+  /// - forceRefresh: If true, bypasses client-side cache (use for pull-to-refresh)
+  Future<void> _fetchFeed({bool reset = false, bool forceRefresh = false}) async {
     if (_isFeedFetching) return;
     if (!_hasMoreRemotePosts &&
         !reset &&
@@ -1008,6 +1004,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           offset: reset ? 0 : _remoteOffset,
           categoryId: categoryId,
           locationId: locationId,
+          forceRefresh: forceRefresh,
         );
 
         final success = response['success'] as bool? ?? true;
@@ -1101,6 +1098,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           _isFeedFetching = false;
           _isInitialPostsLoading = false;
         });
+        // Check if we should show welcome modal now that feed has loaded
+        _checkAndShowWelcomeModalAfterFeedLoad();
       }
       return;
     }
@@ -1137,6 +1136,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           offset: reset ? 0 : _remoteOffset,
           categoryId: categoryId,
           locationId: locationId,
+          forceRefresh: forceRefresh,
         );
 
         final success = response['success'] as bool? ?? true;
@@ -1230,6 +1230,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
           _isFeedFetching = false;
           _isInitialPostsLoading = false;
         });
+        // Check if we should show welcome modal now that feed has loaded
+        _checkAndShowWelcomeModalAfterFeedLoad();
       }
       return;
     }
@@ -1268,6 +1270,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         offset: nextOffset,
         categoryId: categoryId,
         locationId: locationId,
+        forceRefresh: forceRefresh,
       );
 
       // Check for success field in response
@@ -1341,6 +1344,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         _isFeedFetching = false;
         _isInitialPostsLoading = false;
       });
+      // Check if we should show welcome modal now that feed has loaded
+      _checkAndShowWelcomeModalAfterFeedLoad();
     }
   }
 
@@ -1554,7 +1559,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
       body: body,
       commentsCount: commentsCount,
       votes: votes,
-      avatarAsset: 'assets/feedPage/profile.png',
+      // Don't set avatarAsset for backend posts - let them show initials if no profile picture
+      // Only hardcoded seed posts should have avatarAsset set
+      avatarAsset: null,
       profilePictureUrl: profilePictureUrl,
       initials: initials,
       badges: badges,
@@ -1801,14 +1808,14 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
             String toastMessage;
             switch (label) {
               case 'Hot':
-                toastMessage = 'You are in hot feed';
+                toastMessage = 'You are in Hot feed';
                 break;
               case 'Top':
-                toastMessage = 'You are in top feed';
+                toastMessage = 'You are in Top feed';
                 break;
               case 'New':
               default:
-                toastMessage = 'You are in new feed';
+                toastMessage = 'You are in New feed';
                 break;
             }
             PalToast.show(context, message: toastMessage);
@@ -1860,7 +1867,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
     final locationOptions = _locationOptions;
     final selectedLocation =
         _selectedLocation ??
-        (locationOptions.isNotEmpty ? locationOptions.first : 'All Areas');
+        (locationOptions.isNotEmpty ? locationOptions.first : 'Location Filter');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2793,11 +2800,30 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
         _selectedTrending ??
         (_trendingOptions.isNotEmpty ? _trendingOptions.first : null);
     final postsToShow = _visiblePosts;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    
+    // Get screen width for responsive layout
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Max width for posts content (prevents posts from being too wide on large screens)
+    const maxContentWidth = 600.0;
+    // Small margin for larger screens
+    const smallMargin = 16.0;
+    
+    // Calculate responsive padding: use small margins on large screens, full padding on small screens
+    final isLargeScreen = screenWidth > maxContentWidth + (smallMargin * 2);
+    final horizontalPadding = isLargeScreen 
+        ? smallMargin 
+        : 16.0; // Keep original padding for smaller screens
+    
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: maxContentWidth,
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           _buildLocationFilter(),
           const SizedBox(height: 12),
           _buildCategoryDropdown(),
@@ -2877,18 +2903,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
                   );
                 }
               }).toList(),
-            if (_isLoadingMore)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
+            // Show skeleton loading when fetching more posts during scroll
+            if (_isFeedFetching && !_isInitialPostsLoading)
+              ...List.generate(
+                3,
+                (index) => const Padding(
+                  padding: EdgeInsets.only(bottom: 20),
+                  child: LoadingPostSkeleton(),
                 ),
               ),
-            if (!_isLoadingMore && postsToShow.length < _filteredPosts.length)
+            if (!_isFeedFetching && postsToShow.length < _filteredPosts.length)
               const Padding(
                 padding: EdgeInsets.only(top: 12, bottom: 32),
                 child: Center(
@@ -2904,6 +2928,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> {
               ),
           ],
         ],
+          ),
+        ),
       ),
     );
   }

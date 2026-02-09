@@ -92,7 +92,6 @@ class HiddenPostsScreen extends StatelessWidget {
           onSettingsTap: () {
              // Already in settings flow
           },
-          showNotificationDot: true,
         ),
       ),
     );

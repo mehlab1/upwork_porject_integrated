@@ -20,8 +20,11 @@ import 'package:pal/services/auth_logout_service.dart';
 import 'package:pal/services/auth_remember_me_service.dart';
 import 'package:pal/services/auth_deactivate_service.dart';
 import 'package:pal/services/admin_service.dart';
+import 'package:pal/services/moderator_service.dart';
 import 'package:pal/services/fcm_service.dart';
+import 'package:pal/services/notification_count_manager.dart';
 import 'package:pal/screens/admin/admin_settings_screen.dart';
+import 'package:pal/screens/moderator/moderator_settings_screen.dart';
 import 'package:pal/services/profile_service.dart';
 import 'package:pal/services/profile_picture_service.dart';
 import 'package:pal/services/post_service.dart';
@@ -45,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
   final AuthDeactivateService _deactivateService = AuthDeactivateService();
   final AdminService _adminService = AdminService();
+  final ModeratorService _moderatorService = ModeratorService();
   final ProfileService _profileService = ProfileService();
   final PostService _postService = PostService();
   final AuthService _authService = AuthService();
@@ -70,6 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _checkAdminAndNavigate() async {
     final isAdmin = await _adminService.isAdmin();
+    final isModerator = await _moderatorService.isModerator();
     if (isAdmin && mounted) {
       // Navigate to admin settings screen after a short delay to allow widget to build
       await Future.delayed(const Duration(milliseconds: 100));
@@ -78,17 +83,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
         );
       }
+    } else if (isModerator && mounted) {
+      // Navigate to moderator settings screen after a short delay to allow widget to build
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ModeratorSettingsScreen()),
+        );
+      }
     }
   }
 
-  Future<void> _loadProfileData() async {
-    print('=== DEBUG _loadProfileData: Starting profile load ===');
+  Future<void> _loadProfileData({bool forceRefresh = false}) async {
+    print('=== DEBUG _loadProfileData: Starting profile load (forceRefresh: $forceRefresh) ===');
     setState(() {
       _isLoadingProfile = true;
     });
 
     try {
-      final profileData = await _profileService.getProfileData();
+      final profileData = await _profileService.getProfileData(forceRefresh: forceRefresh);
       print(
         'DEBUG _loadProfileData: profileData received: ${profileData != null}',
       );
@@ -764,6 +777,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Clear admin status on logout
         await _adminService.clearAdminStatus();
 
+        // Clear notification count manager
+        NotificationCountManager.instance.clear();
+
         // Unregister FCM device token
         try {
           await FCMService().unregisterDevice();
@@ -802,6 +818,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         // Clear Remember Me preference even if logout API failed
         await _rememberMeService.clearRememberMe();
+
+        // Clear notification count manager even if logout API failed
+        NotificationCountManager.instance.clear();
 
         // Unregister FCM device token even if logout API failed
         try {
@@ -999,7 +1018,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onUpdateProfilePhoto: () {
                             _showUpdateProfilePhotoDialog(context);
                             // Reload profile after photo update
-                            _loadProfileData();
+                          },
+                          onViewAllPosts: () async {
+                            debugPrint('DEBUG: onViewAllPosts callback invoked, mounted: $mounted');
+                            if (mounted) {
+                              debugPrint('DEBUG: Calling _loadProfileData with forceRefresh: true');
+                              await _loadProfileData(forceRefresh: true);
+                              debugPrint('DEBUG: _loadProfileData completed, postCount: ${_profileData?.postCount}');
+                            } else {
+                              debugPrint('DEBUG: Widget not mounted, skipping _loadProfileData');
+                            }
                           },
                         ),
                         const SizedBox(height: 20),
@@ -1288,7 +1316,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Navigator.pushNamed(context, '/notifications');
         },
         onSettingsTap: () {},
-        showNotificationDot: true,
       ),
     );
     return Stack(
@@ -1302,15 +1329,17 @@ class _ProfileOverviewCard extends StatelessWidget {
     this.profileData,
     this.isLoading = false,
     required this.onUpdateProfilePhoto,
+    this.onViewAllPosts,
   });
 
-  static const _borderColor = Color(0x0000001A);
+  static const _borderColor = Color(0x1A000000);
   static const _titleColor = Color(0xFF0F172B);
   static const _subtitleColor = Color(0xFF45556C);
 
   final ProfileData? profileData;
   final bool isLoading;
   final VoidCallback onUpdateProfilePhoto;
+  final Future<void> Function()? onViewAllPosts;
 
   @override
   Widget build(BuildContext context) {
@@ -1320,7 +1349,7 @@ class _ProfileOverviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _borderColor, width: 3),
+        border: Border.all(color: _borderColor, width: 1.51),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1517,8 +1546,21 @@ class _ProfileOverviewCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pushNamed(context, YourPostsScreen.routeName);
+              onPressed: () async {
+                final result = await Navigator.pushNamed(
+                  context,
+                  YourPostsScreen.routeName,
+                );
+                // Small delay to ensure navigation is complete
+                await Future.delayed(const Duration(milliseconds: 100));
+                // Always refresh profile data when returning to ensure count is up to date
+                if (onViewAllPosts != null) {
+                  debugPrint('DEBUG: Calling onViewAllPosts callback');
+                  await onViewAllPosts!();
+                  debugPrint('DEBUG: onViewAllPosts callback completed');
+                } else {
+                  debugPrint('DEBUG: onViewAllPosts callback is null');
+                }
               },
               icon: svg.SvgPicture.asset(
                 'assets/settings/posts.svg',
@@ -2083,8 +2125,10 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: ${e.toString()}')),
+        PalToast.show(
+          context,
+          message: 'Error picking image: ${e.toString()}',
+          isError: true,
         );
       }
     }
@@ -2115,12 +2159,10 @@ class _UpdateProfilePhotoDialogState extends State<_UpdateProfilePhotoDialog> {
         _isUploading = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to upload profile picture: ${e.toString().replaceFirst('Exception: ', '')}',
-          ),
-        ),
+      PalToast.show(
+        context,
+        message: 'Failed to upload profile picture: ${e.toString().replaceFirst('Exception: ', '')}',
+        isError: true,
       );
     }
   }

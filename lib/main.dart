@@ -18,6 +18,7 @@ import 'services/auth_state_service.dart';
 import 'services/post_service.dart';
 import 'services/fcm_service.dart';
 import 'services/notification_service.dart';
+import 'services/notification_count_manager.dart';
 
 // Conditional import: use stub on web, real implementation on mobile
 import 'fcm_setup_stub.dart'
@@ -242,6 +243,15 @@ class _PalAppState extends State<PalApp> {
           debugPrint('[PalApp] FCM initialization failed: $e');
         }
         
+        // Initialize notification count manager
+        try {
+          await NotificationCountManager.instance.initialize();
+          debugPrint('[PalApp] Notification count manager initialized');
+        } catch (e) {
+          // Notification count manager failure shouldn't block app startup
+          debugPrint('[PalApp] Notification count manager initialization failed: $e');
+        }
+        
         // User has valid session and Remember Me is enabled
         // Fetch profile to determine if welcome modal should be shown
         bool shouldShowWelcome = false;
@@ -258,7 +268,7 @@ class _PalAppState extends State<PalApp> {
               postCount = int.tryParse(pc?.toString() ?? '') ?? 0;
             }
           }
-          shouldShowWelcome = postCount == 0;
+          shouldShowWelcome = postCount <= 1;
         } catch (e) {
           // On error, default to not showing the modal
           shouldShowWelcome = false;

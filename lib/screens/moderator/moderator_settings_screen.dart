@@ -3,36 +3,35 @@ import 'package:flutter_svg/flutter_svg.dart' as svg;
 import '../../widgets/pal_bottom_nav_bar.dart';
 import '../../widgets/pal_loading_widgets.dart';
 import '../../services/profile_service.dart';
-import '../../services/admin_service.dart';
-import 'moderator_queue_screen.dart';
-import 'junior_moderator_queue_screen.dart';
-import 'content_curator_queue_screen.dart';
-import 'announcements_screen.dart';
-import 'wod_screen.dart';
-import 'top_post_screen.dart';
-import 'hot_post_screen.dart';
-import 'postTypeScreens/hidden_posts_screen.dart';
-import 'postTypeScreens/warned_posts_screen.dart';
-import 'postTypeScreens/muted_posts_screen.dart';
-import 'postTypeScreens/duplicated_posts_screen.dart';
-import 'postTypeScreens/reported_posts_screen.dart';
-import 'postTypeScreens/flagged_posts_screen.dart';
-import 'accountScreens/suspended_account_screen.dart';
-import 'accountScreens/banned_account_screen.dart';
-import 'accountScreens/shadow_ban_screen.dart';
-import 'accountScreens/flagged_account_screen.dart';
+import '../../core/responsive/responsive.dart';
+import '../admin/moderator_queue_screen.dart';
+import '../admin/junior_moderator_queue_screen.dart';
+import '../admin/content_curator_queue_screen.dart';
+import '../admin/announcements_screen.dart';
+import '../admin/wod_screen.dart';
+import '../admin/top_post_screen.dart';
+import '../admin/hot_post_screen.dart';
+import '../admin/postTypeScreens/hidden_posts_screen.dart';
+import '../admin/postTypeScreens/warned_posts_screen.dart';
+import '../admin/postTypeScreens/muted_posts_screen.dart';
+import '../admin/postTypeScreens/duplicated_posts_screen.dart';
+import '../admin/postTypeScreens/reported_posts_screen.dart';
+import '../admin/postTypeScreens/flagged_posts_screen.dart';
+import '../admin/accountScreens/suspended_account_screen.dart';
+import '../admin/accountScreens/banned_account_screen.dart';
+import '../admin/accountScreens/shadow_ban_screen.dart';
+import '../admin/accountScreens/flagged_account_screen.dart';
 
-class AdminSettingsScreen extends StatefulWidget {
-  const AdminSettingsScreen({super.key});
+class ModeratorSettingsScreen extends StatefulWidget {
+  const ModeratorSettingsScreen({super.key});
 
   @override
-  State<AdminSettingsScreen> createState() => _AdminSettingsScreenState();
+  State<ModeratorSettingsScreen> createState() => _ModeratorSettingsScreenState();
 }
 
-class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
+class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
   bool _isPageLoading = true;
   final ProfileService _profileService = ProfileService();
-  final AdminService _adminService = AdminService();
   ProfileData? _profileData;
   bool _isLoadingProfile = false;
 
@@ -70,10 +69,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     }
   }
 
-  String _getAdminSinceDate() {
-    return 'Admin since December 2025';
+  String _getModeratorSinceDate() {
+    return 'Moderator since December 2025';
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -108,17 +106,17 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                   child: Column(
                     children: [
-                      _AdministratorBadgeCard(
+                      _ModeratorBadgeCard(
                         profileData: _profileData,
                         isLoading: _isLoadingProfile,
-                        adminSince: _getAdminSinceDate(),
+                        moderatorSince: _getModeratorSinceDate(),
                       ),
                       const SizedBox(height: 20),
                       _SettingsSection(
                         title: 'COMMUNITY MEMBERS',
                         tiles: [
                           _SettingsTileData(
-                            title: 'Moderator Queue',
+                            title: 'Moderator',
                             subtitle: 'Keeps the community safe',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/shield-tick.svg',
@@ -134,7 +132,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             },
                           ),
                           _SettingsTileData(
-                            title: 'Junior Moderator Queue',
+                            title: 'Junior Moderator',
                             subtitle: 'Helps enforce rules.',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/shield.svg',
@@ -150,7 +148,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             },
                           ),
                           _SettingsTileData(
-                            title: 'Content Curator Queue',
+                            title: 'Content Curator',
                             subtitle: 'Organizes content.',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/medal.svg',
@@ -238,7 +236,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                         title: 'POST STATUS',
                         tiles: [
                           _SettingsTileData(
-                            title: 'Hidden Conversations',
+                            title: 'Hidden Post',
                             subtitle: 'Post temporarily deleted ',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/eye-slash.svg',
@@ -253,7 +251,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             },
                           ),
                           _SettingsTileData(
-                            title: 'Warned Conversations',
+                            title: 'Warned Post',
                             subtitle: 'Warning Posts',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/warning-2.svg',
@@ -268,7 +266,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             },
                           ),
                           _SettingsTileData(
-                            title: 'Muted Conversations',
+                            title: 'Muted Post',
                             subtitle: 'Silenced post',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/volume-slash.svg',
@@ -283,7 +281,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             },
                           ),
                           _SettingsTileData(
-                            title: 'Duplicated Conversations',
+                            title: 'Duplicated Post',
                             subtitle: 'Repeated Post ',
                             iconAsset:
                                 'assets/adminIcons/adminSettings/document-copy.svg',
@@ -293,90 +291,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const DuplicatedPostsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 32),
-                      _SettingsSection(
-                        title: 'DANGER ZONE',
-                        tiles: [
-                          _SettingsTileData(
-                            title: 'Reported Conversations',
-                            subtitle: 'Report Section',
-                            iconAsset:
-                                'assets/adminIcons/adminSettings/flag.svg',
-                            iconBackground: const Color(0xFFF1F5F9),
-                            iconTint: const Color(0xFF314158),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ReportedPostsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          _SettingsTileData(
-                            title: 'Flagged Account',
-                            subtitle: 'Account  in review',
-                            iconAsset:
-                                'assets/adminIcons/adminSettings/flag-2.svg',
-                            iconBackground: const Color(0xFFF1F5F9),
-                            iconTint: const Color(0xFFE7000B),
-                            titleColor: const Color(0xFFE7000B),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const FlaggedAccountScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          _SettingsTileData(
-                            title: 'Shadow Ban',
-                            subtitle: 'Hides a user\'s activity.',
-                            iconAsset:
-                                'assets/adminIcons/adminSettings/ghost.svg',
-                            iconBackground: const Color(0xFFF1F5F9),
-                            iconTint: const Color(0xFF314158),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ShadowBanScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          _SettingsTileData(
-                            title: 'Suspended Account',
-                            subtitle: 'Temporarily restricted account',
-                            iconAsset:
-                                'assets/adminIcons/adminSettings/timer-pause.svg',
-                            iconBackground: const Color(0xFFF1F5F9),
-                            iconTint: const Color(0xFFE7000B),
-                            titleColor: const Color(0xFFE7000B),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const SuspendedAccountScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          _SettingsTileData(
-                            title: 'Banned Account:',
-                            subtitle: 'Permanently blocked account',
-                            iconAsset:
-                                'assets/adminIcons/adminSettings/slash.svg',
-                            iconBackground: const Color(0xFFF1F5F9),
-                            iconTint: const Color(0xFFE7000B),
-                            titleColor: const Color(0xFFE7000B),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const BannedAccountScreen(),
                                 ),
                               );
                             },
@@ -412,20 +326,21 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   }
 }
 
-class _AdministratorBadgeCard extends StatelessWidget {
-  const _AdministratorBadgeCard({
+class _ModeratorBadgeCard extends StatelessWidget {
+  const _ModeratorBadgeCard({
     this.profileData,
     this.isLoading = false,
-    required this.adminSince,
+    required this.moderatorSince,
   });
 
   final ProfileData? profileData;
   final bool isLoading;
-  final String adminSince;
+  final String moderatorSince;
 
   @override
   Widget build(BuildContext context) {
-    final initials = profileData?.initials ?? 'AD';
+    // Always use "MO" as initials for moderator
+    const String initials = 'MO';
     final profilePictureUrl = profileData?.pictureUrl;
 
     return Container(
@@ -442,20 +357,20 @@ class _AdministratorBadgeCard extends StatelessWidget {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              // Gradient border container
+              // Gradient border container with custom colors
               Container(
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF4F39F6), Color(0xFF9810FA)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFFF0F7B), Color(0xFFF89B29)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(3), // Border width
+                  padding: const EdgeInsets.all(3.79), // Border width: 3.79px
                   child: Container(
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
@@ -501,7 +416,7 @@ class _AdministratorBadgeCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Administrator',
+                  'Moderator',
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 16,
@@ -514,7 +429,7 @@ class _AdministratorBadgeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  adminSince,
+                  moderatorSince,
                   style: const TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 14,
@@ -527,27 +442,36 @@ class _AdministratorBadgeCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
+                  width: Responsive.scaledPadding(context, 92),
+                  height: Responsive.scaledPadding(context, 19),
+                  padding: EdgeInsets.only(
+                    left: Responsive.scaledPadding(context, 8),
+                    top: Responsive.scaledPadding(context, 3),
+                    bottom: Responsive.scaledPadding(context, 3),
+                    right: 0, // padding-right: 0px
                   ),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF4F39F6), Color(0xFF9810FA)],
+                      colors: [Color(0xFFFF0F7B), Color(0xFFF89B29)],
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
+                      stops: [0.0, 0.9939], // 0% to 99.39%
                     ),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: const [
+                    borderRadius: BorderRadius.circular(
+                      Responsive.scaledPadding(context, 8),
+                    ),
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x334F39F6),
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
+                        color: const Color(0x4D615FFF), // #615FFF4D
+                        blurRadius: Responsive.scaledPadding(context, 4),
+                        offset: Offset(0, Responsive.scaledPadding(context, 2)),
+                        spreadRadius: Responsive.scaledPadding(context, -2),
                       ),
                       BoxShadow(
-                        color: Color(0x334F39F6),
-                        blurRadius: 6,
-                        offset: Offset(0, 3),
+                        color: const Color(0x4D615FFF), // #615FFF4D
+                        blurRadius: Responsive.scaledPadding(context, 6),
+                        offset: Offset(0, Responsive.scaledPadding(context, 4)),
+                        spreadRadius: Responsive.scaledPadding(context, -1),
                       ),
                     ],
                   ),
@@ -555,17 +479,13 @@ class _AdministratorBadgeCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       svg.SvgPicture.asset(
-                        'assets/adminIcons/adminSettings/crown.svg',
-                        width: 12,
-                        height: 12,
-                        colorFilter: const ColorFilter.mode(
-                          Colors.white,
-                          BlendMode.srcIn,
-                        ),
+                        'assets/images/moderator-badge-icon.svg',
+                        width: Responsive.scaledIcon(context, 12),
+                        height: Responsive.scaledIcon(context, 12),
                       ),
-                      const SizedBox(width: 6),
+                      SizedBox(width: Responsive.scaledPadding(context, 6)), // Same gap as admin badge
                       const Text(
-                        'Admin',
+                        'Moderator',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -772,4 +692,3 @@ class _SettingsTile extends StatelessWidget {
     );
   }
 }
-

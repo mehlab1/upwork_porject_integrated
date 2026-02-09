@@ -4,6 +4,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../services/post_service.dart';
 import '../../services/admin_service.dart';
 import '../../widgets/pal_toast.dart';
+import '../../utils/error_handler.dart';
+import '../../core/responsive/responsive.dart';
 import '../settings/community_guidelines_screen.dart';
 import 'widgets/post_card.dart';
 
@@ -204,7 +206,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   bool get _isTitleFilled => _titleController.text.trim().length >= 2;
   bool get _isBodyFilled => _bodyController.text.trim().length >= 2;
-  bool get _isTitleOverLimit => _titleController.text.length > 75;
+  bool get _isTitleOverLimit => _titleController.text.length > 50;
   bool get _isBodyOverLimit => _bodyController.text.length > 500;
   bool get _isLocationSelected => _selectedLocation != null;
   bool get _isOverLimit => _isTitleOverLimit || _isBodyOverLimit;
@@ -266,7 +268,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         return 'Add a title to get started';
       }
       if (_isTitleOverLimit) {
-        return 'Title exceeds 75 characters';
+        return 'Title exceeds 50 characters';
       }
       if (_isBodyOverLimit) {
         return 'Content exceeds character limit';
@@ -276,7 +278,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     // Regular user messages
     if (_isTitleOverLimit) {
-      return 'Title exceeds 75 characters';
+      return 'Title exceeds 50 characters';
     }
     if (_isBodyOverLimit) {
       return 'Content exceeds character limit';
@@ -364,7 +366,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     return TextButton(
       onPressed: () {
-        if (_isTitleOverLimit || _isBodyOverLimit) {
+        if (_isTitleOverLimit) {
+          _titleFocusNode.requestFocus();
+          return;
+        }
+        if (_isBodyOverLimit) {
           _bodyFocusNode.requestFocus();
           return;
         }
@@ -538,10 +544,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                               _buildCategorySelector(),
                               const SizedBox(height: 24),
                               _buildComposer(),
-                              const SizedBox(height: 20),
-                              _buildLocationCard(),
                               const SizedBox(height: 12),
                               _buildCharacterLimitIndicator(),
+                              const SizedBox(height: 20),
+                              _buildLocationCard(),
+                              if (_isLocationSelected) ...[
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Location added',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w400,
+                                      color: _textSecondary,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              _buildSpotlightCard(),
                               const SizedBox(height: 12),
                               _buildDettyDecemberCard(),
                               const SizedBox(height: 12),
@@ -729,7 +752,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         return Padding(
           padding: EdgeInsets.only(right: label == 'Discussion' ? 0 : 8),
           child: GestureDetector(
-            onTap: () => setState(() => _activeCategory = label),
+            onTap: () {
+              // If switching to a different category, clear the text fields
+              if (_activeCategory != null && _activeCategory != label) {
+                _titleController.clear();
+                _bodyController.clear();
+              }
+              setState(() => _activeCategory = label);
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.fromLTRB(15.989, 10.511, 15.343, 9.48),
@@ -822,14 +852,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             controller: _titleController,
             focusNode: _titleFocusNode,
             textCapitalization: TextCapitalization.sentences,
+            maxLength: 50,
+            maxLengthEnforcement: MaxLengthEnforcement.none, // Allow typing beyond limit for validation
             onChanged: (_) => setState(() {}),
             style: TextStyle(
               fontSize: 18,
               height: 24.75 / 18,
               fontWeight: FontWeight.w400,
-              color: _titleController.text.isNotEmpty
-                  ? const Color(0xFF0F172B)
-                  : const Color(0xFF90A1B9),
+              color: _isTitleOverLimit
+                  ? const Color(0xFFE7000B) // Red text when over limit
+                  : (_titleController.text.isNotEmpty
+                      ? const Color(0xFF0F172B)
+                      : const Color(0xFF90A1B9)),
               fontFamily: 'Inter',
               letterSpacing: -0.4395,
             ),
@@ -844,6 +878,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 letterSpacing: -0.4395,
               ),
               border: InputBorder.none,
+              counterText: '',
             ),
           ),
           Container(width: double.infinity, height: 0.993, color: _outline),
@@ -857,14 +892,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             minLines: 5,
             maxLines: null,
             maxLength: 500,
-            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+            maxLengthEnforcement: MaxLengthEnforcement.none, // Allow typing beyond limit for validation
             onChanged: (_) => setState(() {}),
             style: TextStyle(
               fontSize: 14,
               height: 20 / 14,
-              color: _bodyController.text.isNotEmpty
-                  ? const Color(0xFF0F172B)
-                  : const Color(0xFF90A1B9),
+              color: _isBodyOverLimit
+                  ? const Color(0xFFE7000B) // Red text when over limit
+                  : (_bodyController.text.isNotEmpty
+                      ? const Color(0xFF0F172B)
+                      : const Color(0xFF90A1B9)),
               fontWeight: FontWeight.w400,
               fontFamily: 'Inter',
               letterSpacing: -0.1504,
@@ -897,13 +934,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           controller: _titleController,
           focusNode: _titleFocusNode,
           textCapitalization: TextCapitalization.sentences,
-          maxLength: 75,
-          maxLengthEnforcement: MaxLengthEnforcement.enforced,
-          style: const TextStyle(
+          maxLength: 50,
+          maxLengthEnforcement: MaxLengthEnforcement.none, // Allow typing beyond limit for validation
+          onChanged: (_) => setState(() {}), // Update state to show error
+          style: TextStyle(
             fontSize: 16,
             height: 24.75 / 18,
             fontWeight: FontWeight.w400,
-            color: Color(0xFF0F172B),
+            color: _isTitleOverLimit
+                ? const Color(0xFFE7000B) // Red text when over limit
+                : const Color(0xFF0F172B),
             fontFamily: 'Inter',
           ),
           decoration: InputDecoration(
@@ -1020,7 +1060,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       Text(
                         hasLocation
                             ? 'Tap to select the relevant area'
-                            : 'Select your relevant area',
+                            : 'Tap to select the relevant area',
                         style: const TextStyle(
                           fontSize: 12,
                           color: _textSecondary,
@@ -1063,77 +1103,71 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _isLocationInlineOpen = true;
     });
 
-    showMenu(
+    showGeneralDialog(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy + size.height,
-        screenWidth - position.dx - size.width,
-        screenHeight - position.dy - size.height,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
-      ),
-      color: Colors.white,
-      elevation: 8,
-      constraints: BoxConstraints(maxHeight: maxHeight, minWidth: size.width),
-      items: _locationOptions.map((location) {
-        final isSelected = location == _selectedLocation;
-        return PopupMenuItem<String>(
-          padding: EdgeInsets.zero,
-          value: location,
-          child: Container(
-            decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFF8FAFC) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() {
-                    _selectedLocation = location;
-                    _isLocationInlineOpen = false;
-                  });
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return const SizedBox.shrink();
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return Stack(
+          children: [
+            Positioned(
+              left: position.dx,
+              top: position.dy + size.height,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: size.width,
+                  constraints: BoxConstraints(
+                    maxHeight: maxHeight,
+                    minWidth: size.width,
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          location,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            height: 20 / 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF314158),
-                            fontFamily: 'Inter',
-                          ),
-                        ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(14),
+                      bottomRight: Radius.circular(14),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
-                      if (isSelected)
-                        const Icon(
-                          Icons.check,
-                          size: 18,
-                          color: Color(0xFF00A63E),
-                        ),
                     ],
+                  ),
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      scrollbarTheme: ScrollbarThemeData(
+                        thumbColor: WidgetStateProperty.all(
+                          const Color(0xFF94A3B8).withOpacity(0.5),
+                        ),
+                        thickness: WidgetStateProperty.all(5),
+                        radius: const Radius.circular(2.5),
+                      ),
+                    ),
+                    child: _LocationDropdownContent(
+                      locationOptions: _locationOptions,
+                      selectedLocation: _selectedLocation,
+                      onLocationSelected: (location) {
+                        Navigator.pop(context);
+                        setState(() {
+                          _selectedLocation = location;
+                          _isLocationInlineOpen = false;
+                        });
+                      },
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         );
-      }).toList(),
+      },
     ).then((_) {
       if (mounted) {
         setState(() {
@@ -1144,35 +1178,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildCharacterLimitIndicator() {
-    final hasLocation = _isLocationSelected;
     final bodyLength = _bodyController.text.length;
     final isOverLimit = _isBodyOverLimit;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        if (hasLocation)
-          Text(
-            'Location added',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: _textSecondary,
-              fontFamily: 'Inter',
-            ),
-          )
-        else
-          const SizedBox.shrink(),
-        Text(
-          '$bodyLength/500 characters',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: isOverLimit ? const Color(0xFFFB2C36) : _textSecondary,
-            fontFamily: 'Inter',
-          ),
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Text(
+        '$bodyLength/500 characters',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: isOverLimit ? const Color(0xFFFB2C36) : _textSecondary,
+          fontFamily: 'Inter',
         ),
-      ],
+      ),
     );
   }
 
@@ -1195,99 +1214,256 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   Widget _buildDettyDecemberCard() {
-    return Container(
-      height: 61,
-      decoration: BoxDecoration(
-        color: const Color(0x66EEF2FF), // rgba(238,242,255,0.4)
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE0E7FF), width: 0.756),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16.756, vertical: 0.756),
-      child: Row(
-        children: [
-          Container(
-            width: 31.99,
-            height: 31.99,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE0E7FF), // indigo-100
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: SvgPicture.asset(
-                'assets/images/dettyIcon.svg',
-                width: 15.989,
-                height: 15.989,
-                fit: BoxFit.contain,
-                colorFilter: const ColorFilter.mode(_overlay, BlendMode.srcIn),
+    return Row(
+      children: [
+        // Info icon outside the container on the left
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _showSpotlightInfoDialog,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0E7FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFF155DFC),
+                  size: 18,
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 9.998),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+        ),
+        const SizedBox(width: 12),
+        // Spotlight container
+        Expanded(
+          child: Container(
+            height: 61,
+            decoration: BoxDecoration(
+              color: const Color(0x66EEF2FF), // rgba(238,242,255,0.4)
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE0E7FF), width: 0.756),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16.756, vertical: 0.756),
+            child: Row(
               children: [
-                Text(
-                  'Detty December',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _textPrimary,
-                    fontFamily: 'Inter',
-                    letterSpacing: -0.1504,
-                    height: 20 / 14,
+                Container(
+                  width: 31.99,
+                  height: 31.99,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0E7FF), // indigo-100
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: SvgPicture.asset(
+                      'assets/images/dettyIcon.svg',
+                      width: 15.989,
+                      height: 15.989,
+                      fit: BoxFit.contain,
+                      colorFilter: const ColorFilter.mode(_overlay, BlendMode.srcIn),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 0.76),
-                Text(
-                  'Toggle for festive spotlight',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: _textSecondary,
-                    fontFamily: 'Inter',
-                    height: 16 / 12,
+                const SizedBox(width: 9.998),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Detty December',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _textPrimary,
+                          fontFamily: 'Inter',
+                          letterSpacing: -0.1504,
+                          height: 20 / 14,
+                        ),
+                      ),
+                      const SizedBox(height: 0.76),
+                      Text(
+                        'Toggle for festive spotlight',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: _textSecondary,
+                          fontFamily: 'Inter',
+                          height: 16 / 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() => _dettyDecemberEnabled = !_dettyDecemberEnabled);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 32,
+                    height: 19,
+                    decoration: BoxDecoration(
+                      color: _dettyDecemberEnabled
+                          ? const Color(0xFF155DFC) // Bold blue when ON
+                          : const Color.fromRGBO(21, 93, 252, 0.12), // Faint when OFF
+                      borderRadius: BorderRadius.circular(19),
+                      border: Border.all(color: Colors.transparent, width: 0.756),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 0.75586,
+                      vertical: 1.0,
+                    ),
+                    child: Align(
+                      alignment: _dettyDecemberEnabled
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        width: 17,
+                        height: 17,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          GestureDetector(
-            onTap: () {
-              setState(() => _dettyDecemberEnabled = !_dettyDecemberEnabled);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 32,
-              height: 19,
-              decoration: BoxDecoration(
-                color: _dettyDecemberEnabled
-                    ? const Color.fromRGBO(21, 93, 252, 0.20)
-                    : const Color.fromRGBO(21, 93, 252, 0.12),
-                borderRadius: BorderRadius.circular(19),
-                border: Border.all(color: Colors.transparent, width: 0.756),
+        ),
+      ],
+    );
+  }
+
+  void _showSpotlightInfoDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: Responsive.responsiveSymmetric(context, horizontal: 24),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 16)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A0F172A),
+                blurRadius: 30,
+                offset: Offset(0, 18),
               ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 0.75586,
-                vertical: 1.0,
+            ],
+          ),
+          padding: Responsive.responsivePadding(context, all: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with icon and title
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: Responsive.scaledPadding(context, 48),
+                    height: Responsive.scaledPadding(context, 48),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE0E7FF),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        color: const Color(0xFF155DFC),
+                        size: Responsive.scaledIcon(context, 24),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: Responsive.scaledPadding(context, 16)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Monthly Spotlight',
+                          style: Responsive.responsiveTextStyle(
+                            context,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF0F172A),
+                            fontFamily: 'Inter',
+                            letterSpacing: -0.3125,
+                          ),
+                        ),
+                        SizedBox(height: Responsive.scaledPadding(context, 4)),
+                        Text(
+                          'Feature information',
+                          style: Responsive.responsiveTextStyle(
+                            context,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: const Color(0xFF62748E),
+                            fontFamily: 'Inter',
+                            letterSpacing: -0.1504,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              child: Align(
-                alignment: _dettyDecemberEnabled
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: Container(
-                  width: 17,
-                  height: 17,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
+              SizedBox(height: Responsive.scaledPadding(context, 24)),
+              // Info message body
+              Text(
+                'Eligible posts will be featured in the Monthly Spotlight for greater visibility.',
+                style: Responsive.responsiveTextStyle(
+                  context,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: const Color(0xFF45556C),
+                  fontFamily: 'Inter',
+                  letterSpacing: -0.3125,
+                  height: 1.5,
+                ),
+              ),
+              SizedBox(height: Responsive.scaledPadding(context, 24)),
+              // Got it button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF155DFC),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 8)),
+                    ),
+                    elevation: 0,
+                    padding: Responsive.responsiveSymmetric(context, vertical: 12),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Got it',
+                    style: Responsive.responsiveTextStyle(
+                      context,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'Inter',
+                      letterSpacing: -0.1504,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1305,91 +1481,121 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final topicTitle =
         _spotlightStatus?['hot_topic_title'] as String? ?? 'Detty December';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0x66EEF2FF),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE0E7FF), width: 0.756),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color.fromRGBO(21, 93, 252, 0.20),
-              borderRadius: BorderRadius.circular(12),
-            ),
-
-            child: SvgPicture.asset(
-              'assets/images/dettyIcon.svg',
-              fit: BoxFit.scaleDown,
-              colorFilter: const ColorFilter.mode(_overlay, BlendMode.srcIn),
+    return Row(
+      children: [
+        // Info icon outside the container on the left
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _showSpotlightInfoDialog,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0E7FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFF155DFC),
+                  size: 18,
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        const SizedBox(width: 12),
+        // Spotlight container
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0x66EEF2FF),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE0E7FF), width: 0.756),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
               children: [
-                Text(
-                  topicTitle,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _textPrimary,
-                    fontFamily: 'Inter',
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color.fromRGBO(21, 93, 252, 0.20),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SvgPicture.asset(
+                    'assets/images/dettyIcon.svg',
+                    fit: BoxFit.scaleDown,
+                    colorFilter: const ColorFilter.mode(_overlay, BlendMode.srcIn),
                   ),
                 ),
-                const SizedBox(height: 2),
-                const Text(
-                  'Toggle for Festive spotlight',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _textSecondary,
-                    fontFamily: 'Inter',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        topicTitle,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _textPrimary,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Toggle for Festive spotlight',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _textSecondary,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() => _spotlightEnabled = !_spotlightEnabled);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 32,
+                    height: 19,
+                    decoration: BoxDecoration(
+                      color: _spotlightEnabled
+                          ? const Color(0xFF155DFC) // Bold blue when ON
+                          : const Color.fromRGBO(21, 93, 252, 0.12), // Faint when OFF
+                      borderRadius: BorderRadius.circular(19),
+                      border: Border.all(color: Colors.transparent, width: 0.756),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 0.75586,
+                      vertical: 1.0,
+                    ),
+                    child: Align(
+                      alignment: _spotlightEnabled
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        width: 17,
+                        height: 17,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          GestureDetector(
-            onTap: () {
-              setState(() => _spotlightEnabled = !_spotlightEnabled);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 32,
-              height: 19,
-              decoration: BoxDecoration(
-                color: _spotlightEnabled
-                    ? const Color.fromRGBO(21, 93, 252, 0.20)
-                    : const Color.fromRGBO(21, 93, 252, 0.12),
-                borderRadius: BorderRadius.circular(19),
-                border: Border.all(color: Colors.transparent, width: 0.756),
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 0.75586,
-                vertical: 1.0,
-              ),
-              child: Align(
-                alignment: _spotlightEnabled
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft,
-                child: Container(
-                  width: 17,
-                  height: 17,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1409,14 +1615,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             bottomRight: Radius.circular(24),
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Community guidelines link - expanded to prevent collapsing
             Expanded(child: _buildStatusPrompt()),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             // Post button - fixed minimum width to prevent collapsing
             ElevatedButton(
               onPressed: (_canPost && !_isSubmitting)
@@ -1439,9 +1645,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 }),
                 elevation: WidgetStateProperty.all(0),
                 padding: WidgetStateProperty.all(
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
-                minimumSize: WidgetStateProperty.all(const Size(80, 36)),
+                minimumSize: WidgetStateProperty.all(const Size(70, 36)),
                 shape: WidgetStateProperty.all(
                   RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25378200),
@@ -1465,7 +1671,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     // Regular user footer - responsive to prevent collapsing
     return Container(
-      width: 360,
+      width: double.infinity,
       height: 64,
       decoration: BoxDecoration(
         color: const Color(0x80F8FAFC),
@@ -1475,14 +1681,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           bottomRight: Radius.circular(28),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 23.98981),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Community guidelines link - expanded to prevent collapsing
           Expanded(child: _buildStatusPrompt()),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           // Post button - fixed minimum width to prevent collapsing
           ElevatedButton(
             onPressed: (_canPost && !_isSubmitting)
@@ -1513,9 +1719,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               }),
               elevation: WidgetStateProperty.all(0),
               padding: WidgetStateProperty.all(
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
-              minimumSize: WidgetStateProperty.all(const Size(80, 36)),
+              minimumSize: WidgetStateProperty.all(const Size(70, 36)),
               shape: WidgetStateProperty.all(
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
@@ -1619,8 +1825,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               height: 19,
               decoration: BoxDecoration(
                 color: _wodEnabled
-                    ? const Color.fromRGBO(21, 93, 252, 0.20)
-                    : const Color.fromRGBO(21, 93, 252, 0.12),
+                    ? const Color(0xFF155DFC) // Bold blue when ON
+                    : const Color.fromRGBO(21, 93, 252, 0.12), // Faint when OFF
                 borderRadius: BorderRadius.circular(19),
                 border: Border.all(color: Colors.transparent, width: 0.756),
               ),
@@ -1785,11 +1991,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       // Wait a bit for keyboard to dismiss before showing toast
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
-        PalToast.show(
-          context,
-          message: e.toString().replaceFirst('Exception: ', ''),
-          isError: true,
-        );
+        // Check if it's a network error
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          PalToast.show(
+            context,
+            message: e.toString().replaceFirst('Exception: ', ''),
+            isError: true,
+          );
+        }
       }
     }
   }
@@ -1902,6 +2113,231 @@ class _InlineDropdown extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+class _LocationDropdownContent extends StatefulWidget {
+  const _LocationDropdownContent({
+    required this.locationOptions,
+    required this.selectedLocation,
+    required this.onLocationSelected,
+  });
+
+  final List<String> locationOptions;
+  final String? selectedLocation;
+  final ValueChanged<String> onLocationSelected;
+
+  @override
+  State<_LocationDropdownContent> createState() => _LocationDropdownContentState();
+}
+
+class _LocationDropdownContentState extends State<_LocationDropdownContent>
+    with SingleTickerProviderStateMixin {
+  late final ScrollController _scrollController;
+  late final AnimationController _indicatorController;
+  late final Animation<double> _fadeAnimation;
+  bool _showIndicator = true;
+  bool _hasScrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
+    
+    _indicatorController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    
+    _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _indicatorController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    
+    // Check if content is scrollable after first frame
+    _checkScrollability();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _indicatorController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final scrollPosition = _scrollController.position;
+      final maxScroll = scrollPosition.maxScrollExtent;
+      final currentScroll = scrollPosition.pixels;
+      
+      // Only show indicator if content is scrollable (maxScroll > 0)
+      final isScrollable = maxScroll > 0;
+      
+      // Hide indicator if user has scrolled down or content is not scrollable
+      if (currentScroll > 10 || !isScrollable) {
+        if (_showIndicator) {
+          setState(() {
+            _showIndicator = false;
+            _hasScrolled = true;
+          });
+          _indicatorController.stop();
+        }
+      } else if (!_hasScrolled && currentScroll <= 10 && isScrollable) {
+        // Show indicator again if scrolled back to top (only if never scrolled before)
+        if (!_showIndicator) {
+          setState(() {
+            _showIndicator = true;
+          });
+          _indicatorController.repeat(reverse: true);
+        }
+      }
+    }
+  }
+  
+  void _checkScrollability() {
+    // Check scrollability after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        final maxScroll = _scrollController.position.maxScrollExtent;
+        final isScrollable = maxScroll > 0;
+        
+        if (!isScrollable && _showIndicator) {
+          setState(() {
+            _showIndicator = false;
+          });
+          _indicatorController.stop();
+        } else if (isScrollable && !_hasScrolled) {
+          setState(() {
+            _showIndicator = true;
+          });
+          _indicatorController.repeat(reverse: true);
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Scrollbar(
+          thumbVisibility: true,
+          controller: _scrollController,
+          child: ListView.separated(
+            controller: _scrollController,
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            itemCount: widget.locationOptions.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 2),
+            itemBuilder: (context, index) {
+              final location = widget.locationOptions[index];
+              final isSelected = location == widget.selectedLocation;
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => widget.onLocationSelected(location),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFF8FAFC) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            location,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 20 / 14,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF314158),
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ),
+                        if (isSelected)
+                          const Icon(
+                            Icons.check,
+                            size: 18,
+                            color: Color(0xFF00A63E),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        // Scroll indicator overlay
+        if (_showIndicator && _scrollController.hasClients)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withOpacity(0.0),
+                      Colors.white.withOpacity(0.7),
+                      Colors.white,
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: AnimatedBuilder(
+                    animation: _fadeAnimation,
+                    builder: (context, child) {
+                      return Opacity(
+                        opacity: _fadeAnimation.value,
+                        child: Transform.translate(
+                          offset: Offset(0, 8 * (1 - _fadeAnimation.value)),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.keyboard_arrow_down,
+                                size: 20,
+                                color: const Color(0xFF94A3B8).withOpacity(0.8),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Scroll for more',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: const Color(0xFF94A3B8).withOpacity(0.8),
+                                  fontFamily: 'Inter',
+                                  letterSpacing: -0.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

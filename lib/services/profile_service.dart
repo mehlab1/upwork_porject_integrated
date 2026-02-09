@@ -575,7 +575,7 @@ class ProfileData {
     }
   }
 
-  /// Format joined date as "Ever since [Month] [Year]"
+  /// Format joined date as "User since [Month] [Year]"
   String get formattedJoinedDate {
     final date = joinedDate ?? createdAt;
     if (date == null) return 'Recently';
@@ -588,7 +588,7 @@ class ProfileData {
     final month = monthNames[date.month - 1];
     final year = date.year;
     
-    return 'Ever since $month $year';
+    return 'User since $month $year';
   }
 
   /// Get days since username was last changed

@@ -235,9 +235,9 @@ Future<void> showErrorDialogFromTechnical(
       errorLower.contains('network is unreachable') ||
       errorLower.contains('dns') ||
       errorLower.contains('lookup failed')) {
-    dialogTitle = title ?? 'Connection Error';
-    dialogSubtitle = subtitle ?? 'Unable to connect';
-    dialogMessage = 'Your internet connection was lost or is unstable. Please check your connection and try again.';
+    dialogTitle = title ?? 'No Network';
+    dialogSubtitle = subtitle ?? 'Connection issue';
+    dialogMessage = 'No Network, check your internet connection';
   }
   // Authentication/Session Errors
   else if (errorLower.contains('unauthorized') ||
@@ -359,13 +359,13 @@ String _makeErrorMessageReadable(String errorMessage) {
   
   // Handle XMLHttpRequest errors specifically
   if (errorLower.contains('xmlhttprequest')) {
-    return 'Your internet connection was lost or is unstable. Please check your connection and try again.';
+    return 'No Network, check your internet connection';
   }
   
   // Handle other HTTP-related technical errors
   if (errorLower.contains('http') && 
       (errorLower.contains('error') || errorLower.contains('failed') || errorLower.contains('exception'))) {
-    return 'We couldn\'t connect to the server. Please check your internet connection and try again.';
+    return 'No Network, check your internet connection';
   }
   
   // Remove common technical prefixes
@@ -381,7 +381,7 @@ String _makeErrorMessageReadable(String errorMessage) {
       readable.toLowerCase().contains('xmlhttprequest') ||
       readable.toLowerCase().contains('httpclient') ||
       readable.toLowerCase().startsWith('http')) {
-    return 'We encountered a connection issue. Please check your internet connection and try again.';
+    return 'No Network, check your internet connection';
   }
 
   // Capitalize first letter
