@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/auth_service.dart';
-import '../../widgets/pal_toast.dart';
+import 'package:pal_app/widgets/pal_toast.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({
-    super.key,
-    required this.email,
-    required this.otpCode,
-  });
+  const ResetPasswordScreen({super.key, required this.email});
 
   final String email;
-  final String otpCode;
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -30,7 +23,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _isSubmitting = false;
   int _passwordStrength = 0;
   bool _passwordsMatch = false;
-  final AuthService _authService = AuthService();
 
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _headlineColor = Color(0xFF0F172A);
@@ -58,52 +50,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     });
   }
 
-  /// Checks if password meets all validation requirements
-  bool _isPasswordFullyValid(String password) {
-    if (password.isEmpty) return false;
-    return password.length >= 8 &&
-        password.contains(RegExp(r'[A-Z]')) &&
-        password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'));
-  }
-
-  /// Checks if the form can be submitted
-  /// Button should only be enabled when:
-  /// - Password is not empty and meets all criteria
-  /// - Confirm password is not empty and matches password
-  bool _canSubmit() {
-    final password = _passwordController.text.trim();
-    final confirmPassword = _confirmPasswordController.text.trim();
-    
-    // Password must not be empty and meet all validation criteria
-    if (password.isEmpty || !_isPasswordFullyValid(password)) {
-      return false;
-    }
-    
-    // Confirm password must not be empty and match password
-    if (confirmPassword.isEmpty || !_passwordsMatch) {
-      return false;
-    }
-    
-    return true;
-  }
-
   int _calculatePasswordStrength(String password) {
     if (password.isEmpty) return 0;
 
-    // Count how many required validation rules are met
-    int rulesMet = 0;
-    if (password.length >= 8) rulesMet++;
-    if (password.contains(RegExp(r'[A-Z]'))) rulesMet++;
-    if (password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) rulesMet++;
-
-    // Strength is based on progress: 0 rules = 0, 1 rule = 1, 2 rules = 3, 3 rules = 4
-    if (rulesMet == 0) return 0;
-    if (rulesMet == 1) return 1;
-    if (rulesMet == 2) return 3; // Show 3 bars when 2 rules met
-    // Only return 4 when all 3 required rules are met
-    if (rulesMet == 3) return 4;
-    
-    return 0;
+    int strength = 0;
+    if (password.length >= 8) strength++;
+    if (password.length >= 12) strength++;
+    if (password.contains(RegExp(r'[a-z]'))) strength++;
+    if (password.contains(RegExp(r'[A-Z]'))) strength++;
+    if (password.contains(RegExp(r'[0-9]'))) strength++;
+    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength++;
+    return strength > 4 ? 4 : strength;
   }
 
   bool _validateForm() {
@@ -129,76 +86,16 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   Future<void> _handleReset() async {
     if (!_validateForm()) return;
-    
     setState(() => _isSubmitting = true);
 
-    try {
-      // Call reset-password edge function
-      // This edge function calls verify_password_reset_otp RPC which:
-      // - Verifies the OTP (checks expiration, attempts, validity)
-      // - Validates password strength (8-128 chars, uppercase, lowercase, number, special char)
-      // - Hashes password with bcrypt
-      // - Updates password in auth.users table
-      // All in one atomic operation
-      final response = await _authService.resetPassword(
-        email: widget.email,
-        otpCode: widget.otpCode,
-        newPassword: _passwordController.text.trim(),
-      );
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
 
-      if (!mounted) return;
+    setState(() => _isSubmitting = false);
 
-      setState(() => _isSubmitting = false);
+    PalToast.show(context, message: 'Password reset successfully');
 
-      // Show success message
-      PalToast.show(
-        context,
-        message: response['message'] ?? 'Password reset successfully',
-      );
-
-      // Navigate to login screen
-      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-      
-      // Show error message
-      PalToast.show(
-        context,
-        message: e.message,
-        isError: true,
-      );
-      
-      // Set appropriate error messages
-      final errorMessage = e.message.toLowerCase();
-      if (errorMessage.contains('otp') || errorMessage.contains('code') || errorMessage.contains('expired')) {
-        // OTP error - might need to go back
-        setState(() {
-          _passwordError = 'Invalid or expired reset code. Please request a new one.';
-        });
-      } else if (errorMessage.contains('password') || errorMessage.contains('strength')) {
-        setState(() {
-          _passwordError = e.message;
-        });
-      } else {
-        setState(() {
-          _passwordError = 'Failed to reset password. Please try again.';
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-      
-      PalToast.show(
-        context,
-        message: 'An unexpected error occurred. Please try again.',
-        isError: true,
-      );
-      
-      setState(() {
-        _passwordError = 'An unexpected error occurred. Please try again.';
-      });
-    }
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
   }
 
   @override
@@ -206,55 +103,30 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            // Header with back button and centered title - outside padding
-            SizedBox(
-              height: 48,
-              child: Stack(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              const SizedBox(height: 16),
+              Row(
                 children: [
-                  // Back Button - positioned at top left corner
-                  Positioned(
-                    left: 8,
-                    top: 0,
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Icon(
-                          Icons.chevron_left,
-                          color: Color(0xFF0F172B),
-                          size: 32,
-                        ),
-                      ),
+                  const Spacer(),
+                  Text(
+                    'Set New Password',
+                    style: TextStyle(
+                      fontSize: 24,
+                      height: 1.2,
+                      fontWeight: FontWeight.w500,
+                      color: _headlineColor,
+                      fontFamily: 'Rubik',
                     ),
                   ),
-                  // Title - centered
-                  const Center(
-                    child: Text(
-                      'Reset Password',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w500, // Medium
-                        height: 1.2, // 120% line-height
-                        letterSpacing: 0, // 0% letter-spacing
-                        color: Color(0xFF100B3C),
-                        fontFamily: 'Rubik',
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                  const Spacer(),
+                  const SizedBox(width: 22),
                 ],
               ),
-            ),
-            const SizedBox(height: 28),
-            // Content with padding
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+              const SizedBox(height: 28),
+              Expanded(
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,10 +164,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         obscureText: _obscurePassword,
                         onToggleVisibility: _togglePassword,
                         errorText: _passwordError,
-                        hintText: 'New Password',
                         showSuccess:
-                            _isPasswordFullyValid(_passwordController.text.trim()) &&
-                            _passwordError == null,
+                            _passwordError == null &&
+                            _passwordController.text.isNotEmpty &&
+                            _passwordStrength >= 3,
                         onChanged: (value) {
                           setState(() {
                             _passwordError = null;
@@ -344,12 +216,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                _isPasswordFullyValid(_passwordController.text.trim())
+                                _passwordStrength >= 3
                                     ? 'Strong password'
-                                    : 'Use 8+ characters with a mix of letters, numbers & symbols',
+                                    : 'Use 6+ characters with a mix of letters, numbers & symbols',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: _isPasswordFullyValid(_passwordController.text.trim())
+                                  color: _passwordStrength >= 3
                                       ? const Color(0xFF00A63E)
                                       : _bodyColor,
                                   fontFamily: 'Inter',
@@ -364,9 +236,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         obscureText: _obscureConfirmPassword,
                         onToggleVisibility: _toggleConfirmPassword,
                         errorText: _confirmPasswordError,
-                        hintText: 'Confirm Password',
                         showSuccess:
-                            _isPasswordFullyValid(_passwordController.text.trim()) &&
                             _passwordsMatch &&
                             _confirmPasswordError == null &&
                             _confirmPasswordController.text.isNotEmpty,
@@ -412,55 +282,42 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                 ),
               ),
-            ),
-            // Button with padding
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: (_isSubmitting || !_canSubmit()) ? null : _handleReset,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isSubmitting
-                            ? _primaryColor.withOpacity(0.7)
-                            : (_canSubmit()
-                                ? _primaryColor
-                                : _primaryColor.withOpacity(0.5)),
-                        disabledBackgroundColor: _primaryColor.withOpacity(0.5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              'Reset password',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: _canSubmit() ? Colors.white : Colors.white.withOpacity(0.7),
-                                fontFamily: 'Inter',
-                              ),
-                            ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _handleReset,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
                     ),
+                    elevation: 0,
                   ),
-                  const SizedBox(height: 24),
-                ],
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          'Reset password',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
@@ -471,7 +328,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     required bool obscureText,
     required VoidCallback onToggleVisibility,
     String? errorText,
-    String? hintText,
     bool showSuccess = false,
     ValueChanged<String>? onChanged,
   }) {
@@ -508,10 +364,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     fontFamily: 'Inter',
                     letterSpacing: -0.3125,
                   ),
-                  decoration: InputDecoration(
-                    hintText: hintText ?? 'Password',
+                  decoration: const InputDecoration(
+                    hintText: 'My Strong Password Here',
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    contentPadding: EdgeInsets.symmetric(vertical: 4),
                   ),
                 ),
               ),
@@ -536,8 +392,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               IconButton(
                 icon: Icon(
                   obscureText
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                   color: _greyIconColor,
                   size: 20,
                 ),
