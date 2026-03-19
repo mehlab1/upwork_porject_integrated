@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
-import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:pal/widgets/pal_refresh_indicator.dart';
+import 'package:pal/widgets/profile_avatar_widget.dart';
 import 'package:pal/services/notification_service.dart';
 import 'package:pal/services/notification_count_manager.dart';
 import 'package:pal/utils/notification_mapper.dart';
@@ -18,34 +20,71 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  bool _isPageLoading = true;
   final NotificationService _notificationService = NotificationService();
+
+  // ── Static cache shared across all instances of this screen ──────────────
+  // Persists while the app is alive, so navigating back shows data instantly.
+  static List<NotificationItem> _cachedItems = [];
+  static int _cachedUnreadCount = 0;
+  static DateTime? _cacheTimestamp;
+  static const Duration _cacheTtl = Duration(seconds: 60);
+  // ─────────────────────────────────────────────────────────────────────────
+
   List<NotificationItem> _notificationItems = [];
   int _unreadCount = 0;
+  bool _isLoading = false;
+  /// IDs of notifications whose tap handler is currently in flight.
+  /// Extra taps while an ID is here are ignored (no duplicate API calls).
+  final Set<String> _processingIds = {};
+  StreamSubscription<List<Map<String, dynamic>>>? _realtimeSubscription;
 
   @override
   void initState() {
     super.initState();
-    // Mark all notifications as read when screen is opened
+
+    // Instantly show cached data so there's no blank-screen flash.
+    if (_cachedItems.isNotEmpty) {
+      _notificationItems = _cachedItems;
+      _unreadCount = _cachedUnreadCount;
+    }
+
+    final bool cacheStale = _cacheTimestamp == null ||
+        DateTime.now().difference(_cacheTimestamp!) > _cacheTtl;
+
+    if (cacheStale) {
+      // Cache is empty or old — load immediately (shows spinner only on first
+      // ever visit; subsequent visits see stale data while refreshing).
+      _setupRealtimeListener();
+    } else {
+      // Cache is fresh — set up realtime for live updates only, no forced load.
+      _setupRealtimeListener(skipInitialLoad: true);
+    }
+
+    // Mark all notifications as read after the first load completes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markAllNotificationsAsRead();
     });
-    _loadNotifications();
-    _setupRealtimeListener();
   }
 
   /// Mark all notifications as read when notifications tab is opened
   Future<void> _markAllNotificationsAsRead() async {
+    if (_unreadCount == 0) return; // Nothing to mark — skip DB call
     try {
       await _notificationService.markAllAsRead();
-      // Update notification count manager
-      await NotificationCountManager.instance.refreshCount();
-      // Reload to update unread count
+      // Update local state directly — no extra API calls needed.
       if (mounted) {
-        final unreadCount = await _notificationService.getUnreadCount();
+        final readItems = _notificationItems
+            .map((item) => item.copyWith(unread: false))
+            .toList();
         setState(() {
-          _unreadCount = unreadCount;
+          _unreadCount = 0;
+          _notificationItems = readItems;
         });
+        // Keep static cache in sync so next visit shows correct read state.
+        _cachedItems = readItems;
+        _cachedUnreadCount = 0;
+        // Update the badge count without hitting the DB.
+        NotificationCountManager.instance.setCount(0);
       }
     } catch (e) {
       debugPrint(
@@ -55,43 +94,54 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   /// Set up real-time listener for new notifications
-  void _setupRealtimeListener() {
+  void _setupRealtimeListener({bool skipInitialLoad = false}) {
     final supabase = Supabase.instance.client;
     final userId = supabase.auth.currentUser?.id;
 
-    if (userId == null) return;
+    if (userId == null) {
+      // No user — do a one-time load instead.
+      _loadNotifications();
+      return;
+    }
 
-    // Listen for new notifications
-    supabase
+    // The stream emits immediately with current data.
+    // When skipInitialLoad is true we ignore the first emission so we don't
+    // replace fresh-enough cache with a redundant network call.
+    bool firstEmission = true;
+    _realtimeSubscription = supabase
         .from('notifications_history')
         .stream(primaryKey: ['id'])
         .eq('user_id', userId)
         .order('created_at', ascending: false)
         .limit(1)
         .listen((data) {
-          // Reload notifications when new one arrives
-          if (mounted) {
-            _loadNotifications();
+          if (!mounted) return;
+          if (firstEmission && skipInitialLoad) {
+            firstEmission = false;
+            return; // skip — cache is fresh enough
           }
+          firstEmission = false;
+          _loadNotifications();
         });
   }
 
   @override
   void dispose() {
-    // Cleanup is handled automatically by Supabase stream
+    _realtimeSubscription?.cancel();
     super.dispose();
   }
 
   Future<void> _loadNotifications() async {
-    setState(() {
-      _isPageLoading = true;
-    });
-
+    // Guard against concurrent loads triggered by the realtime stream.
+    if (_isLoading) return;
+    _isLoading = true;
     try {
-      // Fetch notifications from database
-      final notifications = await _notificationService.getNotifications(
-        limit: 50,
-      );
+      // Single edge-function call returns both the list and counts.
+      final page = await _notificationService.fetchNotificationsPage(limit: 50);
+
+      final notifications =
+          page['notifications'] as List<Map<String, dynamic>>;
+      final unreadCount = page['unread_count'] as int;
 
       // Convert to UI format
       final items = notifications
@@ -99,24 +149,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           .whereType<NotificationItem>()
           .toList();
 
-      // Get unread count
-      final unreadCount = await _notificationService.getUnreadCount();
-      // Update notification count manager
-      await NotificationCountManager.instance.refreshCount();
+      // Update the badge count directly — no extra DB round-trip.
+      NotificationCountManager.instance.setCount(unreadCount);
+
+      // Write through to static cache.
+      _cachedItems = items;
+      _cachedUnreadCount = unreadCount;
+      _cacheTimestamp = DateTime.now();
 
       if (!mounted) return;
 
       setState(() {
         _notificationItems = items;
         _unreadCount = unreadCount;
-        _isPageLoading = false;
       });
     } catch (e) {
       debugPrint('[NotificationsScreen] Error loading notifications: $e');
-      if (!mounted) return;
-      setState(() {
-        _isPageLoading = false;
-      });
+    } finally {
+      _isLoading = false;
     }
   }
 
@@ -132,36 +182,53 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (notificationData == null) return;
 
     final notificationId = notificationData['id']?.toString();
-    if (notificationId != null) {
-      // Mark as read and clicked
-      await _notificationService.markAsRead(notificationId);
-      await _notificationService.markAsClicked(notificationId);
-      // Update notification count manager
-      await NotificationCountManager.instance.refreshCount();
-    }
+    // Deduplicate: if this notification is already being processed, ignore extra taps.
+    final lockKey = notificationId ?? 'unknown';
+    if (_processingIds.contains(lockKey)) return;
+    _processingIds.add(lockKey);
 
-    // Extract navigation data
-    final notificationType =
-        notificationData['notification_type']?.toString() ?? '';
+    try {
+      if (notificationId != null) {
+        // Support both is_read (bool) and read_at (timestamp) to detect unread.
+        final rawIsRead = notificationData['is_read'];
+        final readAt = notificationData['read_at'];
+        final wasUnread = !(rawIsRead == true
+            || rawIsRead?.toString() == 'true'
+            || (readAt != null && readAt.toString().isNotEmpty));
+        // Mark as read and clicked
+        await _notificationService.markAsRead(notificationId);
+        await _notificationService.markAsClicked(notificationId);
+        // Decrement badge locally — no extra DB round-trip.
+        if (wasUnread && mounted) {
+          final newCount = (_unreadCount - 1).clamp(0, double.infinity).toInt();
+          setState(() => _unreadCount = newCount);
+          NotificationCountManager.instance.setCount(newCount);
+        }
+      }
+
+    // Extract navigation data — support both edge function and legacy shapes.
+    final notificationType = notificationData['notification_type']?.toString()
+        ?? notificationData['type']?.toString() ?? '';
     final data = notificationData['data'] as Map<String, dynamic>? ?? {};
     final postId =
-        data['post_id']?.toString() ?? notificationData['post_id']?.toString();
+        notificationData['post_id']?.toString() ?? data['post_id']?.toString();
     final commentId =
-        data['comment_id']?.toString() ??
-        notificationData['comment_id']?.toString();
+        notificationData['comment_id']?.toString() ?? data['comment_id']?.toString();
 
-    // Navigate based on notification type
-    // Handle both new and legacy notification types
+    // Navigate based on notification type (edge function + legacy types).
     switch (notificationType) {
+      case 'comment':        // edge function
       case 'new_comment':
-      case 'post_reply': // Legacy support
+      case 'post_reply':
+      case 'reply':          // edge function
       case 'reply_to_comment':
-      case 'comment_reply': // Legacy support
+      case 'comment_reply':
+      case 'upvote':         // edge function
       case 'post_upvote':
       case 'post_hot':
       case 'post_top':
       case 'post_trending':
-        if (postId != null) {
+        if (postId != null && mounted) {
           Navigator.of(context).pushNamed(
             '/post-detail',
             arguments: {'postId': postId},
@@ -169,10 +236,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
         break;
       case 'comment_upvote':
+      case 'mention':        // edge function / legacy
       case 'mention_in_comment':
       case 'mention_in_post':
-      case 'mention': // Legacy support
-        if (postId != null) {
+        if (postId != null && mounted) {
           Navigator.of(context).pushNamed(
             '/post-detail',
             arguments: {
@@ -189,26 +256,39 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'account_suspended':
       case 'account_warning':
       case 'account_reactivated':
-        Navigator.of(context).pushNamed('/settings');
+        if (mounted) Navigator.of(context).pushNamed('/settings');
         break;
+      default:
+        // Unknown type — navigate to post detail if we have a postId,
+        // otherwise stay on the notifications screen.
+        if (postId != null && mounted) {
+          Navigator.of(context).pushNamed(
+            '/post-detail',
+            arguments: {
+              'postId': postId,
+              if (commentId != null) 'commentId': commentId,
+            },
+          );
+        }
     }
 
     // Refresh to update unread status
-    _loadNotifications();
+    if (mounted) _loadNotifications();
+    } finally {
+      _processingIds.remove(lockKey);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show loading overlay immediately while loading
-    if (_isPageLoading) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: PalLoadingOverlay(),
-      );
-    }
-
-    final scaffold = Scaffold(
+    return Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: PalBottomNavigationBar(
+        active: PalNavDestination.notifications,
+        onHomeTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
+        onNotificationsTap: () {},
+        onSettingsTap: () => Navigator.pushNamed(context, '/settings'),
+      ),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -288,22 +368,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ),
             ),
-            PalBottomNavigationBar(
-              active: PalNavDestination.notifications,
-              onHomeTap: () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
-                Navigator.of(context).pushReplacementNamed('/home');
-              },
-              onNotificationsTap: () {},
-              onSettingsTap: () {
-                Navigator.pushNamed(context, '/settings');
-              },
-            ),
           ],
         ),
       ),
     );
-    return scaffold;
   }
 }
 
@@ -318,12 +386,9 @@ class _WelcomeNotificationCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(12),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
               Container(
                 width: 47,
                 height: 47,
@@ -381,20 +446,6 @@ class _WelcomeNotificationCard extends StatelessWidget {
               ),
             ],
           ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE7000B),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -566,34 +617,23 @@ class _NotificationAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double size = 46.99876;
-    if (item.avatarImageAsset != null) {
-      final image = Image.asset(
-        item.avatarImageAsset!,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-      );
+    const double size = 47;
 
-      if (!item.hasAvatarBorder) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(size / 2),
-          child: image,
-        );
-      }
-
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(size / 2),
-          border: Border.all(color: const Color(0xFF0F172B), width: 3),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: image,
+    // User avatar: network image OR initials — use the same styling as
+    // the post card's comment avatar (Color(0xFFF1F5F9) bg, Color(0xFF314158) text/border).
+    if (item.avatarNetworkUrl != null || item.avatarInitials != null) {
+      return ProfileAvatarWidget(
+        imageUrl: item.avatarNetworkUrl,
+        initials: item.avatarInitials ?? '?',
+        size: size,
+        borderWidth: 2,
+        borderColor: const Color(0xFFE2E8F0),
+        backgroundColor: const Color(0xFFF1F5F9),
+        textColor: const Color(0xFF314158),
       );
     }
 
+    // System/icon-based notifications (SVG or Material icon inside a circle).
     final BoxDecoration decoration = BoxDecoration(
       color: item.avatarGradient == null
           ? item.avatarBackground ?? const Color(0xFFF1F5F9)
@@ -601,7 +641,7 @@ class _NotificationAvatar extends StatelessWidget {
       gradient: item.avatarGradient,
       borderRadius: BorderRadius.circular(size / 2),
       border: item.hasAvatarBorder
-          ? Border.all(color: const Color(0xFF0F172B), width: 3)
+          ? Border.all(color: const Color(0xFF314158), width: 2)
           : null,
     );
 

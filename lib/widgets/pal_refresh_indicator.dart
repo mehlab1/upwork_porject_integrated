@@ -136,6 +136,10 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
                           (_isRefreshing && _isAtTopDuringRefresh);
     final double translateY = -30 * (1 - _progress);
 
+    // When static/refreshing: keep indicator between header and welcome text.
+    // When pulling: track the drag from slightly above down to the static spot.
+    final double indicatorTop = _isRefreshing ? -12.0 : (-12.0 + translateY);
+
     return NotificationListener<ScrollNotification>(
       onNotification: _handleNotification,
       child: Stack(
@@ -151,21 +155,20 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
             triggerMode: RefreshIndicatorTriggerMode.onEdge,
             child: widget.child,
           ),
-          Positioned(
-            top: 10,
+          AnimatedPositioned(
+            duration: Duration(milliseconds: _isRefreshing ? 220 : 0),
+            curve: Curves.easeOut,
+            top: indicatorTop,
             left: 0,
             right: 0,
             child: IgnorePointer(
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 120),
                 opacity: showIndicator ? 1 : 0,
-                child: Transform.translate(
-                  offset: Offset(0, translateY),
-                  child: _DotLoader(
-                    controller: _controller,
-                    progress: _progress,
-                    refreshing: _isRefreshing,
-                  ),
+                child: _DotLoader(
+                  controller: _controller,
+                  progress: _progress,
+                  refreshing: _isRefreshing,
                 ),
               ),
             ),

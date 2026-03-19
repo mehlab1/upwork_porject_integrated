@@ -645,7 +645,7 @@ class ReportSuccessDialog extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               const Text(
-                'Your report has been submitted successfully. Our moderation team will review it within 24 hours.',
+                'Your report has been submitted successfully. Our moderation team will review it within 24 hours.You’ll be notified if further action or input is required',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w400,

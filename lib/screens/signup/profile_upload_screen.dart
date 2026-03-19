@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
-import '../otp/otp_verification_screen.dart';
 import '../../services/profile_picture_service.dart';
 import '../../widgets/pal_toast.dart';
 import '../../core/responsive/responsive.dart';
@@ -78,15 +77,20 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
     }
   }
 
+  /// Navigate to Home screen after signup flow completes
+  void _navigateToHome() {
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/home',
+      (route) => false, // Remove all previous routes
+      arguments: const {'showWelcomeModal': true},
+    );
+  }
+
   Future<void> _handleFinish() async {
-    // If no image selected, navigate directly
+    // If no image selected, navigate directly to Home
     if (_selectedImageFile == null || _selectedImageBytes == null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => OtpVerificationScreen(email: widget.email),
-        ),
-      );
+      _navigateToHome();
       return;
     }
 
@@ -109,13 +113,8 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
         _isUploading = false;
       });
 
-      // Navigate to OTP verification screen on success
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => OtpVerificationScreen(email: widget.email),
-        ),
-      );
+      // Navigate to Home screen - user is already authenticated from signUp
+      _navigateToHome();
     } catch (e) {
       if (!mounted) return;
 
@@ -148,13 +147,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
               TextButton(
                 onPressed: () {
                   Navigator.of(dialogContext).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          OtpVerificationScreen(email: widget.email),
-                    ),
-                  );
+                  _navigateToHome();
                 },
                 child: const Text('Continue Anyway'),
               ),
@@ -166,11 +159,54 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
   }
 
   void _handleSkip() {
-    // Navigate to OTP verification screen without image
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => OtpVerificationScreen(email: widget.email),
+    // Navigate to Home screen without uploading image
+    _navigateToHome();
+  }
+
+  /// Builds the 3-step progress indicator
+  /// currentStep: 1 = SignUp, 2 = InterestSelection, 3 = ProfileUpload
+  Widget _buildProgressIndicator(BuildContext context, {required int currentStep}) {
+    const double barWidth = 105.33333587646484;
+    const double barHeight = 8.0;
+    const double barRadius = 10.0;
+    const Color filledColor = Color(0xFF155DFC); // #155DFC
+    const Color emptyColor = Color(0xFFD9D9D9); // #D9D9D9
+    const double gap = 8.0; // Gap between bars
+
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Bar 1
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 1 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+          SizedBox(width: Responsive.scaledPadding(context, gap)),
+          // Bar 2
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 2 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+          SizedBox(width: Responsive.scaledPadding(context, gap)),
+          // Bar 3
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 3 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -208,9 +244,9 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                       'Add a Profile Picture',
                       style: TextStyle(
                         fontSize: Responsive.scaledFont(context, 24),
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w500,
                         color: const Color(0xFF0A0A0A),
-                        fontFamily: 'Inter',
+                        fontFamily: 'Rubik',
                         letterSpacing: -0.44,
                         height: 1.0,
                       ),
@@ -222,13 +258,15 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                 ],
               ),
             ),
+            // Progress indicator (Step 3 of 3)
+            const SizedBox(height: 26),
+            _buildProgressIndicator(context, currentStep: 3),
             // Main content
             Expanded(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 45),
-                  child: Column(
-                    children: [
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 45),
+                child: Column(
+                  children: [
                       const SizedBox(height: 8),
                       // Subtitle
                       FittedBox(
@@ -531,8 +569,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                       ),
 
                       const SizedBox(height: 50),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),

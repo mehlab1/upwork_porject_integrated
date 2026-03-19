@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/responsive/responsive.dart';
+import '../signup/email_collection_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -269,10 +270,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     setState(() {
       _isSignUpPressed = true;
     });
-    // Navigate to signup page after a brief moment to show the pressed state
+    // Navigate to email collection page first, then the full signup form
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) {
-        Navigator.pushNamed(context, '/signup');
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const EmailCollectionScreen(),
+          ),
+        );
       }
     });
   }

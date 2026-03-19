@@ -10,136 +10,150 @@ import '../widgets/pal_push_notification.dart';
 class NotificationService {
   final SupabaseClient _supabaseClient = Supabase.instance.client;
 
-  /// Fetch notifications for current user
-  /// 
-  /// Parameters:
-  /// - limit: Maximum number of notifications to fetch (default: 50)
-  /// - offset: Number of notifications to skip (default: 0)
-  /// - unreadOnly: If true, only fetch unread notifications (default: false)
+  // ── Edge-function base URL ────────────────────────────────────────────────
+  static const String _edgeFunctionBase =
+      'https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-notifications';
+
+  // ── Single-call fetch: notifications + counts ──────────────────────────────
+  /// Calls the `get-notifications` edge function once and returns:
+  ///   - `notifications`: List<Map<String, dynamic>>
+  ///   - `unread_count`:  int
+  ///   - `total_count`:   int
+  Future<Map<String, dynamic>> fetchNotificationsPage({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final empty = <String, dynamic>{
+      'notifications': <Map<String, dynamic>>[],
+      'unread_count': 0,
+      'total_count': 0,
+    };
+    try {
+      final token = _supabaseClient.auth.currentSession?.accessToken;
+      if (token == null) {
+        debugPrint('[NotificationService] No session – skipping fetchNotificationsPage');
+        return empty;
+      }
+
+      final uri = Uri.parse(_edgeFunctionBase).replace(queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      });
+
+      debugPrint('[NotificationService] GET $uri');
+      final resp = await http.get(uri, headers: _authHeaders(token));
+      debugPrint('[NotificationService] fetchNotificationsPage status: ${resp.statusCode}');
+
+      if (resp.statusCode >= 400) {
+        final err = (jsonDecode(resp.body) as Map<String, dynamic>)['error'] ?? 'Error';
+        debugPrint('[NotificationService] fetchNotificationsPage error: $err');
+        return empty;
+      }
+
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      return {
+        'notifications': (body['notifications'] as List<dynamic>? ?? [])
+            .map((e) => e as Map<String, dynamic>)
+            .toList(),
+        'unread_count': body['unread_count'] as int? ?? 0,
+        'total_count': body['total_count'] as int? ?? 0,
+      };
+    } catch (e) {
+      debugPrint('[NotificationService] Error in fetchNotificationsPage: $e');
+      return empty;
+    }
+  }
+
+  /// Fetch notifications for current user.
+  /// Uses the `get-notifications` edge function.
+  /// [unreadOnly] is filtered client-side from the edge function response.
   Future<List<Map<String, dynamic>>> getNotifications({
     int limit = 50,
     int offset = 0,
     bool unreadOnly = false,
   }) async {
-    try {
-      final userId = _supabaseClient.auth.currentUser?.id;
-      
-      if (userId == null) {
-        debugPrint('[NotificationService] No user logged in');
-        return [];
-      }
-
-      // Build query chain without reassigning to avoid type mismatch
-      final baseQuery = _supabaseClient
-          .from('notifications_history')
-          .select()
-          .eq('user_id', userId);
-
-      final filteredQuery = unreadOnly 
-          ? baseQuery.eq('is_read', false)
-          : baseQuery;
-
-      final response = await filteredQuery
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
-      
-      final notifications = (response as List<dynamic>?)
-          ?.map((item) => item as Map<String, dynamic>)
-          .toList() ?? [];
-
-      debugPrint('[NotificationService] Fetched ${notifications.length} notifications');
-      if (notifications.isNotEmpty) {
-        debugPrint('[NotificationService] First notification type: ${notifications.first['notification_type']}');
-        debugPrint('[NotificationService] First notification ID: ${notifications.first['id']}');
-        debugPrint('[NotificationService] First notification is_read: ${notifications.first['is_read']}');
-      }
-      
-      return notifications;
-    } catch (e) {
-      debugPrint('[NotificationService] Error fetching notifications: $e');
-      return [];
+    final page = await fetchNotificationsPage(limit: limit, offset: offset);
+    final all = page['notifications'] as List<Map<String, dynamic>>;
+    if (unreadOnly) {
+      return all.where((n) => n['is_read'] == false).toList();
     }
+    return all;
   }
 
-  /// Get unread notification count
+  /// Get unread notification count from the edge function.
+  /// Uses limit=1 so the DB work is minimal — only the count RPC runs.
   Future<int> getUnreadCount() async {
     try {
-      final userId = _supabaseClient.auth.currentUser?.id;
-      
-      if (userId == null) {
-        return 0;
-      }
+      final token = _supabaseClient.auth.currentSession?.accessToken;
+      if (token == null) return 0;
 
-      // Fetch all unread notification IDs and count them
-      final response = await _supabaseClient
-          .from('notifications_history')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('is_read', false);
+      final uri = Uri.parse(_edgeFunctionBase).replace(queryParameters: {
+        'limit': '1',
+        'offset': '0',
+      });
 
-      // Response is a List, so just return its length
-      if (response is List) {
-        return response.length;
-      }
-      
-      return 0;
+      final resp = await http.get(uri, headers: _authHeaders(token));
+      if (resp.statusCode >= 400) return 0;
+
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      return body['unread_count'] as int? ?? 0;
     } catch (e) {
       debugPrint('[NotificationService] Error getting unread count: $e');
       return 0;
     }
   }
 
-  /// Mark notification as read
+  /// Mark a single notification as read via the edge function.
   Future<bool> markAsRead(String notificationId) async {
     try {
-      final userId = _supabaseClient.auth.currentUser?.id;
-      
-      if (userId == null) {
-        return false;
-      }
+      final token = _supabaseClient.auth.currentSession?.accessToken;
+      if (token == null) return false;
 
-      await _supabaseClient
-          .from('notifications_history')
-          .update({
-            'is_read': true,
-            'read_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', notificationId)
-          .eq('user_id', userId);
+      final uri = Uri.parse(_edgeFunctionBase)
+          .replace(queryParameters: {'action': 'mark_read'});
 
-      debugPrint('[NotificationService] Marked notification $notificationId as read');
-      return true;
+      final resp = await http.post(
+        uri,
+        headers: _authHeaders(token),
+        body: jsonEncode({'notification_id': notificationId}),
+      );
+
+      final ok = resp.statusCode < 400;
+      debugPrint('[NotificationService] markAsRead $notificationId → ${resp.statusCode}');
+      return ok;
     } catch (e) {
       debugPrint('[NotificationService] Error marking notification as read: $e');
       return false;
     }
   }
 
-  /// Mark all notifications as read
+  /// Mark all notifications as read via the edge function.
   Future<bool> markAllAsRead() async {
     try {
-      final userId = _supabaseClient.auth.currentUser?.id;
-      
-      if (userId == null) {
-        return false;
-      }
+      final token = _supabaseClient.auth.currentSession?.accessToken;
+      if (token == null) return false;
 
-      await _supabaseClient
-          .from('notifications_history')
-          .update({
-            'is_read': true,
-            'read_at': DateTime.now().toIso8601String(),
-          })
-          .eq('user_id', userId)
-          .eq('is_read', false);
+      final uri = Uri.parse(_edgeFunctionBase)
+          .replace(queryParameters: {'action': 'mark_all_read'});
 
-      debugPrint('[NotificationService] Marked all notifications as read');
-      return true;
+      final resp = await http.post(uri, headers: _authHeaders(token));
+
+      final ok = resp.statusCode < 400;
+      debugPrint('[NotificationService] markAllAsRead → ${resp.statusCode}');
+      return ok;
     } catch (e) {
       debugPrint('[NotificationService] Error marking all notifications as read: $e');
       return false;
     }
   }
+
+  /// Build common auth headers for edge function requests.
+  Map<String, String> _authHeaders(String accessToken) => {
+    'Content-Type': 'application/json',
+    'apikey':
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY',
+    'Authorization': 'Bearer $accessToken',
+  };
 
   /// Mark notification as clicked
   Future<bool> markAsClicked(String notificationId) async {
@@ -259,25 +273,19 @@ class NotificationService {
     String functionName, {
     Map<String, dynamic>? body,
     String method = 'POST',
+    Map<String, String>? queryParams,
   }) async {
-    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/$functionName');
+    final baseUri = Uri.parse(
+        'https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/$functionName');
+    final uri = queryParams != null
+        ? baseUri.replace(queryParameters: queryParams)
+        : baseUri;
     try {
       final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
-      final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+      final headers = _authHeaders(sessionToken ?? '');
 
-      final headers = <String, String>{
-        'Content-Type': 'application/json',
-        'apikey': anonKey,
-      };
-      if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
-
-      print('=== NOTIFICATION SERVICE - REQUEST TO EDGE FUNCTION ($functionName) ===');
-      print('URL: $uri');
-      print('Method: $method');
-      print('Has session token: ${sessionToken != null}');
-      if (body != null) {
-        print('Request body: ${jsonEncode(body)}');
-      }
+      debugPrint('[NotificationService] $method $uri');
+      if (body != null) debugPrint('[NotificationService] body: ${jsonEncode(body)}');
 
       late http.Response resp;
       final encoded = body == null ? null : jsonEncode(body);
@@ -287,26 +295,18 @@ class NotificationService {
         resp = await http.post(uri, headers: headers, body: encoded);
       }
 
-      print('=== NOTIFICATION SERVICE - RESPONSE FROM EDGE FUNCTION ($functionName) ===');
-      print('Status Code: ${resp.statusCode}');
-      print('Response headers: ${resp.headers}');
-      print('Response body: ${resp.body}');
-      print('===================================================================');
+      debugPrint('[NotificationService] $functionName → ${resp.statusCode}');
 
-      final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
+      final parsed = jsonDecode(resp.body) as Map<String, dynamic>;
 
       if (resp.statusCode >= 400) {
         final errorMessage = parsed['error'] ?? parsed['message'] ?? 'Server error';
-        debugPrint('ERROR: Function $functionName returned ${resp.statusCode}: $errorMessage');
-        print('ERROR _callFunction ($functionName): Full response body: $parsed');
         throw Exception(errorMessage);
       }
 
-      print('SUCCESS _callFunction ($functionName): Response parsed - $parsed');
       return parsed;
     } catch (e) {
-      debugPrint('ERROR: Exception while calling function $functionName - ${e.toString()}');
-      print('ERROR _callFunction ($functionName): Exception - $e');
+      debugPrint('[NotificationService] Error calling $functionName: $e');
       rethrow;
     }
   }

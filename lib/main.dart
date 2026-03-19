@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/login/login_screen.dart';
-import 'screens/signup/signup_screen.dart';
+import 'screens/signup/email_collection_screen.dart';
 import 'screens/otp/otp_verification_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/settings/settings_screen.dart';
@@ -15,10 +15,14 @@ import 'screens/settings/upvoted_posts_screen.dart';
 import 'screens/settings/community_guidelines_screen.dart';
 import 'screens/feed/post_detail_screen.dart';
 import 'services/auth_state_service.dart';
+import 'services/admin_service.dart';
+import 'services/moderator_service.dart';
 import 'services/post_service.dart';
 import 'services/fcm_service.dart';
 import 'services/notification_service.dart';
 import 'services/notification_count_manager.dart';
+import 'services/user_role_service.dart';
+import 'widgets/pal_push_notification.dart';
 
 // Conditional import: use stub on web, real implementation on mobile
 import 'fcm_setup_stub.dart'
@@ -144,6 +148,9 @@ class PalApp extends StatefulWidget {
 
 class _PalAppState extends State<PalApp> {
   final AuthStateService _authStateService = AuthStateService();
+  final AdminService _adminService = AdminService();
+  final ModeratorService _moderatorService = ModeratorService();
+  final UserRoleService _userRoleService = UserRoleService();
   bool _isCheckingAuth = true;
   Widget? _initialRoute;
 
@@ -160,6 +167,16 @@ class _PalAppState extends State<PalApp> {
   void _setupNotificationHandling() {
     FCMService().setNotificationTapCallback((data) {
       _handleNotificationNavigation(data);
+    });
+
+    // Register foreground message callback — shows in-app PalPushNotification banner
+    FCMService().setForegroundMessageCallback((title, body, data) {
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        PalPushNotification.show(context, title: title, message: body);
+      }
+      // Also refresh the badge count
+      NotificationCountManager.instance.refreshCount();
     });
 
     // Check for pending navigation data when app starts
@@ -190,27 +207,34 @@ class _PalAppState extends State<PalApp> {
       case 'post_top':
       case 'post_trending':
         if (postId != null) {
-          // Navigate to post detail (you may need to create this screen)
-          navigatorKey.currentState?.pushNamed('/home', arguments: {
-            'highlight_post_id': postId,
-          });
+          // Navigate directly to the post detail screen
+          navigatorKey.currentState?.pushNamed(
+            PostDetailScreen.routeName,
+            arguments: {'postId': postId},
+          );
         }
         break;
       case 'comment_upvote':
         if (postId != null) {
-          navigatorKey.currentState?.pushNamed('/home', arguments: {
-            'highlight_post_id': postId,
-            'highlight_comment_id': commentId,
-          });
+          navigatorKey.currentState?.pushNamed(
+            PostDetailScreen.routeName,
+            arguments: {
+              'postId': postId,
+              'commentId': commentId,
+            },
+          );
         }
         break;
       case 'mention_in_comment':
       case 'mention_in_post':
         if (postId != null) {
-          navigatorKey.currentState?.pushNamed('/home', arguments: {
-            'highlight_post_id': postId,
-            'highlight_comment_id': commentId,
-          });
+          navigatorKey.currentState?.pushNamed(
+            PostDetailScreen.routeName,
+            arguments: {
+              'postId': postId,
+              'commentId': commentId,
+            },
+          );
         }
         break;
       case 'report_under_review':
@@ -235,6 +259,24 @@ class _PalAppState extends State<PalApp> {
       final shouldAutoLogin = await _authStateService.shouldAutoLogin();
       
       if (shouldAutoLogin) {
+        // Refresh admin/moderator flags based on backend role.
+        try {
+          final roleResp = await _userRoleService.getUserRole();
+          final role = roleResp['role']?.toString().trim();
+          final isAdmin = role == 'admin';
+          final isModerator = role == 'moderator' ||
+              role == 'junior_moderator' ||
+              role == 'reviewer';
+          await _adminService.setAdminStatus(isAdmin);
+          await _moderatorService.setModeratorStatus(isModerator);
+        } catch (_) {
+          // Non-blocking: keep previous stored values if role fetch fails.
+        }
+
+        // Kick off feed prefetch immediately — runs in parallel with everything below
+        // so the feed screen's first load finds data already in cache.
+        PostService().prefetchFeed();
+
         // Initialize FCM for logged-in user
         try {
           await FCMService().initialize();
@@ -283,17 +325,7 @@ class _PalAppState extends State<PalApp> {
             );
             _isCheckingAuth = false;
           });
-
-          // Show unread notifications after home screen loads
-          // Wait a few seconds for home screen to fully load, then show notifications
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            await Future<void>.delayed(const Duration(seconds: 3));
-            if (mounted && navigatorKey.currentContext != null) {
-              // Home screen is now loaded, show unread notifications
-              final notificationService = NotificationService();
-              await notificationService.showUnreadNotificationsInApp(navigatorKey.currentContext!);
-            }
-          });
+          // Note: unread notifications will be shown by FeedHomeScreen.initState
         }
       } else {
         // No valid session or Remember Me not enabled, show onboarding
@@ -353,7 +385,7 @@ class _PalAppState extends State<PalApp> {
           return HomeScreen(showWelcomeModal: showWelcomeModal, showFirstPostCard: showFirstPostCard);
         },
         '/login': (context) => const LoginScreen(),
-        '/signup': (context) => const SignUpScreen(),
+        '/signup': (context) => const EmailCollectionScreen(),
         '/otp': (context) {
           final email =
               ModalRoute.of(context)!.settings.arguments as String? ?? '';

@@ -143,25 +143,17 @@ class FCMService {
     debugPrint('[FCMService] Local notifications initialized');
   }
 
-  /// Handle notification tap
+  /// Handle notification tap (from local/system notification shown for foreground FCM)
   void _onNotificationTapped(NotificationResponse response) {
     debugPrint('[FCMService] Notification tapped: ${response.payload}');
-    // Handle navigation based on notification payload
-    // Navigation will be handled by the app's notification handler
-    _handleNotificationNavigation(response.payload);
-  }
-
-  /// Handle notification navigation based on payload data
-  void _handleNotificationNavigation(String? payload) {
-    if (payload == null || payload.isEmpty) return;
-    
-    try {
-      // Parse payload (it's a string representation of data)
-      // The actual data comes from RemoteMessage.data in other handlers
-      debugPrint('[FCMService] Handling navigation for payload: $payload');
-      // Navigation will be handled by the app-level handler
-    } catch (e) {
-      debugPrint('[FCMService] Error parsing notification payload: $e');
+    // Use the stored foreground message data for navigation
+    final data = _lastForegroundMessageData;
+    if (data != null && data.isNotEmpty) {
+      _pendingNavigationData = data;
+      if (_onNotificationTapCallback != null) {
+        _onNotificationTapCallback!(data);
+      }
+      _lastForegroundMessageData = null;
     }
   }
 
@@ -170,13 +162,26 @@ class FCMService {
     return message.data;
   }
 
-  /// Callback for notification tap navigation
+  /// Callback for notification tap navigation (background/terminated + local tap)
   Function(Map<String, dynamic>)? _onNotificationTapCallback;
   Map<String, dynamic>? _pendingNavigationData;
 
-  /// Set callback for notification tap handling
+  /// Callback for foreground messages — used to show in-app banner (PalPushNotification)
+  Function(String title, String body, Map<String, dynamic> data)? _onForegroundMessageCallback;
+
+  /// Last foreground message data — used when the local notification is tapped
+  Map<String, dynamic>? _lastForegroundMessageData;
+
+  /// Set callback for notification tap handling (background/terminated)
   void setNotificationTapCallback(Function(Map<String, dynamic>) callback) {
     _onNotificationTapCallback = callback;
+  }
+
+  /// Set callback for foreground messages — show an in-app banner (PalPushNotification)
+  void setForegroundMessageCallback(
+    Function(String title, String body, Map<String, dynamic> data) callback,
+  ) {
+    _onForegroundMessageCallback = callback;
   }
 
   /// Get pending navigation data and clear it
@@ -341,9 +346,19 @@ class FCMService {
         return;
       }
       
-      // Show local notification for foreground messages (only if unread)
+      // Show in-app banner if callback is registered (app is in foreground)
       if (message.notification != null) {
-        _showLocalNotification(message);
+        final title = message.notification!.title ?? 'New notification';
+        final body  = message.notification!.body  ?? '';
+        // Store message data so it's available if the local notification is tapped
+        _lastForegroundMessageData = message.data;
+        if (_onForegroundMessageCallback != null) {
+          // Show in-app PalPushNotification overlay
+          _onForegroundMessageCallback!(title, body, message.data);
+        } else {
+          // Fallback: show system notification when no in-app callback is registered
+          _showLocalNotification(message);
+        }
       }
     });
 

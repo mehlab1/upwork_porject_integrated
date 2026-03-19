@@ -49,18 +49,41 @@ class _AdminUserProfileScreenState extends State<AdminUserProfileScreen> {
     });
 
     try {
-      final profileData = await _profileService.getProfileDataByUserId(
-        widget.userId,
-      );
+      // Use mod-view-profile edge function for richer moderator/admin data
+      final response = await _profileService.modViewProfile(widget.userId);
       if (!mounted) return;
-      setState(() {
-        _profileData = profileData;
-        _isLoading = false;
-      });
 
-      // TODO: Load violation counts from API when available
-      // For now, using placeholder values
-      _loadViolationCounts();
+      if (response['success'] == true && response['profile'] != null) {
+        final profileData = ProfileData.fromMap(
+          response['profile'] as Map<String, dynamic>,
+        );
+        setState(() {
+          _profileData = profileData;
+          _isLoading = false;
+        });
+
+        // Populate violation counts from violations object
+        final violations = response['violations'] as Map<String, dynamic>?;
+        if (violations != null && mounted) {
+          setState(() {
+            _warnedPostCount = (violations['warned_posts_count'] as num?)?.toInt() ?? 0;
+            _mutedPostCount = (violations['muted_posts_count'] as num?)?.toInt() ?? 0;
+            _hiddenPostCount = (violations['hidden_posts_count'] as num?)?.toInt() ?? 0;
+            _shadowBanningCount = (violations['shadow_ban_count'] as num?)?.toInt() ?? 0;
+            _suspensionCount = (violations['suspension_count'] as num?)?.toInt() ?? 0;
+          });
+        }
+      } else {
+        // Fallback to regular profile fetch if mod-view-profile fails
+        final profileData = await _profileService.getProfileDataByUserId(
+          widget.userId,
+        );
+        if (!mounted) return;
+        setState(() {
+          _profileData = profileData;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

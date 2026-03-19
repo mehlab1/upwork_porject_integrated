@@ -127,6 +127,14 @@ class ProfileService {
     return await _callFunction('get-profile', body: {'user_id': userId});
   }
 
+  /// Moderator/Admin view of a user's profile via mod-view-profile edge function
+  /// 
+  /// Returns rich data: profile, post_stats, moderation_summary, role_history, recent_actions
+  /// Requires moderator or admin role.
+  Future<Map<String, dynamic>> modViewProfile(String targetUserId) async {
+    return await _callFunction('mod-view-profile', body: {'target_user_id': targetUserId});
+  }
+
   /// Get profile data by user_id as a structured object with caching
   /// Returns cached data if valid (< 5 minutes old), otherwise fetches fresh
   /// Set forceRefresh to true to bypass cache
@@ -464,6 +472,18 @@ class ProfileService {
       print('================================');
       rethrow;
     }
+  }
+
+  /// Opt in to Wahala of the Day (WOD) eligibility using `wod-opt-in` edge function.
+  /// Returns: Map with success (bool), message (String)
+  Future<Map<String, dynamic>> wodOptIn() async {
+    return await _callFunction('wod-opt-in', body: {});
+  }
+
+  /// Opt out of Wahala of the Day (WOD) eligibility using `wod-opt-out` edge function.
+  /// Returns: Map with success (bool), message (String)
+  Future<Map<String, dynamic>> wodOptOut() async {
+    return await _callFunction('wod-opt-out', body: {});
   }
 
   // ============================================================================

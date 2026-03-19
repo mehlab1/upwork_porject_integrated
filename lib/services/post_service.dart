@@ -37,6 +37,81 @@ class PostService {
   // Feed cache storage (cache key -> cached data)
   static final Map<String, _CachedFeedData> _feedCache = {};
 
+  // In-flight dedup — prevents duplicate concurrent requests for the same feed params
+  static final Map<String, Future<Map<String, dynamic>>> _inflightFeeds = {};
+
+  // Pinned posts cache (3-minute TTL to avoid cold-start on every New-filter load)
+  static const Duration _pinnedPostsCacheDuration = Duration(minutes: 3);
+  static List<Map<String, dynamic>>? _pinnedPostsCache;
+  static DateTime? _pinnedPostsCacheTime;
+
+  // Upvoted posts cache
+  static const Duration _upvotedPostsCacheDuration = Duration(minutes: 3);
+  static Map<String, dynamic>? _upvotedPostsCache;
+  static DateTime? _upvotedPostsCacheTime;
+  static Future<Map<String, dynamic>>? _inflightUpvotedPosts;
+
+  bool get _isUpvotedPostsCacheValid =>
+      _upvotedPostsCache != null &&
+      _upvotedPostsCacheTime != null &&
+      DateTime.now().difference(_upvotedPostsCacheTime!) < _upvotedPostsCacheDuration;
+
+  /// Fire-and-forget prefetch of upvoted posts.
+  void prefetchUpvotedPosts() {
+    if (_isUpvotedPostsCacheValid) return;
+    if (_inflightUpvotedPosts != null) return;
+    _inflightUpvotedPosts = getUpvotedPosts(limit: 100, offset: 0)
+        .whenComplete(() => _inflightUpvotedPosts = null);
+  }
+
+  /// Invalidate upvoted posts cache (call after upvoting/un-upvoting).
+  void invalidateUpvotedPostsCache() {
+    _upvotedPostsCache = null;
+    _upvotedPostsCacheTime = null;
+    _inflightUpvotedPosts = null;
+  }
+
+  /// Returns true if upvoted posts data is already cached and fresh.
+  bool get isUpvotedPostsCached => _isUpvotedPostsCacheValid;
+
+  /// Invalidate pinned posts cache (call after pinning/unpinning a post).
+  void invalidatePinnedPostsCache() {
+    _pinnedPostsCache = null;
+    _pinnedPostsCacheTime = null;
+  }
+
+  /// Fire-and-forget prefetch of the default (New) feed.
+  /// Safe to call any time — no-ops if data is already fresh or in-flight.
+  /// The fetched data populates [_feedCache] so the next [getFeed] call returns instantly.
+  void prefetchFeed() {
+    const cacheKey = 'feed_latest_20_0___';
+    final cached = _feedCache[cacheKey];
+    if (cached != null && cached.isValid(_newFilterCacheDuration)) return;
+    if (_inflightFeeds.containsKey(cacheKey)) return;
+    _inflightFeeds[cacheKey] = getFeed(sort: 'latest', limit: 20, offset: 0)
+        .whenComplete(() => _inflightFeeds.remove(cacheKey));
+  }
+
+  /// Fire-and-forget prefetch of the Hot feed.
+  void prefetchHotFeed() {
+    const cacheKey = 'feed_hot_20_0___all_time';
+    final cached = _feedCache[cacheKey];
+    if (cached != null && cached.isValid(_hotTopFilterCacheDuration)) return;
+    if (_inflightFeeds.containsKey(cacheKey)) return;
+    _inflightFeeds[cacheKey] = getFeed(sort: 'hot', limit: 20, offset: 0, timeFilter: 'all_time')
+        .whenComplete(() => _inflightFeeds.remove(cacheKey));
+  }
+
+  /// Fire-and-forget prefetch of the Top feed.
+  void prefetchTopFeed() {
+    const cacheKey = 'feed_top_20_0___all_time';
+    final cached = _feedCache[cacheKey];
+    if (cached != null && cached.isValid(_hotTopFilterCacheDuration)) return;
+    if (_inflightFeeds.containsKey(cacheKey)) return;
+    _inflightFeeds[cacheKey] = getFeed(sort: 'top', limit: 20, offset: 0, timeFilter: 'all_time')
+        .whenComplete(() => _inflightFeeds.remove(cacheKey));
+  }
+
   // Internal helper to call Supabase Edge Functions with masked logging
   Future<Map<String, dynamic>> _callFunction(
     String functionName, {
@@ -167,11 +242,17 @@ class PostService {
         _feedCache.remove(cacheKey);
       }
     }
+
+    // Join in-flight request if one is already running for this key
+    if (!forceRefresh && _inflightFeeds.containsKey(cacheKey)) {
+      debugPrint('[PostService] Joining in-flight feed request (key: $cacheKey)');
+      return _inflightFeeds[cacheKey]!;
+    }
     
     final body = <String, dynamic>{
       'limit': limit,
       'offset': offset,
-      'use_cache': useCache,
+      'use_cache': forceRefresh ? false : useCache,
     };
     
     if (sort != null) body['sort'] = sort;
@@ -193,6 +274,25 @@ class PostService {
     return {...response, 'client_cached': false};
   }
   
+  /// Returns true if a valid cached result exists for the given feed parameters.
+  /// Used by the feed screen to decide whether to show the skeleton while switching filters.
+  bool isFeedCached({
+    String? sort,
+    int limit = 20,
+    int offset = 0,
+    String? categoryId,
+    String? locationId,
+    String? timeFilter,
+  }) {
+    final cacheKey = 'feed_${sort ?? 'latest'}_${limit}_${offset}_${categoryId ?? ''}_${locationId ?? ''}_${timeFilter ?? ''}';
+    final sortType = sort ?? 'latest';
+    final cacheDuration = (sortType == 'hot' || sortType == 'top')
+        ? _hotTopFilterCacheDuration
+        : _newFilterCacheDuration;
+    final cached = _feedCache[cacheKey];
+    return cached != null && cached.isValid(cacheDuration);
+  }
+
   /// Clear all client-side feed cache (call on pull-to-refresh or logout)
   void clearFeedCache() {
     _feedCache.clear();
@@ -293,6 +393,20 @@ class PostService {
     print('Full response: $response');
     print('==============================');
     
+    return response;
+  }
+
+  /// Get the realtime WOD post using the get-wod-post edge function.
+  ///
+  /// Returns: Map payload from backend; expected to contain one post entry
+  /// under keys like `wod_post`, `post`, or `data` depending on backend shape.
+  Future<Map<String, dynamic>> getWodPost() async {
+    print('=== GET WOD POST - REQUEST ===');
+    final response = await _callFunction('get-wod-post', method: 'GET');
+    print('=== GET WOD POST - RESPONSE ===');
+    print('Success: ${response['success']}');
+    print('Response keys: ${response.keys.toList()}');
+    print('==============================');
     return response;
   }
 
@@ -1030,6 +1144,11 @@ class PostService {
   /// Parameters: limit (int, default 20), offset (int, default 0)
   /// Returns: Map with success (bool), total_upvoted_posts (int), and posts (List<Map<String, dynamic>>)
   Future<Map<String, dynamic>> getUpvotedPosts({int limit = 20, int offset = 0}) async {
+    // Return cached data if still valid
+    if (_isUpvotedPostsCacheValid) return _upvotedPostsCache!;
+    // Deduplicate concurrent requests
+    if (_inflightUpvotedPosts != null) return _inflightUpvotedPosts!;
+
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-upvoted-posts');
     try {
       print('=== DEBUG getUpvotedPosts: Getting upvoted posts (limit: $limit, offset: $offset) ===');
@@ -1067,7 +1186,11 @@ class PostService {
       print('DEBUG getUpvotedPosts: Total upvoted posts - ${parsed['total_upvoted_posts']}');
       final posts = parsed['posts'] as List<dynamic>? ?? [];
       print('DEBUG getUpvotedPosts: Posts in response - ${posts.length}');
-      
+
+      // Store in cache
+      _upvotedPostsCache = parsed;
+      _upvotedPostsCacheTime = DateTime.now();
+
       return parsed;
     } catch (e) {
       print('ERROR getUpvotedPosts: Exception - $e');
@@ -1128,6 +1251,418 @@ class PostService {
         rethrow;
       }
       throw Exception('Failed to search users: $errorStr');
+    }
+  }
+
+  // ============================================================================
+  // MODERATION EDGE FUNCTION METHODS
+  // ============================================================================
+
+  /// Pin a post using the pin-post edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - action: 'pin' or 'unpin'
+  /// - expiresAt: Optional ISO8601 expiry (pin only, null = no expiry)
+  /// 
+  /// Returns: Map with success, pin_id/post_id, pinned_by/unpinned_by, etc.
+  Future<Map<String, dynamic>> pinPost({
+    required String postId,
+    required String action,
+    String? expiresAt,
+  }) async {
+    final body = <String, dynamic>{
+      'action': action,
+      'post_id': postId,
+    };
+    if (action == 'pin' && expiresAt != null) {
+      body['expires_at'] = expiresAt;
+    }
+
+    print('=== DEBUG pinPost: $action post: $postId ===');
+
+    try {
+      final response = await _callFunction('pin-post', body: body);
+      print('DEBUG pinPost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR pinPost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Unpin a post using the unpin-post edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post to unpin
+  /// 
+  /// Returns: Map with success boolean
+  Future<Map<String, dynamic>> unpinPost({
+    required String postId,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+    };
+
+    print('=== DEBUG unpinPost: post: $postId ===');
+
+    try {
+      final response = await _callFunction('unpin-post', body: body);
+      print('DEBUG unpinPost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR unpinPost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Mute or unmute a post using the mute-post edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - action: 'mute' or 'unmute'
+  /// - reason: Required for mute (e.g., harassment, spam, etc.)
+  /// - details: Optional string for mute
+  /// - expiresAt: Optional ISO8601 expiry for mute (null = indefinite)
+  /// 
+  /// Returns: Map with success, action_id, post_id, reason, etc.
+  Future<Map<String, dynamic>> mutePost({
+    required String postId,
+    required String action,
+    String? reason,
+    String? details,
+    String? expiresAt,
+  }) async {
+    final body = <String, dynamic>{
+      'action': action,
+      'post_id': postId,
+    };
+    if (action == 'mute') {
+      if (reason != null) body['reason'] = reason;
+      if (details != null && details.isNotEmpty) body['details'] = details;
+      if (expiresAt != null) body['expires_at'] = expiresAt;
+    }
+
+    print('=== DEBUG mutePost: $action post: $postId ===');
+
+    try {
+      final response = await _callFunction('mute-post', body: body);
+      print('DEBUG mutePost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR mutePost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Warn or unwarn a post using the warn-post edge function (admin only)
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - action: 'warn' or 'unwarn'
+  /// - reason: Required for warn (e.g., harassment, spam, etc.)
+  /// - details: Optional string for warn
+  /// 
+  /// Returns: Map with success, action_id, post_id, reason, etc.
+  Future<Map<String, dynamic>> warnPost({
+    required String postId,
+    required String action,
+    String? reason,
+    String? details,
+  }) async {
+    final body = <String, dynamic>{
+      'action': action,
+      'post_id': postId,
+    };
+    if (action == 'warn') {
+      if (reason != null) body['reason'] = reason;
+      if (details != null && details.isNotEmpty) body['details'] = details;
+    }
+
+    print('=== DEBUG warnPost: $action post: $postId ===');
+
+    try {
+      final response = await _callFunction('warn-post', body: body);
+      print('DEBUG warnPost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR warnPost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Hide or unhide a post using the hide-post edge function (admin only)
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - action: 'hide' or 'unhide'
+  /// - reason: Required for hide (e.g., harassment, spam, etc.)
+  /// - details: Optional string for hide
+  /// 
+  /// Returns: Map with success, action_id, post_id, reason, etc.
+  Future<Map<String, dynamic>> hidePost({
+    required String postId,
+    required String action,
+    String? reason,
+    String? details,
+  }) async {
+    final body = <String, dynamic>{
+      'action': action,
+      'post_id': postId,
+    };
+    if (action == 'hide') {
+      if (reason != null) body['reason'] = reason;
+      if (details != null && details.isNotEmpty) body['details'] = details;
+    }
+
+    print('=== DEBUG hidePost: $action post: $postId ===');
+
+    try {
+      final response = await _callFunction('hide-post', body: body);
+      print('DEBUG hidePost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR hidePost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Flag a post for moderator review using the flag-post edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - reason: Optional reason string
+  /// 
+  /// Returns: Map with success, post_id, old_status, new_status, reason
+  Future<Map<String, dynamic>> flagPost({
+    required String postId,
+    String? reason,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+    };
+    if (reason != null && reason.isNotEmpty) {
+      body['reason'] = reason;
+    }
+
+    print('=== DEBUG flagPost: Flagging post: $postId ===');
+
+    try {
+      final response = await _callFunction('flag-post', body: body);
+      print('DEBUG flagPost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR flagPost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Escalate a post to administrator using the escalate-to-admin edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - reason: Required reason string
+  /// 
+  /// Returns: Map with success, post_id, promoted_user, escalated_by, escalated_at
+  Future<Map<String, dynamic>> escalateToAdmin({
+    required String postId,
+    required String reason,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+      'reason': reason,
+    };
+
+    print('=== DEBUG escalateToAdmin: Escalating post: $postId ===');
+
+    try {
+      final response = await _callFunction('escalate-to-admin', body: body);
+      print('DEBUG escalateToAdmin: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR escalateToAdmin: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Escalate a post to moderator using the escalate-to-moderator edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - reason: Optional reason string
+  /// 
+  /// Returns: Map with success, post_id, user_id, username, old_role, new_role
+  Future<Map<String, dynamic>> escalateToModerator({
+    required String postId,
+    String? reason,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+    };
+    if (reason != null && reason.isNotEmpty) {
+      body['reason'] = reason;
+    }
+
+    print('=== DEBUG escalateToModerator: Escalating post: $postId ===');
+
+    try {
+      final response = await _callFunction('escalate-to-moderator', body: body);
+      print('DEBUG escalateToModerator: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR escalateToModerator: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Nominate a post for Word of the Day using the nominate-wod edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - note: Optional nomination note
+  /// 
+  /// Returns: Map with success, nomination_id, post_id, nominated_by, nominated_at
+  Future<Map<String, dynamic>> nominateWod({
+    required String postId,
+    String? note,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+    };
+    if (note != null && note.isNotEmpty) {
+      body['note'] = note;
+    }
+
+    print('=== DEBUG nominateWod: Nominating post: $postId ===');
+
+    try {
+      final response = await _callFunction('nominate-wod', body: body);
+      print('DEBUG nominateWod: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR nominateWod: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Change a post's category using the change-category edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - categorySlug: The slug of the new category
+  /// 
+  /// Returns: Map with success, post_id, old_category, new_category
+  Future<Map<String, dynamic>> changeCategory({
+    required String postId,
+    required String categorySlug,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+      'category_slug': categorySlug,
+    };
+
+    print('=== DEBUG changeCategory: Changing category for post: $postId to $categorySlug ===');
+
+    try {
+      final response = await _callFunction('change-category', body: body);
+      print('DEBUG changeCategory: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR changeCategory: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Edit a post as admin using the admin-edit-post edge function
+  /// 
+  /// Parameters:
+  /// - postId: UUID of the post
+  /// - content: Updated content (max 1000 chars)
+  /// - imageUrl: Optional image URL (null to clear)
+  /// 
+  /// Returns: Map with success, post_id, updated_by, updated_at
+  Future<Map<String, dynamic>> adminEditPost({
+    required String postId,
+    required String content,
+    String? imageUrl,
+  }) async {
+    final body = <String, dynamic>{
+      'post_id': postId,
+      'content': content,
+    };
+    if (imageUrl != null) {
+      body['image_url'] = imageUrl;
+    }
+
+    print('=== DEBUG adminEditPost: Editing post: $postId ===');
+
+    try {
+      final response = await _callFunction('admin-edit-post', body: body);
+      print('DEBUG adminEditPost: Response: $response');
+      return response;
+    } catch (e) {
+      print('ERROR adminEditPost: Exception - $e');
+      rethrow;
+    }
+  }
+
+  /// Fetch currently pinned posts using the get-pinned-posts edge function
+  Future<List<Map<String, dynamic>>> getPinnedPosts() async {
+    // Return cached data if still valid
+    if (_pinnedPostsCache != null && _pinnedPostsCacheTime != null) {
+      final age = DateTime.now().difference(_pinnedPostsCacheTime!);
+      if (age < _pinnedPostsCacheDuration) {
+        return List<Map<String, dynamic>>.from(_pinnedPostsCache!);
+      }
+    }
+
+    print('=== DEBUG getPinnedPosts: Fetching pinned posts ===');
+
+    try {
+      final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-pinned-posts');
+      final session = Supabase.instance.client.auth.currentSession;
+      final token = session?.accessToken ?? '';
+
+      final httpResponse = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final data = json.decode(httpResponse.body);
+      print('DEBUG getPinnedPosts: Response: $data');
+
+      if (data is Map && data['success'] == false) {
+        throw Exception(data['error'] ?? 'Failed to fetch pinned posts');
+      }
+
+      // Extract posts from response — actual format uses 'pinned_posts' key
+      List<dynamic> posts = [];
+      if (data is Map) {
+        if (data.containsKey('pinned_posts')) {
+          posts = (data['pinned_posts'] as List?) ?? [];
+        } else {
+          final inner = data['data'] ?? data;
+          if (inner is Map && inner.containsKey('posts')) {
+            posts = (inner['posts'] as List?) ?? [];
+          } else if (data.containsKey('posts')) {
+            posts = (data['posts'] as List?) ?? [];
+          }
+        }
+      } else if (data is List) {
+        posts = data;
+      }
+
+      final result = posts.cast<Map<String, dynamic>>();
+      // Store in cache
+      _pinnedPostsCache = List<Map<String, dynamic>>.from(result);
+      _pinnedPostsCacheTime = DateTime.now();
+      return result;
+    } catch (e) {
+      print('ERROR getPinnedPosts: Exception - $e');
+      rethrow;
     }
   }
 }

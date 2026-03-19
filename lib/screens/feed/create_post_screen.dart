@@ -1863,6 +1863,29 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
     return '$trimmed.';
   }
+  
+  String? _extractCreatedPostId(Map<String, dynamic> response) {
+    final directId = response['post_id'] ?? response['id'];
+    if (directId != null && directId.toString().isNotEmpty) {
+      return directId.toString();
+    }
+  
+    final post = response['post'];
+    if (post is Map<String, dynamic>) {
+      final nestedId = post['id'] ?? post['post_id'];
+      if (nestedId != null && nestedId.toString().isNotEmpty) {
+        return nestedId.toString();
+      }
+    } else if (post is Map) {
+      final postMap = Map<String, dynamic>.from(post);
+      final nestedId = postMap['id'] ?? postMap['post_id'];
+      if (nestedId != null && nestedId.toString().isNotEmpty) {
+        return nestedId.toString();
+      }
+    }
+  
+    return null;
+  }
 
   void _handleSubmit() async {
     if (_isSubmitting || !_canPost) {
@@ -1943,14 +1966,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       Map<String, dynamic> response;
       if (_isEditMode && widget.postData?.id != null) {
-        // TODO: Implement updatePost API when available
-        // For now, we'll use createPost as a workaround
-        // In a real scenario, you'd call: await _postService.updatePost(...)
-        response = await _postService.createPost(
+        response = await _postService.adminEditPost(
+          postId: widget.postData!.id!,
           content: combinedContent,
-          categoryId: categoryId,
-          locationId: locationId,
-          enableMonthlySpotlight: _spotlightEnabled,
         );
       } else {
         response = await _postService.createPost(
@@ -1978,7 +1996,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         // Close modal after a short delay to ensure toast is visible
         await Future.delayed(const Duration(milliseconds: 50));
         if (mounted) {
-          Navigator.of(context).pop(true);
+          if (_isEditMode) {
+            Navigator.of(context).pop(<String, dynamic>{
+              'success': true,
+              'isEdit': true,
+            });
+          } else {
+            Navigator.of(context).pop(<String, dynamic>{
+              'success': true,
+              'isEdit': false,
+              'postId': _extractCreatedPostId(response),
+            });
+          }
         }
       }
     } catch (e) {
@@ -2342,11 +2371,11 @@ class _LocationDropdownContentState extends State<_LocationDropdownContent>
   }
 }
 
-Future<bool?> showCreatePostModal(
+  Future<Map<String, dynamic>?> showCreatePostModal(
   BuildContext context, {
   PostCardData? postData,
 }) {
-  return showDialog<bool>(
+  return showDialog<Map<String, dynamic>>(
     context: context,
     barrierDismissible: true,
     barrierColor: const Color(0xFF0B1120).withOpacity(0.55),

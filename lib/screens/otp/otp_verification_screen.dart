@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
+import '../../services/auth_service.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String email;
@@ -32,6 +35,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   int _resendSeconds = 52;
   Timer? _resendTimer;
 
+  // Backend service
+  final AuthService _authService = AuthService();
+
+  // Loading/error states
+  bool _isVerifying = false;
+  bool _isResending = false;
+  String? _otpError;
+
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _primary900 = Color(0xFF100B3C);
@@ -61,6 +72,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   void _startResendTimer() {
+    _resendTimer?.cancel();
+    _resendSeconds = 52;
     _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
@@ -75,24 +88,108 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     });
   }
 
-  String _maskEmail(String email) {
-    if (email.isEmpty) return '';
-    final parts = email.split('@');
-    if (parts.length != 2) return email;
-    final username = parts[0];
-    final domain = parts[1];
-    if (username.length <= 2) {
-      return email;
-    }
-    final maskedUsername =
-        '${username.substring(0, 2)}${'*' * (username.length - 2)}';
-    return '$maskedUsername@$domain';
-  }
-
   String _formatResendTime() {
     final minutes = _resendSeconds ~/ 60;
     final seconds = _resendSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// Handles OTP verification via backend edge function
+  Future<void> _handleContinue() async {
+    final otp = _controllers.map((c) => c.text).join('');
+    if (otp.length != _otpLength) return;
+
+    // For password reset flow: don't verify OTP here, pass it to the callback
+    // The reset-password edge function will verify the OTP + reset password atomically
+    if (widget.isPasswordReset) {
+      widget.onSuccess?.call(otp);
+      return;
+    }
+
+    // For email verification flow: verify OTP server-side first
+    if (widget.onSuccess != null) {
+      setState(() {
+        _isVerifying = true;
+        _otpError = null;
+      });
+
+      try {
+        await _authService.verifyOtp(email: widget.email, token: otp);
+
+        if (!mounted) return;
+
+        setState(() {
+          _isVerifying = false;
+        });
+
+        // OTP verified successfully - proceed
+        widget.onSuccess!.call(otp);
+      } on AuthException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isVerifying = false;
+          _otpError = e.message;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isVerifying = false;
+          _otpError = 'Verification failed. Please try again.';
+        });
+      }
+    } else {
+      // Default fallback: navigate to home (legacy behavior)
+      Navigator.pushReplacementNamed(
+        context,
+        '/home',
+        arguments: const {'showWelcomeModal': true},
+      );
+    }
+  }
+
+  /// Handles resending OTP via backend edge function
+  Future<void> _handleResend() async {
+    if (_isResending || _resendSeconds > 0) return;
+
+    setState(() {
+      _isResending = true;
+      _otpError = null;
+    });
+
+    try {
+      await _authService.resendOtp(email: widget.email);
+
+      if (!mounted) return;
+
+      setState(() {
+        _isResending = false;
+      });
+
+      // Clear OTP fields
+      for (var controller in _controllers) {
+        controller.clear();
+      }
+      _focusNodes[0].requestFocus();
+      _currentIndex = 0;
+
+      // Restart timer
+      _startResendTimer();
+
+      // Show success feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('OTP resent successfully!'),
+          backgroundColor: Colors.green.shade600,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isResending = false;
+        _otpError = 'Failed to resend OTP. Please try again.';
+      });
+    }
   }
 
   @override
@@ -109,7 +206,40 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             SingleChildScrollView(
               child: Column(
                 children: [
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 16),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: horizontalScreenPadding,
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).pop(),
+                          borderRadius: BorderRadius.circular(20),
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: SvgPicture.asset(
+                                'assets/otp/Confirm-otp-back-button.svg',
+                                width: 24,
+                                height: 24,
+                                colorFilter: const ColorFilter.mode(
+                                  Color(0xFF100B3C),
+                                  BlendMode.srcIn,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
 
                   // Title
                   Padding(
@@ -134,7 +264,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: horizontalScreenPadding),
                     child: Text(
-                      'Code has been send to ${_maskEmail(widget.email)}',
+                      'Code has been sent to ${widget.email}',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.normal, // Rubik Regular
@@ -167,6 +297,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       final double radius = boxSize / 3.5;
                       // edgeGap already accounted for in size calculation
                       final double textSize = (boxSize * 0.6).clamp(20.0, 28.0);
+                      final bool hasOtpError = _otpError != null;
                       return Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: List.generate(_otpLength, (index) {
@@ -189,9 +320,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: isActive ? _lightBlue : _grey100,
-                                border: isActive
-                                    ? Border.all(color: _primaryColor, width: 1.5)
-                                    : null,
+                                border: hasOtpError
+                                  ? Border.all(color: const Color(0xFFE7000B), width: 1.5)
+                                  : (isActive
+                                      ? Border.all(color: _primaryColor, width: 1.5)
+                                      : null),
                                 boxShadow: isActive
                                     ? [
                                         BoxShadow(
@@ -221,6 +354,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                     fontFamily: 'Rubik',
                                   ),
                                   onChanged: (value) {
+                                    if (_otpError != null) {
+                                      setState(() {
+                                        _otpError = null;
+                                      });
+                                    }
                                     if (value.isNotEmpty &&
                                         index < _otpLength - 1) {
                                       _focusNodes[index].unfocus();
@@ -244,35 +382,98 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     }),
                   ),
 
+                  // OTP error message
+                  if (_otpError != null) ...[
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: horizontalScreenPadding),
+                      child: Text(
+                        _otpError!,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.red,
+                          fontFamily: 'Rubik',
+                          height: 1.4,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 42),
 
-                  // Resend code text
+                  // Resend code text - tappable when timer expires
                   Builder(
                     builder: (context) {
-                      final timeString = _formatResendTime();
-                      return RichText(
-                        textAlign: TextAlign.center,
-                        text: TextSpan(
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.normal, // Rubik Regular
-                            color: _primary900,
-                            fontFamily: 'Rubik',
-                            letterSpacing: 0.2,
-                          ),
-                          children: [
-                            const TextSpan(text: 'Resend code in '),
-                            TextSpan(
-                              text: '($timeString)',
-                              style: TextStyle(
-                                color: _primaryColor,
-                                fontFamily: 'Rubik',
-                                letterSpacing: 0.2,
-                              ),
+                      if (_resendSeconds > 0) {
+                        // Timer running - show countdown
+                        final timeString = _formatResendTime();
+                        return RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.normal, // Rubik Regular
+                              color: _primary900,
+                              fontFamily: 'Rubik',
+                              letterSpacing: 0.2,
                             ),
-                          ],
-                        ),
-                      );
+                            children: [
+                              const TextSpan(text: 'Resend code in '),
+                              TextSpan(
+                                text: '($timeString)',
+                                style: TextStyle(
+                                  color: _primaryColor,
+                                  fontFamily: 'Rubik',
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        // Timer expired - show tappable resend button
+                        return GestureDetector(
+                          onTap: _isResending ? null : _handleResend,
+                          child: _isResending
+                              ? Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Resending...',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: _primaryColor,
+                                        fontFamily: 'Rubik',
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  'Resend Code',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: _primaryColor,
+                                    fontFamily: 'Rubik',
+                                    letterSpacing: 0.2,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: _primaryColor,
+                                  ),
+                                ),
+                        );
+                      }
                     },
                   ),
 
@@ -283,38 +484,35 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     width: contentWidth.clamp(260, 400),
                     height: 56,
                     decoration: BoxDecoration(
-                      color: _primaryColor,
+                      color: _isVerifying
+                          ? _primaryColor.withOpacity(0.7)
+                          : _primaryColor,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: () {
-                          // Verify OTP
-                          final otp = _controllers.map((c) => c.text).join('');
-                          if (otp.length == _otpLength) {
-                            if (widget.onSuccess != null) {
-                              widget.onSuccess!.call(otp);
-                            } else {
-                              Navigator.pushReplacementNamed(
-                                context,
-                                '/home',
-                                arguments: const {'showWelcomeModal': true},
-                              );
-                            }
-                          }
-                        },
+                        onTap: _isVerifying ? null : _handleContinue,
                         borderRadius: BorderRadius.circular(20),
                         child: Center(
-                          child: Text(
-                            'Continue',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500, // Rubik Medium
-                              color: Colors.white,
-                              fontFamily: 'Rubik',
-                            ),
-                          ),
+                          child: _isVerifying
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : Text(
+                                  'Continue',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500, // Rubik Medium
+                                    color: Colors.white,
+                                    fontFamily: 'Rubik',
+                                  ),
+                                ),
                         ),
                       ),
                     ),

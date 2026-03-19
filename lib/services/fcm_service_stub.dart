@@ -21,6 +21,12 @@ class FCMService {
     // No-op on web
   }
 
+  void setForegroundMessageCallback(
+    Function(String title, String body, Map<String, dynamic> data) callback,
+  ) {
+    // No-op on web
+  }
+
   Map<String, dynamic>? getPendingNavigationData() {
     return null;
   }

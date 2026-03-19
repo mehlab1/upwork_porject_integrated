@@ -8,12 +8,18 @@ import 'delete_comment_dialog.dart';
 import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
 import 'block_user_dialog.dart';
+import 'moderation_reason_dialog.dart';
+import 'change_category_dialog.dart';
 import '../../../services/post_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/admin_service.dart';
+import '../../../services/reviewer_service.dart';
+import '../../../services/junior_moderator_service.dart';
+import '../../../services/moderator_service.dart';
 import '../../../widgets/pal_toast.dart';
 import '../../../utils/error_handler.dart';
 import '../create_post_screen.dart';
+import '../edit_post_screen.dart';
 import '../../admin/admin_user_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -80,6 +86,8 @@ class PostCardData {
     this.badges,
 
     this.userId,
+    this.userVote,
+    this.role,
   });
 
   final PostCardVariant variant;
@@ -111,14 +119,16 @@ class PostCardData {
   final List<String>? badges;
 
   final String? userId;
+  final String? userVote;
+  final String? role;
 
-  PostCardData copyWith({int? votes, List<CommentData>? comments}) {
+  PostCardData copyWith({int? votes, List<CommentData>? comments, String? timeAgo}) {
     return PostCardData(
       variant: variant,
 
       username: username,
 
-      timeAgo: timeAgo,
+      timeAgo: timeAgo ?? this.timeAgo,
 
       location: location,
 
@@ -143,6 +153,8 @@ class PostCardData {
       badges: badges ?? this.badges,
 
       userId: userId,
+      userVote: userVote,
+      role: role,
     );
   }
 }
@@ -262,6 +274,10 @@ class PostCard extends StatefulWidget {
     this.isUpvotedPostsScreen = false,
     this.initialCommentsExpanded = false,
     this.onPostDeleted,
+    this.onPostEdited,
+    this.onPostPinned,
+    this.onCustomMenuTap,
+    this.externalMenuKey,
   });
 
   final PostCardData data;
@@ -278,12 +294,20 @@ class PostCard extends StatefulWidget {
 
   final ValueChanged<String>? onPostDeleted;
 
+  final ValueChanged<String>? onPostEdited;
+
+  final VoidCallback? onPostPinned;
+
+  final VoidCallback? onCustomMenuTap;
+
+  final GlobalKey? externalMenuKey;
+
   @override
   State<PostCard> createState() => _PostCardState();
 }
 
 class _PostCardState extends State<PostCard> {
-  final GlobalKey _menuKey = GlobalKey();
+  late final GlobalKey _menuKey;
 
   OverlayEntry? _overlayEntry;
 
@@ -329,6 +353,9 @@ class _PostCardState extends State<PostCard> {
   void initState() {
     super.initState();
 
+    // Initialize menu key
+    _menuKey = widget.externalMenuKey ?? GlobalKey();
+
     _currentVotes = data.votes;
 
     _comments = _cloneComments(widget.data.comments ?? const []);
@@ -341,9 +368,13 @@ class _PostCardState extends State<PostCard> {
     // Set initial comments expanded state if requested
     _showComments = widget.initialCommentsExpanded;
 
-    // Hardcode upvote for WOD variant
-    if (data.variant == PostCardVariant.wod) {
+    final initialUserVote = data.userVote?.toLowerCase();
+    if (initialUserVote == 'upvote') {
       _userVote = 1;
+    } else if (initialUserVote == 'downvote') {
+      _userVote = -1;
+    } else {
+      _userVote = 0;
     }
 
     _loadCurrentUsername();
@@ -876,6 +907,10 @@ class _PostCardState extends State<PostCard> {
             _comments = updatedComments;
             // Update comment count after adding a comment
             _actualCommentCount = _totalCommentCount(updatedComments);
+            if (widget.isYourPosts) {
+              _showComments = false;
+              _activeReplyIndex = null;
+            }
             // Reload comments to ensure sync with backend and get updated count
             _loadComments();
           }
@@ -1270,8 +1305,35 @@ class _PostCardState extends State<PostCard> {
   void _toggleMenu(BuildContext parentContext) async {
     if (!mounted) return;
 
-    // Check if user is admin
+    // Check for custom menu handler first
+    if (widget.onCustomMenuTap != null) {
+      widget.onCustomMenuTap!();
+      return;
+    }
+
+    // Check if user is admin, moderator, reviewer, or JM
     final isAdmin = await _adminService.isAdmin();
+    final isReviewer = await ReviewerService().isReviewer();
+    final isJuniorModerator = await JuniorModeratorService().isJuniorModerator();
+    final isModerator = await ModeratorService().isModerator();
+
+    if (isReviewer) {
+      // Show reviewer-specific menu from bottom
+      _showReviewerMenu(parentContext);
+      return;
+    }
+
+    if (isJuniorModerator) {
+      // Show junior moderator-specific menu from bottom
+      _showJmMenu(parentContext);
+      return;
+    }
+
+    if (isModerator) {
+      // Show moderator-specific menu from bottom
+      _showModeratorMenu(parentContext);
+      return;
+    }
 
     if (isAdmin) {
       // Show admin menu from bottom
@@ -1378,23 +1440,23 @@ class _PostCardState extends State<PostCard> {
     Overlay.of(parentContext, rootOverlay: true).insert(_overlayEntry!);
   }
 
-  void _showAdminMenu(BuildContext context) {
+  void _showModeratorMenu(BuildContext context) {
+    final parentContext = context;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _AdminPostMenu(
+      builder: (sheetContext) => _ModeratorPostMenu(
         postData: data,
-        onEdit: () {
-          Navigator.of(context).pop();
-          // Navigate to create post screen with post data for editing
-          showCreatePostModal(context, postData: data);
+        onChangeCategory: () {
+          Navigator.of(sheetContext).pop();
+          _handleChangeCategory(parentContext);
         },
         onViewProfile: () {
-          Navigator.of(context).pop();
+          Navigator.of(sheetContext).pop();
           // Navigate to admin user profile screen
           if (data.userId != null) {
-            Navigator.of(context).push(
+            Navigator.of(parentContext).push(
               MaterialPageRoute(
                 builder: (context) => AdminUserProfileScreen(
                   userId: data.userId!,
@@ -1407,28 +1469,164 @@ class _PostCardState extends State<PostCard> {
           }
         },
         onPin: () {
-          Navigator.of(context).pop();
-          // TODO: Implement pin post functionality
+          Navigator.of(sheetContext).pop();
+          _handlePinPost(parentContext);
         },
-        onWarn: () {
-          Navigator.of(context).pop();
-          // TODO: Implement warn conversation functionality
+        onEscalateToAdmin: () {
+          Navigator.of(sheetContext).pop();
+          _handleEscalateToAdmin(parentContext);
         },
         onMute: () {
-          Navigator.of(context).pop();
-          // TODO: Implement mute conversation functionality
-        },
-        onHide: () {
-          Navigator.of(context).pop();
-          // TODO: Implement hide conversation functionality
-        },
-        onFlag: () {
-          Navigator.of(context).pop();
-          _showReportPostSheet(context);
+          Navigator.of(sheetContext).pop();
+          _handleMutePost(parentContext);
         },
         onDelete: () {
-          Navigator.of(context).pop();
-          _showDeleteDialog(context, data.title);
+          Navigator.of(sheetContext).pop();
+          _showDeleteDialog(parentContext, data.title);
+        },
+      ),
+    );
+  }
+
+  void _showAdminMenu(BuildContext context) {
+    final parentContext = context;
+    final bool isPinned = widget.isPinnedAdmin;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => _AdminPostMenu(
+        postData: data,
+        isPinned: isPinned,
+        onEdit: () async {
+          Navigator.of(sheetContext).pop();
+          // Navigate to edit post screen with post data
+          final result = await showEditPostModal(
+            parentContext,
+            postId: data.id ?? '',
+            initialContent: data.body,
+            initialTitle: data.title,
+            initialCategory: data.category,
+            initialLocation: data.location,
+            postData: data,
+          );
+          if (result == true && data.id != null) {
+            widget.onPostEdited?.call(data.id!);
+          }
+        },
+        onViewProfile: () {
+          Navigator.of(sheetContext).pop();
+          // Navigate to admin user profile screen
+          if (data.userId != null) {
+            Navigator.of(parentContext).push(
+              MaterialPageRoute(
+                builder: (context) => AdminUserProfileScreen(
+                  userId: data.userId!,
+                  username: data.username,
+                  profilePictureUrl: data.profilePictureUrl,
+                  initials: data.initials,
+                ),
+              ),
+            );
+          }
+        },
+        onPin: () {
+          Navigator.of(sheetContext).pop();
+          if (isPinned) {
+            _handleUnpinPost(parentContext);
+          } else {
+            _handlePinPost(parentContext);
+          }
+        },
+        onWarn: () {
+          Navigator.of(sheetContext).pop();
+          _handleWarnPost(parentContext);
+        },
+        onMute: () {
+          Navigator.of(sheetContext).pop();
+          _handleMutePost(parentContext);
+        },
+        onHide: () {
+          Navigator.of(sheetContext).pop();
+          _handleHidePost(parentContext);
+        },
+        onFlag: () {
+          Navigator.of(sheetContext).pop();
+          _handleFlagPost(parentContext);
+        },
+        onDelete: () {
+          Navigator.of(sheetContext).pop();
+          _showDeleteDialog(parentContext, data.title);
+        },
+      ),
+    );
+  }
+
+  void _showJmMenu(BuildContext context) {
+    final parentContext = context;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => _JmPostMenu(
+        postData: data,
+        onBlockUser: () async {
+          Navigator.of(sheetContext).pop();
+          if (!mounted) return;
+          await _handleBlockUser(parentContext);
+        },
+        onEscalateToModerator: () {
+          Navigator.of(sheetContext).pop();
+          _handleEscalateToModerator(parentContext);
+        },
+        onReportConversation: () {
+          Navigator.of(sheetContext).pop();
+          _showReportPostSheet(parentContext);
+        },
+        onFlag: () {
+          Navigator.of(sheetContext).pop();
+          _handleFlagPost(parentContext);
+        },
+        onDelete: () {
+          Navigator.of(sheetContext).pop();
+          _showDeleteDialog(parentContext, data.title);
+        },
+      ),
+    );
+  }
+
+  void _showReviewerMenu(BuildContext context) {
+    final parentContext = context;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => _ReviewerPostMenu(
+        postData: data,
+        onNominateWod: () {
+          Navigator.of(sheetContext).pop();
+          _handleNominateWod(parentContext);
+        },
+        onBlockUser: () async {
+          Navigator.of(sheetContext).pop();
+          if (!mounted) return;
+          await _handleBlockUser(parentContext);
+        },
+        onEscalateToModerator: () {
+          Navigator.of(sheetContext).pop();
+          _handleEscalateToModerator(parentContext);
+        },
+        onReportConversation: () {
+          Navigator.of(sheetContext).pop();
+          _showReportPostSheet(parentContext);
+        },
+        onFlag: () {
+          Navigator.of(sheetContext).pop();
+          _handleFlagPost(parentContext);
+        },
+        onDelete: () {
+          Navigator.of(sheetContext).pop();
+          _showDeleteDialog(parentContext, data.title);
         },
       ),
     );
@@ -1627,9 +1825,8 @@ class _PostCardState extends State<PostCard> {
 
     final bool isAdminPinned = widget.isPinnedAdmin;
     final bool allowOverflowMenu = widget.showOverflowMenu;
-    // Hide three dots menu for admin variant
-    final bool shouldShowMoreButton = !isAdminPinned && 
-                                      allowOverflowMenu && 
+    // Show three dots menu for all posts except admin variant
+    final bool shouldShowMoreButton = allowOverflowMenu && 
                                       data.variant != PostCardVariant.admin;
 
     return Padding(
@@ -2290,6 +2487,604 @@ class _PostCardState extends State<PostCard> {
       }
     }
   }
+
+  // ============================================================================
+  // MODERATION ACTION HANDLERS
+  // ============================================================================
+
+  /// Handle pin post action
+  Future<void> _handlePinPost(BuildContext context) async {
+    if (data.id == null) return;
+
+    try {
+      final response = await _postService.pinPost(
+        postId: data.id!,
+        action: 'pin',
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Post pinned successfully',
+          heading: 'Post pinned successfully',
+          subtext: 'This post is now pinned to the top of the feed',
+        );
+        widget.onPostPinned?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already pinned')) {
+            errorSubtext = 'This post is already pinned.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to pin posts.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to pin post',
+            heading: 'Failed to pin post',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle unpin post action
+  Future<void> _handleUnpinPost(BuildContext context) async {
+    if (data.id == null) return;
+
+    try {
+      final response = await _postService.unpinPost(
+        postId: data.id!,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Post unpinned successfully',
+          heading: 'Post unpinned',
+          subtext: 'This post has been removed from pinned posts',
+        );
+        widget.onPostPinned?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('not pinned')) {
+            errorSubtext = 'This post is not currently pinned.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to unpin posts.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to unpin post',
+            heading: 'Failed to unpin post',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle mute post action
+  Future<void> _handleMutePost(BuildContext context) async {
+    if (data.id == null) return;
+
+    final result = await showDialog<ModerationReasonResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const ModerationReasonDialog(
+        title: 'Mute Conversation',
+        subtitle: 'Select a reason for muting this conversation.',
+        actionLabel: 'Mute',
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      final response = await _postService.mutePost(
+        postId: data.id!,
+        action: 'mute',
+        reason: result.reason,
+        details: result.details,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Conversation muted successfully',
+          heading: 'Conversation muted successfully',
+          subtext: 'This conversation has been muted and will no longer appear in the feed',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already muted')) {
+            errorSubtext = 'This conversation is already muted.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to mute conversations.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to mute conversation',
+            heading: 'Failed to mute conversation',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle warn post action (admin only)
+  Future<void> _handleWarnPost(BuildContext context) async {
+    if (data.id == null) return;
+
+    final result = await showDialog<ModerationReasonResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const ModerationReasonDialog(
+        title: 'Warn Conversation',
+        subtitle: 'Select a reason for warning this conversation.',
+        actionLabel: 'Warn',
+        actionColor: Color(0xFFE7000B),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      final response = await _postService.warnPost(
+        postId: data.id!,
+        action: 'warn',
+        reason: result.reason,
+        details: result.details,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Warning applied successfully',
+          heading: 'Warning applied successfully',
+          subtext: 'A warning label has been added to this conversation',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already warned')) {
+            errorSubtext = 'This conversation already has a warning.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to warn conversations.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to warn conversation',
+            heading: 'Failed to warn conversation',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle hide post action (admin only)
+  Future<void> _handleHidePost(BuildContext context) async {
+    if (data.id == null) return;
+
+    final result = await showDialog<ModerationReasonResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const ModerationReasonDialog(
+        title: 'Hide Conversation',
+        subtitle: 'Select a reason for hiding this conversation.',
+        actionLabel: 'Hide',
+        actionColor: Color(0xFFE7000B),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      final response = await _postService.hidePost(
+        postId: data.id!,
+        action: 'hide',
+        reason: result.reason,
+        details: result.details,
+      );
+
+      if (response['success'] == true && mounted) {
+        // Notify parent widget about hide (similar to delete)
+        if (widget.onPostDeleted != null) {
+          widget.onPostDeleted!(data.id!);
+        }
+        PalToast.show(
+          context,
+          message: 'Conversation hidden successfully',
+          heading: 'Conversation hidden successfully',
+          subtext: 'This conversation has been hidden from the feed',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already hidden')) {
+            errorSubtext = 'This conversation is already hidden.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to hide conversations.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to hide conversation',
+            heading: 'Failed to hide conversation',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle flag post action (moderator/admin)
+  Future<void> _handleFlagPost(BuildContext context) async {
+    if (data.id == null) return;
+
+    try {
+      final response = await _postService.flagPost(
+        postId: data.id!,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Conversation flagged successfully',
+          heading: 'Conversation flagged successfully',
+          subtext: 'This conversation has been flagged for moderator review',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already flagged')) {
+            errorSubtext = 'This conversation has already been flagged.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to flag conversations.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to flag conversation',
+            heading: 'Failed to flag conversation',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle escalate to administrator action (moderator)
+  Future<void> _handleEscalateToAdmin(BuildContext context) async {
+    if (data.id == null) return;
+
+    final result = await showDialog<ModerationReasonResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const ModerationReasonDialog(
+        title: 'Escalate to Administrator',
+        subtitle: 'Provide a reason for escalating this post to an administrator.',
+        actionLabel: 'Escalate',
+        actionColor: Color(0xFF1447E6),
+        showReasonPicker: false,
+        showDetailsField: true,
+        detailsRequired: true,
+        detailsHint: 'Describe why this needs admin attention...',
+        detailsLabel: 'Reason',
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      final response = await _postService.escalateToAdmin(
+        postId: data.id!,
+        reason: result.details ?? result.reason,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Escalated to administrator',
+          heading: 'Escalated to administrator',
+          subtext: 'This post has been escalated for admin review',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to escalate to admin.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to escalate',
+            heading: 'Failed to escalate',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle escalate to moderator action (reviewer, junior_moderator)
+  Future<void> _handleEscalateToModerator(BuildContext context) async {
+    if (data.id == null) return;
+
+    final result = await showDialog<ModerationReasonResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const ModerationReasonDialog(
+        title: 'Escalate to Moderator',
+        subtitle: 'Provide a reason for escalating this post to a moderator.',
+        actionLabel: 'Escalate',
+        actionColor: Color(0xFF1447E6),
+        showReasonPicker: false,
+        showDetailsField: true,
+        detailsRequired: false,
+        detailsHint: 'Describe why this needs moderator attention (optional)...',
+        detailsLabel: 'Reason',
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      final response = await _postService.escalateToModerator(
+        postId: data.id!,
+        reason: result.details,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Escalated to moderator',
+          heading: 'Escalated to moderator',
+          subtext: 'This post has been escalated for moderator review',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already moderator') || errorLower.contains('already higher')) {
+            errorSubtext = 'This user already has moderator or higher role.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to escalate to moderator.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to escalate',
+            heading: 'Failed to escalate',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle nominate Word of the Day action (reviewer)
+  Future<void> _handleNominateWod(BuildContext context) async {
+    if (data.id == null) return;
+
+    try {
+      final response = await _postService.nominateWod(
+        postId: data.id!,
+      );
+
+      if (response['success'] == true && mounted) {
+        PalToast.show(
+          context,
+          message: 'Word of the Day nominated',
+          heading: 'Word of the Day nominated',
+          subtext: 'This post has been nominated for Word of the Day',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('already nominated')) {
+            errorSubtext = 'This post has already been nominated.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to nominate posts.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to nominate',
+            heading: 'Failed to nominate',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
+
+  /// Handle change category action (moderator, admin)
+  Future<void> _handleChangeCategory(BuildContext context) async {
+    if (data.id == null) return;
+
+    final result = await showDialog<ChangeCategoryResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ChangeCategoryDialog(
+        currentCategory: data.category,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    try {
+      final response = await _postService.changeCategory(
+        postId: data.id!,
+        categorySlug: result.categorySlug,
+      );
+
+      final success = response['success'] == true || 
+          response['success'] == 'true' || 
+          !response.containsKey('error');
+
+      if (success && mounted) {
+        final oldCategory = response['old_category'] ?? data.category;
+        final newCategory = response['new_category'] ?? result.categoryName;
+        PalToast.show(
+          context,
+          message: 'Category changed successfully',
+          heading: 'Category changed successfully',
+          subtext: 'Post moved from $oldCategory to $newCategory',
+        );
+      }
+
+      // Always clear cache and refresh feed after a category change attempt
+      // (if the API didn't throw, the change likely went through)
+      _postService.clearFeedCache();
+      if (mounted) {
+        widget.onPostEdited?.call(data.id!);
+      }
+    } catch (e) {
+      if (mounted) {
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorLower = errorStr.toLowerCase();
+
+          String errorSubtext;
+          if (errorLower.contains('invalid category')) {
+            errorSubtext = 'The selected category is invalid.';
+          } else if (errorLower.contains('permission') || errorLower.contains('403')) {
+            errorSubtext = 'You do not have permission to change categories.';
+          } else if (errorLower.contains('not found')) {
+            errorSubtext = 'This post no longer exists.';
+          } else {
+            errorSubtext = 'Please try again.';
+          }
+
+          PalToast.show(
+            context,
+            message: 'Failed to change category',
+            heading: 'Failed to change category',
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+      }
+    }
+  }
 }
 
 class _HighlightHeader extends StatelessWidget {
@@ -2518,9 +3313,7 @@ class _PostHeader extends StatelessWidget {
                           ? '@moderator'
                           : data.variant == PostCardVariant.admin
                               ? '@admin'
-                              : data.variant == PostCardVariant.wod
-                                  ? '@moderator'
-                                  : data.username.startsWith('@') ? data.username : '@${data.username}',
+                              : data.username.startsWith('@') ? data.username : '@${data.username}',
 
                       style: const TextStyle(
                         fontSize: 14,
@@ -2591,7 +3384,10 @@ class _PostHeader extends StatelessWidget {
                 const _AdminBadge(),
               ] else if (data.variant == PostCardVariant.wod) ...[
                 const SizedBox(height: 12),
-                const _AdminBadge(),
+                if (data.role != null && data.role!.isNotEmpty && data.role != 'user')
+                  _RoleBadge(role: data.role!)
+                else
+                  const SizedBox.shrink(),
               ] else if (hasBadges) ...[
                 const SizedBox(height: 12),
 
@@ -2933,17 +3729,13 @@ class _Avatar extends StatelessWidget {
     final hasNetworkImage =
         profilePictureUrl != null && profilePictureUrl!.isNotEmpty;
     
-    // For moderator variant, always use 'MO' as initials if no profile picture or asset
-    // For admin variant, always use 'AD' as initials if no profile picture or asset
-    // For WOD variant, always use 'MO' as initials if no profile picture or asset
-    // For regular users, use provided initials or 'U' as fallback
+    // For moderator/admin variants, use fixed initials if no profile picture or asset.
+    // For WOD and regular users, use provided initials or fallback.
     final displayInitials = variant == PostCardVariant.moderator
         ? 'MO'
         : variant == PostCardVariant.admin
             ? 'AD'
-            : variant == PostCardVariant.wod
-                ? 'MO'
-                : (initials ?? 'U');
+            : (initials ?? 'U');
 
     final backgroundColor = (variant == PostCardVariant.wod ||
             variant == PostCardVariant.moderator ||
@@ -3247,6 +4039,106 @@ class _AdminBadge extends StatelessWidget {
 
                   color: Colors.white,
 
+                  fontFamily: 'Inter',
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({required this.role});
+
+  final String role;
+
+  Map<String, dynamic> _getRoleConfig(String role) {
+    switch (role.toLowerCase()) {
+      case 'admin':
+        return {
+          'label': 'Admin',
+          'icon': 'assets/feedPage/adminIcon.svg',
+          'colors': const [Color(0xFF4F39F6), Color(0xFF9810FA)],
+        };
+      case 'moderator':
+        return {
+          'label': 'Moderator',
+          'icon': 'assets/images/moderator-badge-icon.svg',
+          'colors': const [Color(0xFFFF0F7B), Color(0xFFF89B29)],
+        };
+      case 'junior_moderator':
+        return {
+          'label': 'Jr Moderator',
+          'icon': 'assets/images/moderator-badge-icon.svg',
+          'colors': const [Color(0xFFF4119E), Color(0xFF4A313E)],
+        };
+      case 'reviewer':
+        return {
+          'label': 'Reviewer',
+          'icon': 'assets/Rev_Icons/reviewer-badge-icon.svg',
+          'colors': const [Color(0xFF000328), Color(0xFF00458E)],
+        };
+      default:
+        return {'label': '', 'icon': '', 'colors': const []};
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final config = _getRoleConfig(role);
+    if ((config['label'] as String).isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double availableWidth = constraints.maxWidth;
+        final bool hasFiniteWidth = availableWidth.isFinite;
+        final double badgeWidth = hasFiniteWidth ? math.min(availableWidth, 100) : 100;
+
+        return Container(
+          width: badgeWidth,
+          height: 19.98,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(80),
+            gradient: LinearGradient(
+              colors: config['colors'] as List<Color>,
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.zero,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SvgPicture.asset(
+                config['icon'] as String,
+                width: 12,
+                height: 12,
+                placeholderBuilder: (_) => const SizedBox(width: 12, height: 12),
+                colorFilter: const ColorFilter.mode(
+                  Colors.white,
+                  BlendMode.srcIn,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                config['label'] as String,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
                   fontFamily: 'Inter',
                 ),
               ),
@@ -6198,7 +7090,398 @@ class _CommentVoteButton extends StatelessWidget {
   }
 }
 
-// Admin Post Menu Widget
+// Moderator Post Menu Widget
+class _ModeratorPostMenu extends StatelessWidget {
+  const _ModeratorPostMenu({
+    required this.postData,
+    required this.onChangeCategory,
+    required this.onViewProfile,
+    required this.onPin,
+    required this.onEscalateToAdmin,
+    required this.onMute,
+    required this.onDelete,
+  });
+
+  final PostCardData postData;
+  final VoidCallback onChangeCategory;
+  final VoidCallback onViewProfile;
+  final VoidCallback onPin;
+  final VoidCallback onEscalateToAdmin;
+  final VoidCallback onMute;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFFBFBFF),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(50),
+          topRight: Radius.circular(50),
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+        border: Border.fromBorderSide(
+          BorderSide(color: Color(0xFFC6D2FF), width: 1.513),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 25,
+            offset: Offset(0, -12),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              child: Container(
+                width: 101,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA9CDFD),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+
+            // Menu items
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Section 1: Change Category, View Profile, Pin Post
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Mod_Icons/Change-category.svg',
+                    label: 'Change Category',
+                    textColor: const Color(0xFF314158),
+                    onTap: onChangeCategory,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Mod_Icons/profile-view.svg',
+                    label: "View User's Profile",
+                    textColor: const Color(0xFF314158),
+                    onTap: onViewProfile,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Mod_Icons/Pinpost.svg',
+                    label: 'Pin Post',
+                    textColor: const Color(0xFF314158),
+                    onTap: onPin,
+                  ),
+
+                  // Separator
+                  const _AdminMenuSeparator(),
+
+                  // Section 2: Escalate to Administrator, Mute Conversation
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Mod_Icons/Esc-Admin.svg',
+                    label: 'Escalate to Administrator',
+                    textColor: const Color(0xFF314158),
+                    onTap: onEscalateToAdmin,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Mod_Icons/Mute.svg',
+                    label: 'Mute Conversation',
+                    textColor: const Color(0xFF314158),
+                    onTap: onMute,
+                  ),
+
+                  // Separator
+                  const _AdminMenuSeparator(),
+
+                  // Section 3: Delete Conversation
+                  _AdminMenuItem(
+                    iconAsset: 'assets/adminIcons/adminpostMenu/Icon.svg',
+                    label: 'Delete Conversation ',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onDelete,
+                  ),
+
+                  // Bottom separator
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Divider(
+                      height: 1,
+                      thickness: 0.993,
+                      color: Color(0xFFE2E8F0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Junior Moderator Post Menu Widget
+class _JmPostMenu extends StatelessWidget {
+  const _JmPostMenu({
+    required this.postData,
+    required this.onBlockUser,
+    required this.onEscalateToModerator,
+    required this.onReportConversation,
+    required this.onFlag,
+    required this.onDelete,
+  });
+
+  final PostCardData postData;
+  final VoidCallback onBlockUser;
+  final VoidCallback onEscalateToModerator;
+  final VoidCallback onReportConversation;
+  final VoidCallback onFlag;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFFBFBFF),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(50),
+          topRight: Radius.circular(50),
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+        border: Border.fromBorderSide(
+          BorderSide(color: Color(0xFFC6D2FF), width: 1.513),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 25,
+            offset: Offset(0, -12),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              child: Container(
+                width: 101,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA9CDFD),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+
+            // Menu items
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Section 1: Block User & Escalate to Moderator
+                  _AdminMenuItem(
+                    iconAsset: 'assets/jm_Icons/block-user.svg',
+                    label: 'Block User',
+                    textColor: const Color(0xFF314158),
+                    onTap: onBlockUser,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/jm_Icons/esc-mod.svg',
+                    label: 'Escalate to Moderator',
+                    textColor: const Color(0xFF314158),
+                    onTap: onEscalateToModerator,
+                  ),
+
+                  // Separator
+                  const _AdminMenuSeparator(),
+
+                  // Section 2: Report Conversation, Flag, Delete
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Rev_Icons/reportIcon_reviewer.svg',
+                    label: 'Report Conversation',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onReportConversation,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/adminIcons/adminpostMenu/flag-2.svg',
+                    label: 'Flag Conversation ',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onFlag,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/adminIcons/adminpostMenu/Icon.svg',
+                    label: 'Delete Conversation ',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onDelete,
+                  ),
+
+                  // Bottom separator
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Divider(
+                      height: 1,
+                      thickness: 0.993,
+                      color: Color(0xFFE2E8F0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Reviewer Post Menu Widget
+class _ReviewerPostMenu extends StatelessWidget {
+  const _ReviewerPostMenu({
+    required this.postData,
+    required this.onNominateWod,
+    required this.onBlockUser,
+    required this.onEscalateToModerator,
+    required this.onReportConversation,
+    required this.onFlag,
+    required this.onDelete,
+  });
+
+  final PostCardData postData;
+  final VoidCallback onNominateWod;
+  final VoidCallback onBlockUser;
+  final VoidCallback onEscalateToModerator;
+  final VoidCallback onReportConversation;
+  final VoidCallback onFlag;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFFBFBFF),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(50),
+          topRight: Radius.circular(50),
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+        border: Border.fromBorderSide(
+          BorderSide(color: Color(0xFFC6D2FF), width: 1.513),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 25,
+            offset: Offset(0, -12),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              child: Container(
+                width: 101,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA9CDFD),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+
+            // Menu items
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Section 1: Nominate WOD
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Rev_Icons/Nominate-WOD.svg',
+                    label: 'Nominate WOD',
+                    textColor: const Color(0xFF314158),
+                    onTap: onNominateWod,
+                  ),
+
+                  // Separator
+                  const _AdminMenuSeparator(),
+
+                  // Section 2: Block User & Escalate to Moderator
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Rev_Icons/block-user_reviewer.svg',
+                    label: 'Block User',
+                    textColor: const Color(0xFF314158),
+                    onTap: onBlockUser,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Rev_Icons/esc-mod.svg',
+                    label: 'Escalate to Moderator',
+                    textColor: const Color(0xFF314158),
+                    onTap: onEscalateToModerator,
+                  ),
+
+                  // Separator
+                  const _AdminMenuSeparator(),
+
+                  // Section 3: Report Conversation, Flag, Delete
+                  _AdminMenuItem(
+                    iconAsset: 'assets/Rev_Icons/reportIcon_reviewer.svg',
+                    label: 'Report Conversation',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onReportConversation,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/adminIcons/adminpostMenu/flag-2.svg',
+                    label: 'Flag Conversation ',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onFlag,
+                  ),
+
+                  _AdminMenuItem(
+                    iconAsset: 'assets/adminIcons/adminpostMenu/Icon.svg',
+                    label: 'Delete Conversation ',
+                    textColor: const Color(0xFFE7000B),
+                    onTap: onDelete,
+                  ),
+
+                  // Bottom separator
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Divider(
+                      height: 1,
+                      thickness: 0.993,
+                      color: Color(0xFFE2E8F0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AdminPostMenu extends StatelessWidget {
   const _AdminPostMenu({
     required this.postData,
@@ -6210,6 +7493,7 @@ class _AdminPostMenu extends StatelessWidget {
     required this.onHide,
     required this.onFlag,
     required this.onDelete,
+    this.isPinned = false,
   });
 
   final PostCardData postData;
@@ -6221,6 +7505,7 @@ class _AdminPostMenu extends StatelessWidget {
   final VoidCallback onHide;
   final VoidCallback onFlag;
   final VoidCallback onDelete;
+  final bool isPinned;
 
   @override
   Widget build(BuildContext context) {
@@ -6284,10 +7569,10 @@ class _AdminPostMenu extends StatelessWidget {
                     onTap: onViewProfile,
                   ),
 
-                  // Pin Post
+                  // Pin / Unpin Post
                   _AdminMenuItem(
                     iconAsset: 'assets/adminIcons/adminpostMenu/PushPin.svg',
-                    label: 'Pin Post',
+                    label: isPinned ? 'Unpin Post' : 'Pin Post',
                     textColor: const Color(0xFF314158),
                     onTap: onPin,
                   ),
