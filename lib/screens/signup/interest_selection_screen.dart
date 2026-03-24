@@ -59,6 +59,54 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
     );
   }
 
+  /// Builds the 3-step progress indicator
+  /// currentStep: 1 = SignUp, 2 = InterestSelection, 3 = ProfileUpload
+  Widget _buildProgressIndicator(BuildContext context, {required int currentStep}) {
+    const double barWidth = 105.33333587646484;
+    const double barHeight = 8.0;
+    const double barRadius = 10.0;
+    const Color filledColor = Color(0xFF155DFC); // #155DFC
+    const Color emptyColor = Color(0xFFD9D9D9); // #D9D9D9
+    const double gap = 8.0; // Gap between bars
+
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Bar 1
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 1 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+          SizedBox(width: Responsive.scaledPadding(context, gap)),
+          // Bar 2
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 2 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+          SizedBox(width: Responsive.scaledPadding(context, gap)),
+          // Bar 3
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 3 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final countLabel = '${_selected.length}/3 selected';
@@ -108,16 +156,19 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
                   const SizedBox(width: 40),
                 ],
               ),
-              const SizedBox(height: 54),
+              // Progress indicator (Step 2 of 3)
+              const SizedBox(height: 26),
+              _buildProgressIndicator(context, currentStep: 2),
+              const SizedBox(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(
                   'Your Interests (Choose 2-3)',
                   style: const TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                     color: _headingColor,
-                    fontFamily: 'Inter',
+                    fontFamily: 'Rubik',
                   ),
                   textAlign: TextAlign.left,
                 ),
@@ -187,11 +238,11 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                                  fontWeight: FontWeight.w400,
                                   color: isSelected
                                       ? _primaryBlue
                                       : const Color(0xFF6F7786),
-                                  fontFamily: 'Inter',
+                                  fontFamily: 'Rubik',
                                 ),
                               ),
                             ),

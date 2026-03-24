@@ -21,10 +21,14 @@ import 'package:pal/services/auth_remember_me_service.dart';
 import 'package:pal/services/auth_deactivate_service.dart';
 import 'package:pal/services/admin_service.dart';
 import 'package:pal/services/moderator_service.dart';
+import 'package:pal/services/junior_moderator_service.dart';
+import 'package:pal/services/reviewer_service.dart';
 import 'package:pal/services/fcm_service.dart';
 import 'package:pal/services/notification_count_manager.dart';
 import 'package:pal/screens/admin/admin_settings_screen.dart';
 import 'package:pal/screens/moderator/moderator_settings_screen.dart';
+import 'package:pal/screens/junior_moderator/jm_settings_screen.dart';
+import 'package:pal/screens/reviewer/reviewer_settings_screen.dart';
 import 'package:pal/services/profile_service.dart';
 import 'package:pal/services/profile_picture_service.dart';
 import 'package:pal/services/post_service.dart';
@@ -42,13 +46,15 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _pushNotificationsEnabled = true;
-  bool _wodEnabled = true;
+  bool _wodEnabled = false;
   bool _isPageLoading = true;
   final AuthLogoutService _logoutService = AuthLogoutService();
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
   final AuthDeactivateService _deactivateService = AuthDeactivateService();
   final AdminService _adminService = AdminService();
   final ModeratorService _moderatorService = ModeratorService();
+  final JuniorModeratorService _juniorModeratorService = JuniorModeratorService();
+  final ReviewerService _reviewerService = ReviewerService();
   final ProfileService _profileService = ProfileService();
   final PostService _postService = PostService();
   final AuthService _authService = AuthService();
@@ -63,34 +69,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _checkAdminAndNavigate();
     _loadProfileData();
     _checkUpvotedPosts();
-    Future.microtask(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+    _postService.prefetchUpvotedPosts();
+    // Remove artificial delay — show content immediately.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() {
-        _isPageLoading = false;
-      });
+      setState(() { _isPageLoading = false; });
     });
   }
 
   Future<void> _checkAdminAndNavigate() async {
-    final isAdmin = await _adminService.isAdmin();
-    final isModerator = await _moderatorService.isModerator();
-    if (isAdmin && mounted) {
-      // Navigate to admin settings screen after a short delay to allow widget to build
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
-        );
-      }
-    } else if (isModerator && mounted) {
-      // Navigate to moderator settings screen after a short delay to allow widget to build
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ModeratorSettingsScreen()),
-        );
-      }
+    final results = await Future.wait([
+      _adminService.isAdmin(),
+      _moderatorService.isModerator(),
+      _juniorModeratorService.isJuniorModerator(),
+      _reviewerService.isReviewer(),
+    ]);
+    final isAdmin = results[0];
+    final isModerator = results[1];
+    final isJuniorModerator = results[2];
+    final isReviewer = results[3];
+    if (!mounted) return;
+    if (isAdmin) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const AdminSettingsScreen()),
+      );
+    } else if (isModerator) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const ModeratorSettingsScreen()),
+      );
+    } else if (isJuniorModerator) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const JmSettingsScreen()),
+      );
+    } else if (isReviewer) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const ReviewerSettingsScreen()),
+      );
     }
   }
 
@@ -101,7 +115,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      final profileData = await _profileService.getProfileData(forceRefresh: forceRefresh);
+      final profileData = await _profileService.getProfileData(
+        forceRefresh: forceRefresh,
+      );
       print(
         'DEBUG _loadProfileData: profileData received: ${profileData != null}',
       );
@@ -151,7 +167,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     controller.dispose();
 
     if (result == true && mounted) {
-      // Show loading indicator while deactivating
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -159,26 +174,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
 
       try {
-        // Determine reason type based on text provided
-        // Since UI only has text field, we'll use "other" as default
-        // If text is provided and is 10+ chars, use it as reason_text
-        // If text is less than 10 chars, don't send it (API requires 10+ chars if provided)
         String reasonType = 'other';
         String? reasonTextForApi;
 
         if (reasonText.isNotEmpty) {
           if (reasonText.length >= 10) {
-            // Text is valid (10+ chars), use it as reason_text
             reasonTextForApi = reasonText;
           } else {
-            // Text is too short - don't send it to API
-            // API requires reason_text to be 10+ chars if provided
-            // We'll proceed with just reason_type
             reasonTextForApi = null;
           }
         }
 
-        // Call the deactivate account edge function
         final deactivateResponse = await _deactivateService.deactivateAccount(
           reasonType: reasonType,
           reasonText: reasonTextForApi,
@@ -186,24 +192,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         if (!mounted) return;
 
-        // Close loading dialog
         Navigator.of(context).pop();
 
-        // Clear Remember Me preference on deactivation
         await _rememberMeService.clearRememberMe();
-
-        // Clear admin status on deactivation
         await _adminService.clearAdminStatus();
+        await _juniorModeratorService.clearJuniorModeratorStatus();
+        await _reviewerService.clearReviewerStatus();
 
-        // Also clear local session (edge function already signs out, but ensure local cleanup)
         try {
           await Supabase.instance.client.auth.signOut();
         } catch (e) {
-          // Ignore local signOut errors - server deactivation is more important
           print('Note: Local signOut had an issue (non-critical): $e');
         }
 
-        // Show success message
         final message =
             deactivateResponse['message'] as String? ??
             deactivateResponse['note'] as String? ??
@@ -211,7 +212,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         PalToast.show(context, message: message);
 
-        // Navigate to login screen after a short delay
         await Future.delayed(const Duration(milliseconds: 1500));
         if (!mounted) return;
 
@@ -222,10 +222,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } catch (e) {
         if (!mounted) return;
 
-        // Close loading dialog
         Navigator.of(context).pop();
 
-        // Show error message
         final errorMessage = e.toString().replaceFirst('Exception: ', '');
         PalToast.show(
           context,
@@ -774,8 +772,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Clear Remember Me preference on logout
         await _rememberMeService.clearRememberMe();
 
-        // Clear admin status on logout
+        // Clear admin, junior moderator, and reviewer status on logout
         await _adminService.clearAdminStatus();
+        await _juniorModeratorService.clearJuniorModeratorStatus();
+        await _reviewerService.clearReviewerStatus();
 
         // Clear notification count manager
         NotificationCountManager.instance.clear();
@@ -951,17 +951,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _toggleWOD() async {
     final newValue = !_wodEnabled;
 
-    // Optimistically update UI
     setState(() {
       _wodEnabled = newValue;
     });
 
     try {
-      await _profileService.updateNotificationPreferences({
-        'wod_enabled': newValue,
-      });
+      final response = newValue
+          ? await _profileService.wodOptIn()
+          : await _profileService.wodOptOut();
+
+      if (response['success'] != true) {
+        throw Exception(response['message'] ?? 'Failed to update WOD settings');
+      }
     } catch (e) {
-      // Revert on error
       if (mounted) {
         setState(() {
           _wodEnabled = !newValue;
@@ -979,6 +981,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final scaffold = Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: PalBottomNavigationBar(
+        active: PalNavDestination.settings,
+        onHomeTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
+        onNotificationsTap: () => Navigator.pushNamed(context, '/notifications'),
+        onSettingsTap: () {},
+      ),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -1010,8 +1018,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                     child: Column(
                       children: [
-                        const _EarlyAdopterSection(),
-                        const SizedBox(height: 15),
                         _ProfileOverviewCard(
                           profileData: _profileData,
                           isLoading: _isLoadingProfile,
@@ -1306,17 +1312,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: PalBottomNavigationBar(
-        active: PalNavDestination.settings,
-        onHomeTap: () {
-          Navigator.of(context).popUntil((route) => route.isFirst);
-          Navigator.of(context).pushReplacementNamed('/home');
-        },
-        onNotificationsTap: () {
-          Navigator.pushNamed(context, '/notifications');
-        },
-        onSettingsTap: () {},
-      ),
     );
     return Stack(
       children: [scaffold, if (_isPageLoading) const PalLoadingOverlay()],
@@ -1447,46 +1442,6 @@ class _ProfileOverviewCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF9810FA), Color(0xFFE60076)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                svg.SvgPicture.asset(
-                                  'assets/settings/earlyAdopterBadge.svg',
-                                  width: 12,
-                                  height: 12,
-                                  colorFilter: const ColorFilter.mode(
-                                    Colors.white,
-                                    BlendMode.srcIn,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Text(
-                                  'Early Adopter',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: 'Inter',
-                                    color: Colors.white,
-                                    letterSpacing: -0.1,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
                       ),
                     const SizedBox(height: 4),
@@ -1581,102 +1536,6 @@ class _ProfileOverviewCard extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EarlyAdopterSection extends StatefulWidget {
-  const _EarlyAdopterSection();
-
-  @override
-  State<_EarlyAdopterSection> createState() => _EarlyAdopterSectionState();
-}
-
-class _EarlyAdopterSectionState extends State<_EarlyAdopterSection> {
-  bool _isVisible = true;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isVisible) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE9D4FF), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF9810FA), Color(0xFFE60076)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                ),
-                child: Center(
-                  child: svg.SvgPicture.asset(
-                    'assets/settings/earlyAdopter.svg',
-                    width: 15,
-                    height: 15,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  "You're an Early Adopter!",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172B),
-                    letterSpacing: -0.3125,
-                    height: 1.5,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isVisible = false;
-                  });
-                },
-                child: const Icon(
-                  Icons.close,
-                  size: 18,
-                  color: Color(0xFF45556C),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 42),
-            child: Text(
-              "You're part of our core community. Get an exclusive gradient ring, badge, and early access to premium features",
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
-                color: Color(0xFF45556C),
-                letterSpacing: -0.1504,
-                height: 1.43,
               ),
             ),
           ),
@@ -2981,6 +2840,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     final hasSpecialChar = _hasSpecialCharacter(newPassword);
     final hasCapital = _hasCapitalLetter(newPassword);
     final passwordsMatch = _passwordsMatch();
+    final canSendCode = hasMinimumLength && hasSpecialChar && hasCapital && passwordsMatch;
 
     return _SettingsDialogShell(
       title: 'Change Password',
@@ -3071,7 +2931,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
         ],
       ),
       primaryLabel: 'Send Code',
-      onPrimary: widget.onSendCode,
+      onPrimary: canSendCode ? widget.onSendCode : null,
       secondaryLabel: 'Cancel',
       onSecondary: widget.onCancel,
     );
@@ -3727,7 +3587,7 @@ class _SettingsDialogShell extends StatelessWidget {
   final String description;
   final Widget content;
   final String primaryLabel;
-  final VoidCallback onPrimary;
+  final VoidCallback? onPrimary;
   final String secondaryLabel;
   final VoidCallback onSecondary;
 

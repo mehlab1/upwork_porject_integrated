@@ -56,6 +56,18 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
     });
 
     try {
+      final checkUserResponse = await _authService.checkUserExists(email: email);
+      final userExists = checkUserResponse['exists'] == true;
+
+      if (!userExists) {
+        if (!mounted) return;
+        setState(() {
+          _isSubmitting = false;
+          _emailError = 'This didn\'t work. You can create a new account or check email address and try again.';
+        });
+        return;
+      }
+
       // Call forgot-password edge function
       // This calls request_password_reset_otp RPC which:
       // - Checks rate limits (3 per hour)
@@ -106,13 +118,17 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       
       final errorStr = e.toString().toLowerCase();
       
-      // Handle 404 - Email not registered
+      // Handle 404 - Email not registered / not found
       if (errorStr.contains('404') || 
           errorStr.contains('not registered') ||
           errorStr.contains('email is not registered') ||
-          errorStr.contains('this email is not registered')) {
+          errorStr.contains('this email is not registered') ||
+          errorStr.contains('user not found') ||
+          errorStr.contains('not found') ||
+          errorStr.contains('no user') ||
+          errorStr.contains('does not exist')) {
         setState(() {
-          _emailError = 'This email is not registered. Please sign up first.';
+          _emailError = 'This didn\'t work. You can create a new account or check email address and try again.';
         });
         return;
       }
@@ -286,6 +302,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                             left: 6,
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.error_outline,
@@ -295,12 +312,14 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                               SizedBox(
                                 width: Responsive.scaledPadding(context, 6),
                               ),
-                              Text(
-                                _emailError!,
-                                style: Responsive.responsiveTextStyle(
-                                  context,
-                                  fontSize: 13,
-                                  color: Colors.red,
+                              Expanded(
+                                child: Text(
+                                  _emailError!,
+                                  style: Responsive.responsiveTextStyle(
+                                    context,
+                                    fontSize: 13,
+                                    color: Colors.red,
+                                  ),
                                 ),
                               ),
                             ],

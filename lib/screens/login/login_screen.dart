@@ -9,10 +9,13 @@ import '../../services/fcm_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/admin_service.dart';
 import '../../services/moderator_service.dart';
+import '../../services/junior_moderator_service.dart';
+import '../../services/reviewer_service.dart';
+import '../../services/user_role_service.dart';
 import '../../widgets/pal_toast.dart';
 import '../../widgets/error_dialog.dart';
 import '../../services/notification_count_manager.dart';
-import '../signup/signup_screen.dart';
+import '../signup/email_collection_screen.dart';
 import '../forgot_password/forgot_password_email_screen.dart';
 import '../otp/otp_verification_screen.dart';
 
@@ -35,6 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
   final AdminService _adminService = AdminService();
   final ModeratorService _moderatorService = ModeratorService();
+  final JuniorModeratorService _juniorModeratorService = JuniorModeratorService();
+  final ReviewerService _reviewerService = ReviewerService();
+  final UserRoleService _userRoleService = UserRoleService();
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -627,7 +633,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) =>
-                                          const SignUpScreen(),
+                                          const EmailCollectionScreen(),
                                     ),
                                   );
                                 },
@@ -734,6 +740,16 @@ class _LoginScreenState extends State<LoginScreen> {
       const String hardcodedModeratorEmail = 'moderator@kp2.com';
       const String hardcodedModeratorPassword = 'moderator123';
       
+      // HARDCODED JUNIOR MODERATOR CREDENTIALS (for development/testing only)
+      // TODO: Remove before production deployment
+      const String hardcodedJuniorModeratorEmail = 'juniormoderator@kp2.com';
+      const String hardcodedJuniorModeratorPassword = 'juniormoderator123';
+      
+      // HARDCODED REVIEWER CREDENTIALS (for development/testing only)
+      // TODO: Remove before production deployment
+      const String hardcodedReviewerEmail = 'reviewer@kp2.com';
+      const String hardcodedReviewerPassword = 'reviewer123';
+      
       // Check if credentials match hardcoded admin
       final bool isHardcodedAdmin = email.toLowerCase() == hardcodedAdminEmail.toLowerCase() && 
                                     password == hardcodedAdminPassword;
@@ -741,6 +757,14 @@ class _LoginScreenState extends State<LoginScreen> {
       // Check if credentials match hardcoded moderator
       final bool isHardcodedModerator = email.toLowerCase() == hardcodedModeratorEmail.toLowerCase() && 
                                         password == hardcodedModeratorPassword;
+      
+      // Check if credentials match hardcoded junior moderator
+      final bool isHardcodedJuniorModerator = email.toLowerCase() == hardcodedJuniorModeratorEmail.toLowerCase() && 
+                                              password == hardcodedJuniorModeratorPassword;
+      
+      // Check if credentials match hardcoded reviewer
+      final bool isHardcodedReviewer = email.toLowerCase() == hardcodedReviewerEmail.toLowerCase() && 
+                                      password == hardcodedReviewerPassword;
       
       print('=== LOGIN - REQUEST TO SIGN IN ===');
       print('Email: $email');
@@ -751,11 +775,19 @@ class _LoginScreenState extends State<LoginScreen> {
       if (isHardcodedModerator) {
         print('HARDCODED MODERATOR LOGIN DETECTED');
       }
+      if (isHardcodedJuniorModerator) {
+        print('HARDCODED JUNIOR MODERATOR LOGIN DETECTED');
+      }
+      if (isHardcodedReviewer) {
+        print('HARDCODED REVIEWER LOGIN DETECTED');
+      }
       
       AuthResponse? signInResponse;
       bool skipEmailVerificationCheck = false;
       bool isHardcodedAdminWithoutSupabase = false;
       bool isHardcodedModeratorWithoutSupabase = false;
+      bool isHardcodedJuniorModeratorWithoutSupabase = false;
+      bool isHardcodedReviewerWithoutSupabase = false;
       
       // For hardcoded admin, try to authenticate but bypass email verification
       if (isHardcodedAdmin) {
@@ -793,8 +825,40 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
       
-      // If not hardcoded admin/moderator or Supabase auth failed for hardcoded admin/moderator, try normal auth
-      if (signInResponse == null && !isHardcodedAdmin && !isHardcodedModerator) {
+      // For hardcoded junior moderator, try to authenticate but bypass email verification
+      if (isHardcodedJuniorModerator && signInResponse == null) {
+        try {
+          signInResponse = await _authService.signIn(email: hardcodedJuniorModeratorEmail, password: hardcodedJuniorModeratorPassword);
+          // If Supabase auth succeeds, allow bypassing email verification for junior moderator
+          skipEmailVerificationCheck = true;
+          print('Hardcoded junior moderator authenticated successfully with Supabase');
+        } catch (e) {
+          // If Supabase auth fails, note that we're proceeding without Supabase session
+          // The account may not exist in Supabase yet - user can still test junior moderator UI
+          print('Hardcoded junior moderator - Supabase auth failed (account may not exist): $e');
+          print('Proceeding with hardcoded junior moderator access (bypassing Supabase auth)');
+          skipEmailVerificationCheck = true;
+          isHardcodedJuniorModeratorWithoutSupabase = true;
+          // Note: Some features may not work without a Supabase session
+        }
+      }
+      
+      // For hardcoded reviewer, try to authenticate but bypass email verification
+      if (isHardcodedReviewer && signInResponse == null) {
+        try {
+          signInResponse = await _authService.signIn(email: hardcodedReviewerEmail, password: hardcodedReviewerPassword);
+          skipEmailVerificationCheck = true;
+          print('Hardcoded reviewer authenticated successfully with Supabase');
+        } catch (e) {
+          print('Hardcoded reviewer - Supabase auth failed (account may not exist): $e');
+          print('Proceeding with hardcoded reviewer access (bypassing Supabase auth)');
+          skipEmailVerificationCheck = true;
+          isHardcodedReviewerWithoutSupabase = true;
+        }
+      }
+      
+      // If not hardcoded admin/moderator/junior moderator/reviewer, try normal auth
+      if (signInResponse == null && !isHardcodedAdmin && !isHardcodedModerator && !isHardcodedJuniorModerator && !isHardcodedReviewer) {
         signInResponse = await _authService.signIn(email: email, password: password);
       }
       
@@ -820,6 +884,28 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
       
+      // If hardcoded junior moderator but no Supabase session, show warning but allow access
+      if (isHardcodedJuniorModeratorWithoutSupabase) {
+        if (mounted) {
+          PalToast.show(
+            context,
+            message: 'Junior Moderator access granted. Note: Some features may require Supabase account.',
+            isError: false,
+          );
+        }
+      }
+      
+      // If hardcoded reviewer but no Supabase session, show warning but allow access
+      if (isHardcodedReviewerWithoutSupabase) {
+        if (mounted) {
+          PalToast.show(
+            context,
+            message: 'Reviewer access granted. Note: Some features may require Supabase account.',
+            isError: false,
+          );
+        }
+      }
+      
       print('=== LOGIN - RESPONSE FROM SIGN IN ===');
       if (signInResponse != null) {
         print('Has session: ${signInResponse.session != null}');
@@ -834,6 +920,10 @@ class _LoginScreenState extends State<LoginScreen> {
         print('Hardcoded admin - no Supabase session (will proceed anyway)');
       } else if (isHardcodedModerator) {
         print('Hardcoded moderator - no Supabase session (will proceed anyway)');
+      } else if (isHardcodedJuniorModerator) {
+        print('Hardcoded junior moderator - no Supabase session (will proceed anyway)');
+      } else if (isHardcodedReviewer) {
+        print('Hardcoded reviewer - no Supabase session (will proceed anyway)');
       }
       print('====================================');
 
@@ -881,15 +971,56 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Check if user is admin and store admin status
-      // Hardcoded admin is always admin, otherwise check email
-      final isAdmin = isHardcodedAdmin || email.toLowerCase() == 'admin@kp2.com';
+      // Determine admin/moderator/junior moderator/reviewer status from backend role (not email).
+      // Keep hardcoded access for dev/testing accounts.
+      bool isAdmin = isHardcodedAdmin || isHardcodedAdminWithoutSupabase;
+      bool isModerator =
+          isHardcodedModerator || isHardcodedModeratorWithoutSupabase;
+      bool isJuniorModerator =
+          isHardcodedJuniorModerator || isHardcodedJuniorModeratorWithoutSupabase;
+      bool isReviewer =
+          isHardcodedReviewer || isHardcodedReviewerWithoutSupabase;
+
+      if (!isHardcodedAdminWithoutSupabase && !isHardcodedModeratorWithoutSupabase && !isHardcodedJuniorModeratorWithoutSupabase && !isHardcodedReviewerWithoutSupabase) {
+        try {
+          final roleResp = await _userRoleService.getUserRole();
+          final role = roleResp['role']?.toString().trim();
+          if (role != null && role.isNotEmpty) {
+            isAdmin = isAdmin || role == 'admin';
+            isModerator = isModerator ||
+                role == 'moderator';
+            isJuniorModerator = isJuniorModerator || role == 'junior_moderator';
+            isReviewer = isReviewer || role == 'reviewer';
+          }
+        } catch (e) {
+          // Fallback: read current user's role directly from own profile (RLS should allow).
+          try {
+            final userId = Supabase.instance.client.auth.currentUser?.id;
+            if (userId != null) {
+              final profile = await Supabase.instance.client
+                  .from('profiles')
+                  .select('role')
+                  .eq('id', userId)
+                  .maybeSingle();
+              final role = (profile as Map?)?['role']?.toString();
+              if (role != null && role.isNotEmpty) {
+                isAdmin = isAdmin || role == 'admin';
+                isModerator = isModerator ||
+                    role == 'moderator';
+                isJuniorModerator = isJuniorModerator || role == 'junior_moderator';
+                isReviewer = isReviewer || role == 'reviewer';
+              }
+            }
+          } catch (_) {
+            // If both role lookups fail, leave flags as hardcoded-only.
+          }
+        }
+      }
+
       await _adminService.setAdminStatus(isAdmin);
-      
-      // Check if user is moderator and store moderator status
-      // Hardcoded moderator is always moderator, otherwise check email
-      final isModerator = isHardcodedModerator || email.toLowerCase() == 'moderator@kp2.com';
       await _moderatorService.setModeratorStatus(isModerator);
+      await _juniorModeratorService.setJuniorModeratorStatus(isJuniorModerator);
+      await _reviewerService.setReviewerStatus(isReviewer);
 
       // Save Remember Me preference after successful login
       await _rememberMeService.setRememberMe(_rememberMe);
@@ -905,11 +1036,14 @@ class _LoginScreenState extends State<LoginScreen> {
       // After successful sign-in, fetch profile to decide whether to
       // show the welcome modal / first-post card. This ensures all
       // logged-in users that have 0 or 1 posts see the onboarding UI.
-      // Skip profile fetch for hardcoded admin without Supabase session
+      // Skip profile fetch for hardcoded admin/moderator/junior moderator/reviewer without Supabase session
       bool shouldShowWelcome = false;
-      if (!isHardcodedAdminWithoutSupabase) {
+      if (!isHardcodedAdminWithoutSupabase && !isHardcodedModeratorWithoutSupabase && !isHardcodedJuniorModeratorWithoutSupabase && !isHardcodedReviewerWithoutSupabase) {
         try {
           final postService = PostService();
+          // Kick off feed prefetch in parallel with the profile fetch so the
+          // feed screen's first load finds data already in cache.
+          postService.prefetchFeed();
           final profileResp = await postService.getProfile();
           final profile = profileResp['profile'] as Map<String, dynamic>?;
           int postCount = 0;
@@ -949,16 +1083,7 @@ class _LoginScreenState extends State<LoginScreen> {
         },
       );
 
-      // Show unread notifications after home screen loads
-      // Wait a few seconds for home screen to fully load, then show notifications
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await Future<void>.delayed(const Duration(seconds: 3));
-        if (mounted && Navigator.of(context).canPop() == false) {
-          // Home screen is now loaded, show unread notifications
-          final notificationService = NotificationService();
-          await notificationService.showUnreadNotificationsInApp(context);
-        }
-      });
+      // In-app notification banners are shown from FeedHomeScreen.initState
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() {

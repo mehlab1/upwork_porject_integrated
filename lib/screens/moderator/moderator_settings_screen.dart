@@ -3,24 +3,27 @@ import 'package:flutter_svg/flutter_svg.dart' as svg;
 import '../../widgets/pal_bottom_nav_bar.dart';
 import '../../widgets/pal_loading_widgets.dart';
 import '../../services/profile_service.dart';
+import '../../services/announcements_service.dart';
+import '../../services/app_cache.dart';
+import '../../services/post_service.dart';
 import '../../core/responsive/responsive.dart';
-import '../admin/moderator_queue_screen.dart';
-import '../admin/junior_moderator_queue_screen.dart';
-import '../admin/content_curator_queue_screen.dart';
-import '../admin/announcements_screen.dart';
-import '../admin/wod_screen.dart';
-import '../admin/top_post_screen.dart';
-import '../admin/hot_post_screen.dart';
-import '../admin/postTypeScreens/hidden_posts_screen.dart';
-import '../admin/postTypeScreens/warned_posts_screen.dart';
-import '../admin/postTypeScreens/muted_posts_screen.dart';
-import '../admin/postTypeScreens/duplicated_posts_screen.dart';
-import '../admin/postTypeScreens/reported_posts_screen.dart';
-import '../admin/postTypeScreens/flagged_posts_screen.dart';
-import '../admin/accountScreens/suspended_account_screen.dart';
-import '../admin/accountScreens/banned_account_screen.dart';
-import '../admin/accountScreens/shadow_ban_screen.dart';
-import '../admin/accountScreens/flagged_account_screen.dart';
+import 'mod_moderator_queue_screen.dart';
+import 'mod_junior_moderator_queue_screen.dart';
+import 'mod_content_curator_queue_screen.dart';
+import 'mod_announcements_screen.dart';
+import 'mod_wod_screen.dart';
+import 'mod_top_post_screen.dart';
+import 'mod_hot_post_screen.dart';
+import 'postTypeScreens/mod_hidden_posts_screen.dart';
+import 'postTypeScreens/mod_warned_posts_screen.dart';
+import 'postTypeScreens/mod_muted_posts_screen.dart';
+import 'postTypeScreens/mod_duplicated_posts_screen.dart';
+import 'postTypeScreens/mod_reported_posts_screen.dart';
+import 'postTypeScreens/mod_flagged_posts_screen.dart';
+import 'accountScreens/mod_suspended_account_screen.dart';
+import 'accountScreens/mod_banned_account_screen.dart';
+import 'accountScreens/mod_shadow_ban_screen.dart';
+import 'accountScreens/mod_flagged_account_screen.dart';
 
 class ModeratorSettingsScreen extends StatefulWidget {
   const ModeratorSettingsScreen({super.key});
@@ -32,6 +35,7 @@ class ModeratorSettingsScreen extends StatefulWidget {
 class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
   bool _isPageLoading = true;
   final ProfileService _profileService = ProfileService();
+  final PostService _postService = PostService();
   ProfileData? _profileData;
   bool _isLoadingProfile = false;
 
@@ -39,12 +43,34 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
   void initState() {
     super.initState();
     _loadProfileData();
-    Future.microtask(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+    // Kick off all queue + stats prefetches immediately so data is ready
+    // before the user taps any tile.
+    AppCache().prefetchModQueuePosts();
+    AppCache().prefetchModQueuePostsHistory();
+    AppCache().prefetchModQueueCommentsNew();
+    AppCache().prefetchModQueueCommentsHistory();
+    AppCache().prefetchModQueueUsersNew();
+    AppCache().prefetchModQueueUsersHistory();
+    AppCache().prefetchJmQueuePosts();
+    AppCache().prefetchJmQueuePostsHistory();
+    AppCache().prefetchJmQueueCommentsNew();
+    AppCache().prefetchJmQueueCommentsHistory();
+    AppCache().prefetchCcQueuePosts();
+    AppCache().prefetchCcQueueCommentsNew();
+    AnnouncementsService().prefetch();
+    AppCache().prefetchHiddenPosts();
+    AppCache().prefetchWarnedPosts();
+    AppCache().prefetchMutedPosts();
+    AppCache().prefetchDuplicatedPosts();
+    AppCache().prefetchWod();
+    AppCache().prefetchTopPost();
+    AppCache().prefetchHotPost();
+    _postService.prefetchHotFeed();
+    _postService.prefetchTopFeed();
+    // Remove artificial delay — show content immediately.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() {
-        _isPageLoading = false;
-      });
+      setState(() { _isPageLoading = false; });
     });
   }
 
@@ -123,10 +149,12 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchModQueuePosts();
+                              AppCache().prefetchModQueueCommentsNew();
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const ModeratorQueueScreen(),
+                                  builder: (_) => const ModModeratorQueueScreen(),
                                 ),
                               );
                             },
@@ -139,10 +167,12 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchJmQueuePosts();
+                              AppCache().prefetchJmQueueCommentsNew();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) =>
-                                      const JuniorModeratorQueueScreen(),
+                                      const ModJuniorModeratorQueueScreen(),
                                 ),
                               );
                             },
@@ -155,10 +185,12 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchCcQueuePosts();
+                              AppCache().prefetchCcQueueCommentsNew();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) =>
-                                      const ContentCuratorQueueScreen(),
+                                      const ModContentCuratorQueueScreen(),
                                 ),
                               );
                             },
@@ -177,9 +209,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AnnouncementsService().prefetch();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const AnnouncementsScreen(),
+                                  builder: (_) => const ModAnnouncementsScreen(),
                                 ),
                               );
                             },
@@ -192,9 +225,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchWod();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const WodScreen(),
+                                  builder: (_) => const ModWodScreen(),
                                 ),
                               );
                             },
@@ -207,9 +241,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchTopPost();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const TopPostScreen(),
+                                  builder: (_) => const ModTopPostScreen(),
                                 ),
                               );
                             },
@@ -222,9 +257,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchHotPost();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const HotPostScreen(),
+                                  builder: (_) => const ModHotPostScreen(),
                                 ),
                               );
                             },
@@ -243,9 +279,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchHiddenPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const HiddenPostsScreen(),
+                                  builder: (_) => const ModHiddenPostsScreen(),
                                 ),
                               );
                             },
@@ -258,9 +295,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchWarnedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const WarnedPostsScreen(),
+                                  builder: (_) => const ModWarnedPostsScreen(),
                                 ),
                               );
                             },
@@ -273,9 +311,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchMutedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const MutedPostsScreen(),
+                                  builder: (_) => const ModMutedPostsScreen(),
                                 ),
                               );
                             },
@@ -288,9 +327,10 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchDuplicatedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const DuplicatedPostsScreen(),
+                                  builder: (_) => const ModDuplicatedPostsScreen(),
                                 ),
                               );
                             },
@@ -311,7 +351,6 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
           active: PalNavDestination.settings,
           onHomeTap: () {
             Navigator.of(context).popUntil((route) => route.isFirst);
-            Navigator.of(context).pushReplacementNamed('/home');
           },
           onNotificationsTap: () {
             Navigator.pushNamed(context, '/notifications');

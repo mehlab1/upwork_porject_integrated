@@ -4,6 +4,10 @@ import '../../widgets/pal_bottom_nav_bar.dart';
 import '../../widgets/pal_loading_widgets.dart';
 import '../../services/profile_service.dart';
 import '../../services/admin_service.dart';
+import '../../services/announcements_service.dart';
+import '../../services/app_cache.dart';
+import '../../services/post_service.dart';
+import '../../services/suspended_users_service.dart';
 import 'moderator_queue_screen.dart';
 import 'junior_moderator_queue_screen.dart';
 import 'content_curator_queue_screen.dart';
@@ -33,6 +37,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   bool _isPageLoading = true;
   final ProfileService _profileService = ProfileService();
   final AdminService _adminService = AdminService();
+  final PostService _postService = PostService();
   ProfileData? _profileData;
   bool _isLoadingProfile = false;
 
@@ -40,12 +45,39 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   void initState() {
     super.initState();
     _loadProfileData();
-    Future.microtask(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+    // Kick off all queue + stats prefetches immediately so data is ready
+    // before the user taps any tile.
+    AppCache().prefetchModQueuePosts();
+    AppCache().prefetchModQueuePostsHistory();
+    AppCache().prefetchModQueueCommentsNew();
+    AppCache().prefetchModQueueCommentsHistory();
+    AppCache().prefetchModQueueUsersNew();
+    AppCache().prefetchModQueueUsersHistory();
+    AppCache().prefetchJmQueuePosts();
+    AppCache().prefetchJmQueuePostsHistory();
+    AppCache().prefetchJmQueueCommentsNew();
+    AppCache().prefetchJmQueueCommentsHistory();
+    AppCache().prefetchCcQueuePosts();
+    AppCache().prefetchCcQueueCommentsNew();
+    AnnouncementsService().prefetch();
+    AppCache().prefetchHiddenPosts();
+    AppCache().prefetchWarnedPosts();
+    AppCache().prefetchMutedPosts();
+    AppCache().prefetchDuplicatedPosts();
+    AppCache().prefetchReportedPosts();
+    AppCache().prefetchFlaggedPosts();
+    AppCache().prefetchShadowBanUsers();
+    AppCache().prefetchBannedUsers();
+    AppCache().prefetchWod();
+    AppCache().prefetchTopPost();
+    AppCache().prefetchHotPost();
+    _postService.prefetchHotFeed();
+    _postService.prefetchTopFeed();
+    SuspendedUsersService().prefetch();
+    // Remove artificial delay — show content immediately.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() {
-        _isPageLoading = false;
-      });
+      setState(() { _isPageLoading = false; });
     });
   }
 
@@ -125,6 +157,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchModQueuePosts();
+                              AppCache().prefetchModQueueCommentsNew();
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -141,6 +175,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchJmQueuePosts();
+                              AppCache().prefetchJmQueueCommentsNew();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) =>
@@ -157,6 +193,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchCcQueuePosts();
+                              AppCache().prefetchCcQueueCommentsNew();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) =>
@@ -179,6 +217,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              // Pre-fetch immediately so the edge function warms
+                              // up during the navigation animation, not after.
+                              AnnouncementsService().prefetch();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const AnnouncementsScreen(),
@@ -194,6 +235,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchWod();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const WodScreen(),
@@ -209,6 +251,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchTopPost();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const TopPostScreen(),
@@ -224,6 +267,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchHotPost();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const HotPostScreen(),
@@ -245,6 +289,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchHiddenPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const HiddenPostsScreen(),
@@ -260,6 +305,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchWarnedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const WarnedPostsScreen(),
@@ -275,6 +321,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchMutedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const MutedPostsScreen(),
@@ -290,6 +337,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchDuplicatedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const DuplicatedPostsScreen(),
@@ -311,6 +359,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchReportedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const ReportedPostsScreen(),
@@ -327,6 +376,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconTint: const Color(0xFFE7000B),
                             titleColor: const Color(0xFFE7000B),
                             onTap: () {
+                              AppCache().prefetchFlaggedPosts();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const FlaggedAccountScreen(),
@@ -342,6 +392,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconBackground: const Color(0xFFF1F5F9),
                             iconTint: const Color(0xFF314158),
                             onTap: () {
+                              AppCache().prefetchShadowBanUsers();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const ShadowBanScreen(),
@@ -358,6 +409,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconTint: const Color(0xFFE7000B),
                             titleColor: const Color(0xFFE7000B),
                             onTap: () {
+                              SuspendedUsersService().prefetch();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const SuspendedAccountScreen(),
@@ -374,6 +426,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                             iconTint: const Color(0xFFE7000B),
                             titleColor: const Color(0xFFE7000B),
                             onTap: () {
+                              AppCache().prefetchBannedUsers();
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const BannedAccountScreen(),
@@ -397,7 +450,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           active: PalNavDestination.settings,
           onHomeTap: () {
             Navigator.of(context).popUntil((route) => route.isFirst);
-            Navigator.of(context).pushReplacementNamed('/home');
           },
           onNotificationsTap: () {
             Navigator.pushNamed(context, '/notifications');

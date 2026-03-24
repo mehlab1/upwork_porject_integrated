@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
-import '../settings/community_guidelines_screen.dart';
 import 'interest_selection_screen.dart';
 import '../../core/responsive/responsive.dart';
 import '../../widgets/error_dialog.dart';
@@ -41,7 +40,8 @@ class _CheckmarkPainter extends CustomPainter {
 }
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  final String email;
+  const SignUpScreen({super.key, required this.email});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
@@ -56,7 +56,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _stateController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -68,17 +67,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _selectedAccountType;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _agreeToTerms = false;
   // Dropdown open state for Account Type field
   bool _isAccountTypeDropdownOpen = false;
 
   // Error messages
-  String? _termsError;
   String? _dobError;
   String? _firstNameError;
   String? _lastNameError;
   String? _usernameError;
-  String? _emailError;
+  String? _generalError; // For signup-level errors (e.g. email already registered)
   String? _stateError;
   String? _passwordError;
   String? _confirmPasswordError;
@@ -92,7 +89,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // Password validation state
   bool _hasMinLength = false;
   bool _hasCapital = false;
-  bool _hasSpecialChar = false;
+  bool _hasLowercase = false;
+  bool _hasNumber = false;
 
   // Username checking state
   bool _isCheckingUsername = false;
@@ -120,7 +118,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   static const Color _grey700 = Color(0xFF717182);
   static const Color _blue500 = Color(0xFF45556C);
   static const Color _greenSuccess = Color(0xFF00A63E);
-  static const Color _checkboxColor = Color(0xFF7265E3);
+
 
   // ============================================================================
   // UI CONSTANTS - Nigeria States List
@@ -492,7 +490,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _usernameController.dispose();
-    _emailController.dispose();
     _stateController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -503,6 +500,54 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // ============================================================================
   // UI COMPONENTS - Widget Builders
   // ============================================================================
+
+  /// Builds the 3-step progress indicator
+  /// currentStep: 1 = SignUp, 2 = InterestSelection, 3 = ProfileUpload
+  Widget _buildProgressIndicator(BuildContext context, {required int currentStep}) {
+    const double barWidth = 105.33333587646484;
+    const double barHeight = 8.0;
+    const double barRadius = 10.0;
+    const Color filledColor = Color(0xFF155DFC); // #155DFC
+    const Color emptyColor = Color(0xFFD9D9D9); // #D9D9D9
+    const double gap = 8.0; // Gap between bars
+
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Bar 1
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 1 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+          SizedBox(width: Responsive.scaledPadding(context, gap)),
+          // Bar 2
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 2 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+          SizedBox(width: Responsive.scaledPadding(context, gap)),
+          // Bar 3
+          Container(
+            width: Responsive.scaledPadding(context, barWidth).clamp(barWidth * 0.8, barWidth * 1.2),
+            height: Responsive.scaledPadding(context, barHeight).clamp(barHeight * 0.8, barHeight * 1.2),
+            decoration: BoxDecoration(
+              color: currentStep >= 3 ? filledColor : emptyColor,
+              borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, barRadius)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// Builds a reusable input field with icon, error handling, and validation
   Widget _buildInputField({
@@ -626,10 +671,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   /// Calculates password strength based on required validation rules (returns 0-4)
-  /// Only reaches maximum (4) when ALL required rules are met:
+  /// Rules:
   /// - Length >= 8
   /// - Contains uppercase [A-Z]
-  /// - Contains special character
+  /// - Contains lowercase [a-z]
+  /// - Contains number [0-9]
   int _calculatePasswordStrength(String password) {
     if (password.isEmpty) return 0;
 
@@ -637,16 +683,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     int rulesMet = 0;
     if (password.length >= 8) rulesMet++;
     if (password.contains(RegExp(r'[A-Z]'))) rulesMet++;
-    if (password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) rulesMet++;
+    if (password.contains(RegExp(r'[a-z]'))) rulesMet++;
+    if (password.contains(RegExp(r'\d'))) rulesMet++;
 
-    // Strength is based on progress: 0 rules = 0, 1 rule = 1, 2 rules = 2-3, 3 rules = 4
-    if (rulesMet == 0) return 0;
-    if (rulesMet == 1) return 1;
-    if (rulesMet == 2) return 3; // Show 3 bars when 2 rules met
-    // Only return 4 when all 3 required rules are met
-    if (rulesMet == 3) return 4;
-    
-    return 0;
+    return rulesMet;
   }
 
   /// Validates password requirements and updates state
@@ -654,7 +694,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() {
       _hasMinLength = password.length >= 8;
       _hasCapital = password.contains(RegExp(r'[A-Z]'));
-      _hasSpecialChar = password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'));
+      _hasLowercase = password.contains(RegExp(r'[a-z]'));
+      _hasNumber = password.contains(RegExp(r'\d'));
     });
   }
 
@@ -663,14 +704,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (password.isEmpty) return false;
     return password.length >= 8 &&
         password.contains(RegExp(r'[A-Z]')) &&
-        password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'));
+      password.contains(RegExp(r'[a-z]')) &&
+      password.contains(RegExp(r'\d'));
   }
 
   /// Gets the current password hint (one at a time, in priority order)
   String? _getPasswordHint() {
     final password = _passwordController.text;
     if (password.isEmpty) {
-      return 'Use 8+ characters, at least one capital, special character';
+      return 'Use 8+ characters with uppercase, lowercase, and number';
     }
     
     // Show hints one at a time in priority order
@@ -680,15 +722,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (!_hasCapital) {
       return 'Password must contain at least one capital letter';
     }
-    if (!_hasSpecialChar) {
-      return 'Password must contain at least one special character';
+    if (!_hasLowercase) {
+      return 'Password must contain at least one lowercase letter';
+    }
+    if (!_hasNumber) {
+      return 'Password must contain at least one number';
     }
     
     // All requirements met
     return null;
   }
 
-  /// Builds password strength indicator with color coding (red/orange/green)
+  /// Builds password strength indicator with color coding (red/yellow/green)
   Widget _buildPasswordStrengthIndicator() {
     if (_passwordController.text.isEmpty) {
       return const SizedBox.shrink();
@@ -704,14 +749,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: Row(
             children: List.generate(4, (index) {
               final isFilled = index < _passwordStrength;
-              // Determine a single color for the current strength level.
-              // 1 => red, 2 => orange, 3 or 4 => green
+                // Determine a single color for the current strength level.
+                // Green appears ONLY when all 4 requirements are met.
               final int s = _passwordStrength;
               final Color activeColor = s <= 1
                   ? const Color(0xFFDC2626) // red
-                  : (s == 2
-                        ? const Color(0xFFF59E0B) // orange
-                        : const Color(0xFF16A34A)); // green
+                  : (s < 4
+                    ? const Color(0xFFF59E0B) // yellow
+                    : const Color(0xFF16A34A)); // green (all requirements)
               return Expanded(
                 child: Container(
                   margin: EdgeInsets.only(right: index < 3 ? 3.5 : 0),
@@ -763,9 +808,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     // Show current requirement hint
-    final isError = _passwordController.text.isNotEmpty && 
-                    (_passwordError != null || 
-                     (!_hasMinLength && _passwordController.text.length > 0));
+    final isError = _passwordController.text.isNotEmpty &&
+      (_passwordError != null || _getPasswordHint() != null);
     
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1018,15 +1062,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 'Complete Profile ',
                 style: TextStyle(
                   fontSize: Responsive.scaledFont(context, 32),
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w500,
                   color: _primary900,
                   letterSpacing: 0,
-                  fontFamily: 'Inter',
+                  fontFamily: 'Rubik',
                 ),
                 textAlign: TextAlign.center,
               ),
 
-              SizedBox(height: Responsive.scaledPadding(context, 52)),
+              // Progress indicator (Step 1 of 3)
+              const SizedBox(height: 26),
+              _buildProgressIndicator(context, currentStep: 1),
+
+              SizedBox(height: Responsive.scaledPadding(context, 46)),
 
               // Form fields container - responsive width, centered
               Center(
@@ -1170,52 +1218,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               ),
                             ),
                         ],
-                      ),
-
-                      SizedBox(height: Responsive.scaledPadding(context, 10)),
-
-                      // Email
-                      _buildInputField(
-                        context: context,
-                        hintText: 'Email',
-                        icon: Icons.email_outlined,
-                        controller: _emailController,
-                        errorText: _emailError,
-                        onChanged: (value) {
-                          setState(() {
-                            // Real-time validation
-                            final trimmedValue = value.trim();
-                            if (trimmedValue.isEmpty) {
-                              _emailError = null;
-                            } else if (!trimmedValue.contains('@')) {
-                              _emailError = 'Email must contain @';
-                            } else {
-                              // Check for incomplete domain/TLD before full validation
-                              final parts = trimmedValue.split('@');
-                              if (parts.length == 2 && parts[1].contains('.')) {
-                                final tld = parts[1].split('.').last;
-                                // Check if TLD is incomplete (less than 2 chars)
-                                if (tld.isNotEmpty && tld.length < 2) {
-                                  _emailError = 'Invalid email format. Domain extension is incomplete (e.g., .com)';
-                                } else if (!_isValidEmail(trimmedValue)) {
-                                  _emailError = 'Invalid email format. Use format: example@gmail.com';
-                                } else {
-                                  _emailError = null;
-                                }
-                              } else if (!_isValidEmail(trimmedValue)) {
-                                _emailError = 'Invalid email format. Use format: example@gmail.com';
-                              } else {
-                                _emailError = null;
-                              }
-                            }
-                          });
-                        },
-                        suffixIcon:
-                            _emailController.text.isNotEmpty &&
-                                _emailError == null &&
-                                _isValidEmail(_emailController.text.trim())
-                            ? _buildGreenTick()
-                            : null,
                       ),
 
                       SizedBox(height: Responsive.scaledPadding(context, 10)),
@@ -1697,134 +1699,39 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
 
-              SizedBox(height: Responsive.scaledPadding(context, 50)),
+              SizedBox(height: Responsive.scaledPadding(context, 22)),
 
-              // Terms and conditions checkbox - aligned with input forms
-              Center(
-                child: SizedBox(
-                  width: Responsive.widthPercent(context, 90).clamp(300.0, 342.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _agreeToTerms = !_agreeToTerms;
-                                if (_agreeToTerms) {
-                                  _termsError = null;
-                                }
-                              });
-                            },
-                            child: Container(
-                              width: Responsive.scaledPadding(context, 24.476),
-                              height: Responsive.scaledPadding(context, 24),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: _checkboxColor,
-                                  width: 1,
-                                ),
-                                borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 6)),
-                                color: _agreeToTerms
-                                    ? _checkboxColor
-                                    : Colors.white,
-                              ),
-                              child: _agreeToTerms
-                                  ? Icon(
-                                      Icons.check,
-                                      color: Colors.white,
-                                      size: Responsive.scaledIcon(context, 16),
-                                    )
-                                  : null,
+              // General error banner (e.g. email already registered)
+              if (_generalError != null)
+                Center(
+                  child: Container(
+                    width: Responsive.widthPercent(context, 90).clamp(300.0, 342.0),
+                    margin: EdgeInsets.only(bottom: Responsive.scaledPadding(context, 12)),
+                    padding: EdgeInsets.all(Responsive.scaledPadding(context, 12)),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(Responsive.responsiveRadius(context, 8)),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: Colors.red, size: Responsive.scaledIcon(context, 18)),
+                        SizedBox(width: Responsive.scaledPadding(context, 8)),
+                        Expanded(
+                          child: Text(
+                            _generalError!,
+                            style: TextStyle(
+                              fontSize: Responsive.scaledFont(context, 13),
+                              color: Colors.red.shade800,
+                              fontFamily: 'Rubik',
+                              height: 1.4,
                             ),
-                          ),
-                          SizedBox(width: Responsive.scaledPadding(context, 12)),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const CommunityGuidelinesScreen(),
-                                  ),
-                                );
-                              },
-                              child: RichText(
-                                text: TextSpan(
-                                  style: TextStyle(
-                                    fontSize: Responsive.scaledFont(context, 12),
-                                    fontWeight:
-                                        FontWeight.normal, // Rubik Regular
-                                    color: const Color(0xFF100B3C),
-                                    letterSpacing: 0.2,
-                                    fontFamily: 'Rubik',
-                                    height: 1.4,
-                                  ),
-                                  children: [
-                                    const TextSpan(
-                                      text: "By signing up I agree, to the ",
-                                    ),
-                                    TextSpan(
-                                      text: 'Terms of Use',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        decoration: TextDecoration.underline,
-                                        color: const Color(0xFF100B3C),
-                                      ),
-                                    ),
-                                    const TextSpan(text: ' and '),
-                                    TextSpan(
-                                      text: 'Privacy Policy',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        decoration: TextDecoration.underline,
-                                        color: const Color(0xFF100B3C),
-                                      ),
-                                    ),
-                                    const TextSpan(text: '.'),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_termsError != null)
-                        Padding(
-                          padding: EdgeInsets.only(
-                            left: Responsive.scaledPadding(context, 36),
-                            top: Responsive.scaledPadding(context, 8),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                size: Responsive.scaledIcon(context, 16),
-                                color: Colors.red,
-                              ),
-                              SizedBox(width: Responsive.scaledPadding(context, 8)),
-                              Expanded(
-                                child: Text(
-                                  _termsError!,
-                                  style: TextStyle(
-                                    fontSize: Responsive.scaledFont(context, 13),
-                                    color: Colors.red,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-
-              SizedBox(height: Responsive.scaledPadding(context, 22)),
 
               // Sign up button - aligned with input forms
               Center(
@@ -2006,7 +1913,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
     final state = _stateController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
@@ -2031,11 +1937,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    // Check Email
-    if (email.isEmpty || !_isValidEmail(email)) {
-      return false;
-    }
-
     // Check State
     if (state.isEmpty) {
       return false;
@@ -2056,10 +1957,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     // Check Password
-    if (password.isEmpty || 
+    if (password.isEmpty ||
         password.length < 8 ||
         !password.contains(RegExp(r'[A-Z]')) ||
-        !password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) {
+        !password.contains(RegExp(r'[a-z]')) ||
+        !password.contains(RegExp(r'\d'))) {
       return false;
     }
 
@@ -2073,11 +1975,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return false;
     }
 
-    // Check Terms Agreement
-    if (!_agreeToTerms) {
-      return false;
-    }
-
     return true;
   }
 
@@ -2088,7 +1985,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
     final state = _stateController.text.trim();
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
@@ -2098,14 +1994,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     String? newFirstNameError;
     String? newLastNameError;
     String? newUsernameError;
-    String? newEmailError;
     String? newStateError;
     String? newGenderError;
     String? newDobError;
     String? newPasswordError;
     String? newConfirmPasswordError;
     String? newAccountTypeError;
-    String? newTermsError;
 
     // Validate First Name
     if (firstName.isEmpty) {
@@ -2165,20 +2059,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
     }
 
-    // Validate Email
-    if (email.isEmpty) {
-      newEmailError = 'Email is required';
-      isValid = false;
-    } else if (!email.contains('@')) {
-      newEmailError = 'Email must contain @';
-      isValid = false;
-    } else if (!_isValidEmail(email)) {
-      newEmailError = 'Invalid email format. Use format: example@gmail.com';
-      isValid = false;
-    } else {
-      newEmailError = null;
-    }
-
     // Validate State
     if (state.isEmpty) {
       newStateError = 'State is required';
@@ -2222,8 +2102,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } else if (!password.contains(RegExp(r'[A-Z]'))) {
       newPasswordError = 'Password must contain at least one capital letter';
       isValid = false;
-    } else if (!password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))) {
-      newPasswordError = 'Password must contain at least one special character';
+    } else if (!password.contains(RegExp(r'[a-z]'))) {
+      newPasswordError = 'Password must contain at least one lowercase letter';
+      isValid = false;
+    } else if (!password.contains(RegExp(r'\d'))) {
+      newPasswordError = 'Password must contain at least one number';
       isValid = false;
     } else {
       newPasswordError = null;
@@ -2248,27 +2131,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
       newAccountTypeError = null;
     }
 
-    // Validate Terms Agreement
-    if (!_agreeToTerms) {
-      newTermsError = 'Please agree to the Terms of Use and Privacy Policy';
-      isValid = false;
-    } else {
-      newTermsError = null;
-    }
-
     // Update all errors in a single setState call to prevent duplicate displays
     setState(() {
       _firstNameError = newFirstNameError;
       _lastNameError = newLastNameError;
       _usernameError = newUsernameError;
-      _emailError = newEmailError;
+      _generalError = null; // Clear general error on re-validation
       _stateError = newStateError;
       _genderError = newGenderError;
       _dobError = newDobError;
       _passwordError = newPasswordError;
       _confirmPasswordError = newConfirmPasswordError;
       _accountTypeError = newAccountTypeError;
-      _termsError = newTermsError;
     });
 
     return isValid;
@@ -2339,15 +2213,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   /// Handles the sign-up process:
   /// 1. Prepares user data
-  /// 2. Calls AuthService to create account
-  /// 3. Sends OTP for email verification
-  /// 4. Navigates to InterestSelectionScreen on success
-  /// 5. Handles errors and displays appropriate messages
+  /// 2. Calls AuthService to create account (email already verified via OTP)
+  /// 3. Navigates to InterestSelectionScreen on success
+  /// 4. Handles errors and displays appropriate messages
   Future<void> _handleSignUp() async {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final username = _usernameController.text.trim();
-    final email = _emailController.text.trim();
+    final email = widget.email; // Pre-verified email from EmailCollectionScreen
     final password = _passwordController.text.trim();
     final gender = _selectedGender?.toLowerCase();
 
@@ -2356,7 +2229,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _firstNameError = null;
       _lastNameError = null;
       _usernameError = null;
-      _emailError = null;
+      _generalError = null;
       _passwordError = null;
       _genderError = null;
     });
@@ -2382,8 +2255,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'username': username,
         'gender': genderValue,
         'birthday': birthdayString,
-        'terms_accepted': _agreeToTerms,
-        'privacy_accepted': _agreeToTerms,
+        'terms_accepted': true, // Already accepted on email collection screen
+        'privacy_accepted': true, // Already accepted on email collection screen
         'role': 'user',
         'account_status': 'active',
       };
@@ -2400,15 +2273,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (response.user == null) {
         setState(() {
           _isLoading = false;
-          _emailError = 'Failed to create account. Please try again.';
+          _generalError = 'Failed to create account. Please try again.';
         });
         return;
       }
 
-      // ========== BACKEND API CALL: Send OTP for Email Verification ==========
-      try {
-        await _authService.sendOtp(email: email, userId: response.user!.id);
-      } catch (_) {}
+      // Email already verified via OTP before reaching this screen
+      // No need to send OTP again
 
       if (!mounted) return;
 
@@ -2456,7 +2327,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (errorMessage.contains('email') ||
           errorMessage.contains('already registered')) {
         setState(() {
-          _emailError = 'This email is already registered';
+          _generalError = 'This email is already registered. Please go back and use a different email.';
         });
       } else if (errorMessage.contains('username') ||
           errorMessage.contains('duplicate')) {
@@ -2469,7 +2340,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         });
       } else {
         setState(() {
-          _emailError = e.message;
+          _generalError = e.message;
         });
       }
     } catch (e) {
@@ -2503,7 +2374,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       // For non-network errors, show generic error
       setState(() {
-        _emailError = 'An unexpected error occurred. Please try again.';
+        _generalError = 'An unexpected error occurred. Please try again.';
       });
     }
   }

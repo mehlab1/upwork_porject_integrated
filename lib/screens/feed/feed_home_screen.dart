@@ -12,10 +12,12 @@ import 'package:pal/widgets/pal_refresh_indicator.dart';
 import 'package:pal/widgets/pal_toast.dart';
 import 'package:pal/widgets/profile_avatar_widget.dart';
 import 'package:pal/widgets/pal_app_header.dart';
+import 'package:pal/services/notification_service.dart';
 import 'package:pal/services/post_service.dart';
 import 'package:pal/services/profile_service.dart';
 
 import 'create_post_screen.dart';
+import 'post_detail_screen.dart';
 import 'widgets/post_card.dart';
 
 class Variables {
@@ -95,6 +97,11 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
   int _spotlightOffset = 0;
   bool _hasMoreSpotlightPosts = true;
   static const int _spotlightPageSize = 20;
+
+  // Pinned posts state
+  List<PostCardData> _pinnedPosts = [];
+  bool _isLoadingPinnedPosts = false;
+  PostCardData? _wodPost;
   
   // Loading and UI state
   bool _shouldShowWelcomeModal = false;
@@ -103,6 +110,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
   bool _isInitialPostsLoading = true;
   bool _isFirstLoad = true;
   bool _showWelcomeSection = true;
+  // Scroll throttle — prevents _onScroll firing work on every pixel
+  DateTime? _lastScrollCheck;
 
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
@@ -145,38 +154,57 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     return ['All Categories', ...categoryNames];
   }
 
-  static const PostCardData _pinnedAdminPost = PostCardData(
-    variant: PostCardVariant.newPost,
-    username: 'Pal Admin',
-    timeAgo: 'Pinned · 1h ago',
-    location: '',
-    category: '',
-    title: 'Community announcement: December safety tips',
-    body:
-        "Stay vigilant when attending Detty December events. Keep your valuables secure, move with trusted pals, and share updates in the community if you notice anything unusual.",
-    commentsCount: 6,
-    votes: 128,
-    avatarAsset: 'assets/feedPage/profile.png',
-    comments: null,
-  );
-
   List<PostCardData> get _allPosts => [..._seedPosts, ..._remotePosts];
 
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
 
+  // ── Memoization fields for _visiblePosts ──────────────────────────────────
+  List<PostCardData>? _cachedVisiblePosts;
+  String? _cachedVisibleFilter;
+  int? _cachedVisibleRemoteLen;
+  int? _cachedVisibleLimit;
+  bool? _cachedVisibleSpotlight;
+  int? _cachedSpotlightLen;
+
+  /// Returns the visible slice of posts.
+  /// Results are cached and only recomputed when inputs change.
   List<PostCardData> get _visiblePosts {
-    // If showing spotlight posts, return those instead
+    // Spotlight branch
     if (_isShowingSpotlightPosts) {
       if (_spotlightPosts.isEmpty) return const <PostCardData>[];
       final limit = math.min(_visiblePostLimit, _spotlightPosts.length);
-      return _spotlightPosts.take(limit).toList();
+      if (_cachedVisibleSpotlight == true &&
+          _cachedSpotlightLen == _spotlightPosts.length &&
+          _cachedVisibleLimit == limit) {
+        return _cachedVisiblePosts!;
+      }
+      final result = _spotlightPosts.take(limit).toList();
+      _cachedVisibleSpotlight = true;
+      _cachedSpotlightLen = _spotlightPosts.length;
+      _cachedVisibleLimit = limit;
+      return _cachedVisiblePosts = result;
     }
 
-    // Otherwise, return regular filtered posts
+    // Regular posts branch — check all cache keys
+    final remoteLen = _remotePosts.length;
+    final limit = math.min(_visiblePostLimit, _filteredPosts.length);
+    if (_cachedVisiblePosts != null &&
+        _cachedVisibleSpotlight == false &&
+        _cachedVisibleFilter == _selectedFilter &&
+        _cachedVisibleRemoteLen == remoteLen &&
+        _cachedVisibleLimit == limit) {
+      return _cachedVisiblePosts!;
+    }
+
     final posts = _filteredPosts;
     if (posts.isEmpty) return const <PostCardData>[];
-    final limit = math.min(_visiblePostLimit, posts.length);
-    return posts.take(limit).toList();
+    final newLimit = math.min(_visiblePostLimit, posts.length);
+    final result = posts.take(newLimit).toList();
+    _cachedVisibleSpotlight = false;
+    _cachedVisibleFilter = _selectedFilter;
+    _cachedVisibleRemoteLen = remoteLen;
+    _cachedVisibleLimit = newLimit;
+    return _cachedVisiblePosts = result;
   }
 
   List<PostCardData> _postsForFilter(String filter) {
@@ -205,7 +233,20 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
     // Don't set selectedTrending here - wait for API data
-    
+
+    // If there is already cached data for the default (New) feed, skip all
+    // loading states so the screen appears instantly when navigating back.
+    final hasCachedFeed = _postService.isFeedCached(
+      sort: 'latest',
+      limit: _pageSize,
+      offset: 0,
+    );
+    if (hasCachedFeed) {
+      _isPageLoading = false;
+      _isFirstLoad = false;
+      _isInitialPostsLoading = false;
+    }
+
     // Run all independent operations in parallel for faster initialization
     _initializeData();
     
@@ -216,6 +257,17 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     // Fetch feed - loading screen will be hidden when feed loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchFeed(reset: true, forceRefresh: false); // Use cache on initial load if available
+      // Prefetch Hot and Top feeds in background so switching tabs is instant
+      _postService.prefetchHotFeed();
+      _postService.prefetchTopFeed();
+    });
+
+    // Show unread in-app notification banners after the screen fully loads.
+    // This covers both auto-login (app cold start) and manual login flows.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+      await NotificationService().showUnreadNotificationsInApp(context);
     });
   }
 
@@ -227,7 +279,74 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       _loadCurrentUserProfile(),
       _fetchSpotlightStatus(),
       _fetchCategoryAndLocationMappings(),
+      _fetchPinnedPosts(),
+      _fetchWodPost(),
     ]);
+  }
+
+  Future<void> _fetchWodPost() async {
+    try {
+      final response = await _postService.getWodPost();
+      if (!mounted) return;
+
+      final success = response['success'] as bool?;
+      if (success == false) {
+        setState(() {
+          _wodPost = null;
+        });
+        return;
+      }
+
+      Map<String, dynamic>? postData;
+
+      // Primary shape from backend: { success: true, post: {...} }
+      final post = response['post'];
+      if (post is Map) {
+        postData = Map<String, dynamic>.from(post as Map);
+      }
+
+      if (postData == null) {
+        final directPost = response['wod_post'];
+        if (directPost is Map) {
+          postData = Map<String, dynamic>.from(directPost as Map);
+        }
+      }
+
+      if (postData == null) {
+        final data = response['data'];
+        if (data is Map) {
+          final nestedWodPost = data['wod_post'];
+          if (nestedWodPost is Map) {
+            postData = Map<String, dynamic>.from(nestedWodPost as Map);
+          } else {
+            final nestedPost = data['post'];
+            if (nestedPost is Map) {
+              postData = Map<String, dynamic>.from(nestedPost as Map);
+            }
+          }
+        } else if (data is List && data.isNotEmpty && data.first is Map) {
+          postData = Map<String, dynamic>.from(data.first as Map);
+        }
+      }
+
+      if (postData == null) {
+        setState(() {
+          _wodPost = null;
+        });
+        return;
+      }
+
+      final mapped = _mapPostToCardData(postData, PostCardVariant.wod);
+      if (!mounted) return;
+
+      if (mapped != null) {
+        setState(() {
+          _wodPost = mapped;
+        });
+      }
+    } catch (e) {
+      debugPrint('ERROR _fetchWodPost: $e');
+    }
   }
 
   Future<void> _checkUserProfile({bool showFirstPostCard = false}) async {
@@ -560,6 +679,12 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     final scaffold = Scaffold(
       backgroundColor: const Color(0xFFF9FAFB), // neutral-50
+      bottomNavigationBar: PalBottomNavigationBar(
+        active: PalNavDestination.home,
+        onHomeTap: _scrollToTop,
+        onNotificationsTap: () => Navigator.pushNamed(context, '/notifications'),
+        onSettingsTap: () => Navigator.pushNamed(context, '/settings'),
+      ),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -568,12 +693,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
             PalAppHeader(
               showPostButton: true,
               onPostTap: () {
-                showCreatePostModal(context).then((postCreated) {
-                  if (postCreated == true && mounted) {
-                    _refreshFeed();
-                    _scrollToTop();
-                  }
-                });
+                showCreatePostModal(context).then(_handleCreatePostResult);
               },
             ),
 
@@ -604,17 +724,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
           ],
         ),
       ),
-      bottomNavigationBar: PalBottomNavigationBar(
-        active: PalNavDestination.home,
-        onHomeTap: _scrollToTop,
-        onNotificationsTap: () {
-          Navigator.of(context).pushNamed('/notifications');
-        },
-        onSettingsTap: () {
-          Navigator.pushNamed(context, '/settings');
-        },
-        showNotificationDot: true,
-      ),
     );
 
     // Seed posts are always available, so we always have content to show
@@ -632,9 +741,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       );
     }
 
-    // Only show overlay on very first page load, not when switching filters or refreshing
-    // Filter switching and pull-to-refresh will show skeleton loading in the content area
-    if (_isPageLoading && _isFirstLoad) {
+    // Never show overlay when there is already content visible (seed posts are always present).
+    // This prevents a flash of loading state when returning from Settings/Notifications.
+    if (_isPageLoading && _isFirstLoad && !hasContent) {
       return Stack(children: [scaffold, const PalLoadingOverlay()]);
     }
 
@@ -671,12 +780,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     );
 
     if (shouldCreatePost == true && mounted) {
-      showCreatePostModal(context).then((postCreated) {
-        if (postCreated == true && mounted) {
-          _refreshFeed();
-          _scrollToTop();
-        }
-      });
+      showCreatePostModal(context).then(_handleCreatePostResult);
     }
   }
 
@@ -764,6 +868,16 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     final sortParam = _sortParamForFilter(_selectedFilter);
     final nextOffset = reset ? 0 : _currentOffset;
 
+    // If resetting without forcing a refresh, check whether cached data exists.
+    // If so, clear the skeleton immediately — cached posts will appear within the
+    // same async turn and we never want a skeleton flash on a cache hit.
+    if (reset && !forceRefresh && _isInitialPostsLoading) {
+      final timeFilterCheck = (_selectedFilter == 'Hot' || _selectedFilter == 'Top') ? 'all_time' : null;
+      if (_postService.isFeedCached(sort: sortParam, limit: _pageSize, timeFilter: timeFilterCheck)) {
+        setState(() { _isInitialPostsLoading = false; });
+      }
+    }
+
     setState(() {
       _isFeedFetching = true;
       if (reset) {
@@ -804,7 +918,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
         categoryId: categoryId,
         locationId: locationId,
         timeFilter: timeFilter,
-        forceRefresh: forceRefresh || reset, // Use forceRefresh parameter or reset flag
+        forceRefresh: forceRefresh, // reset only means offset 0, not cache bypass
       );
 
       final success = response['success'] as bool? ?? true;
@@ -1000,6 +1114,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       initials: initials,
       badges: badges,
       userId: userId,
+      userVote: post['user_vote']?.toString(),
+      role: post['role']?.toString(),
     );
   }
 
@@ -1046,6 +1162,15 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
+
+    // Throttle: only check load-more logic at most every 150 ms
+    final now = DateTime.now();
+    if (_lastScrollCheck != null &&
+        now.difference(_lastScrollCheck!).inMilliseconds < 150) {
+      return;
+    }
+    _lastScrollCheck = now;
+
     final position = _scrollController.position;
 
     if (!_isLoadingMore &&
@@ -1108,20 +1233,43 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     );
   }
 
-  Future<void> _refreshFeed() async {
-    // Hide welcome section immediately when refresh starts
-    if (_showWelcomeSection) {
-      setState(() {
-        _showWelcomeSection = false;
-      });
-      await Future.microtask(() {});
+  Future<void> _handleCreatePostResult(Map<String, dynamic>? result) async {
+    if (!mounted || result == null) return;
+
+    final success = result['success'] == true;
+    if (!success) return;
+
+    final isEdit = result['isEdit'] == true;
+    final postId = result['postId']?.toString();
+
+    _refreshFeed();
+
+    if (!isEdit && postId != null && postId.isNotEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PostDetailScreen(postId: postId),
+        ),
+      );
+      return;
     }
+
+    _scrollToTop();
+  }
+
+  Future<void> _refreshFeed() async {
+    // Clear client-side feed cache to ensure fresh data
+    _postService.clearFeedCache();
+
+    // Preserve the current filter tab so refreshing from Hot/Top stays on that tab
+    final currentFilter = _selectedFilter;
 
     setState(() {
       _isInitialPostsLoading = true;
+      _showWelcomeSection = true;
 
-      // Reset all filters on pull to refresh
-      _selectedFilter = 'New';
+      // Reset all filters on pull to refresh except the active sort tab
+      _selectedFilter = currentFilter;
       _selectedLocation = null;
       _selectedCategory = null;
       _selectedLocationId = null;
@@ -1148,6 +1296,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     await _fetchCategoryAndLocationMappings();
     await _fetchFeed(reset: true, forceRefresh: true); // Force refresh on pull-to-refresh
     await _fetchSpotlightStatus();
+    await _fetchPinnedPosts();
+    await _fetchWodPost();
 
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
@@ -1156,8 +1306,73 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     });
   }
 
+  /// Refresh a single post in-place after editing, without reloading the full feed.
+  Future<void> _refreshSinglePost(String postId) async {
+    try {
+      final response = await _postService.getPost(postId: postId);
+      final postData = response['post'] as Map<String, dynamic>?;
+      if (postData == null || !mounted) return;
+
+      final idx = _remotePosts.indexWhere((p) => p.id == postId);
+      if (idx == -1) return;
+
+      final updatedCard = _mapPostToCardData(postData, _remotePosts[idx].variant);
+      if (updatedCard == null) return;
+
+      setState(() {
+        _remotePosts[idx] = updatedCard;
+      });
+    } catch (e) {
+      debugPrint('ERROR _refreshSinglePost: $e');
+    }
+  }
+
 
   static const Color _filterInactiveTextColor = Color(0xFF45556C);
+
+  /// Fetch pinned posts from the API.
+  Future<void> _fetchPinnedPosts() async {
+    if (_isLoadingPinnedPosts) return;
+    setState(() {
+      _isLoadingPinnedPosts = true;
+    });
+    try {
+      // Always fetch fresh data when explicitly called (pin/unpin action or init)
+      _postService.invalidatePinnedPostsCache();
+      final posts = await _postService.getPinnedPosts();
+      if (!mounted) return;
+      // Transform pinned post response to the format _mapPostToCardData expects
+      // Backend returns only one pinned post at a time
+      final latest = posts.isNotEmpty ? [posts.first] : <Map<String, dynamic>>[];
+      final transformed = latest.map((p) => <String, dynamic>{
+        'id': p['post_id'],
+        'content': p['post_content'] ?? '',
+        'user_id': p['post_author_id'],
+        'username': p['post_author_username'] ?? '@pal_user',
+        'created_at': p['pinned_at'],
+      }).toList();
+      final mapped = transformed
+          .map((p) {
+            final card = _mapPostToCardData(p, PostCardVariant.newPost);
+            if (card == null) return null;
+            // Add "Pinned · " prefix to timeAgo like the original hardcoded post
+            return card.copyWith(timeAgo: 'Pinned · ${card.timeAgo}');
+          })
+          .whereType<PostCardData>()
+          .toList();
+      setState(() {
+        _pinnedPosts = mapped;
+        _isLoadingPinnedPosts = false;
+      });
+    } catch (e) {
+      debugPrint('ERROR _fetchPinnedPosts: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingPinnedPosts = false;
+        });
+      }
+    }
+  }
 
   Widget _buildFilterButton(String label, IconData icon) {
     final isSelected = _selectedFilter == label;
@@ -1216,30 +1431,36 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
               _scrollToTop();
               return;
             }
+            final sortForLabel = _sortParamForFilter(label);
+            final timeFilterForLabel = (label == 'Hot' || label == 'Top') ? 'all_time' : null;
+            final hasCachedData = _postService.isFeedCached(
+              sort: sortForLabel,
+              limit: _pageSize,
+              timeFilter: timeFilterForLabel,
+            );
             setState(() {
               _selectedFilter = label;
               _isLoadingMore = false;
-              // Clear posts when switching filters - different filters have different data
-              // PostService cache will still provide fast response if available
               _remotePosts.clear();
               _currentOffset = 0;
               _hasMorePosts = true;
               _isShowingSpotlightPosts = false;
-              _isInitialPostsLoading = true; // Show skeleton when switching filters
+              // Only show skeleton if data is NOT already cached
+              _isInitialPostsLoading = !hasCachedData;
               _resetVisibleLimitForFilter(label);
             });
             // Show toast message for feed type change
             String toastMessage;
             switch (label) {
               case 'Hot':
-                toastMessage = 'You are in hot feed';
+                toastMessage = 'You are in Hot feed';
                 break;
               case 'Top':
-                toastMessage = 'You are in top feed';
+                toastMessage = 'You are in Top feed';
                 break;
               case 'New':
               default:
-                toastMessage = 'You are in new feed';
+                toastMessage = 'You are in New feed';
                 break;
             }
             PalToast.show(context, message: toastMessage);
@@ -1353,7 +1574,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              selectedLocation,
+                              selectedLocation == 'All Areas' ? 'Location Filter' : selectedLocation,
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -2132,12 +2353,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
           Align(
             alignment: Alignment.centerLeft,
             child: _buildFirstPostButton(() {
-              showCreatePostModal(context).then((postCreated) {
-                if (postCreated == true && mounted) {
-                  _refreshFeed();
-                  _scrollToTop();
-                }
-              });
+              showCreatePostModal(context).then(_handleCreatePostResult);
             }),
           ),
         ],
@@ -2264,8 +2480,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
           const SizedBox(height: 12),
           _buildWodCard(),
           const SizedBox(height: 24),
-          // Show skeleton loading when initial loading OR when feed is fetching and no posts yet
-          if (_isInitialPostsLoading || (_isFeedFetching && _remotePosts.isEmpty && !_isLoadingSpotlightPosts))
+          // Show skeleton loading only when loading AND no posts have arrived yet
+          if ((_isInitialPostsLoading && _remotePosts.isEmpty) || (_isFeedFetching && _remotePosts.isEmpty && !_isLoadingSpotlightPosts))
             ...List.generate(
               3,
               (index) => const Padding(
@@ -2280,24 +2496,31 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
             ],
             // Show WOD post as top pinned post for "New" filter
             if (_selectedFilter == 'New' && !_isShowingSpotlightPosts) ...[
-              PostCard(
-                data: const PostCardData(
-                  variant: PostCardVariant.wod,
-                  username: '@moderator',
-                  timeAgo: '2h ago',
-                  location: '',
-                  category: '',
-                  title: 'Problem for who dey government university',
-                  body: 'ASUU has declared a nationwide university shutdown starting Friday, Nov 21, citing FG\'s failure to fully implement agreements on salaries & funding. This follows their Oct suspension of a warning strike and a one-month ultimatum that expired without resolution.',
-                  commentsCount: 2,
-                  votes: 235,
-                  initials: 'MO',
+              if (_wodPost != null) ...[
+                PostCard(
+                  data: _wodPost!,
+                  isPinnedAdmin: true,
                 ),
-                isPinnedAdmin: true,
-              ),
-              const SizedBox(height: 24),
-              PostCard(data: _pinnedAdminPost, isPinnedAdmin: true),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
+              ],
+              // Dynamic pinned posts from API
+              ..._pinnedPosts.map((pinnedPost) => Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: RepaintBoundary(
+                  child: PostCard(
+                    data: pinnedPost,
+                    isPinnedAdmin: true,
+                    onPostPinned: _fetchPinnedPosts,
+                    onPostEdited: (_) => _refreshFeed(),
+                    onPostDeleted: (postId) {
+                      setState(() {
+                        _remotePosts.removeWhere((p) => p.id == postId);
+                      });
+                      _fetchPinnedPosts();
+                    },
+                  ),
+                ),
+              )),
             ],
             // Show loading indicator when fetching spotlight posts
             if (_isLoadingSpotlightPosts)
@@ -2313,7 +2536,18 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
                 try {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 20),
-                    child: PostCard(data: post),
+                    child: RepaintBoundary(
+                      child: PostCard(
+                        data: post,
+                        onPostEdited: (_) => _refreshFeed(),
+                        onPostDeleted: (postId) {
+                          setState(() {
+                            _remotePosts.removeWhere((p) => p.id == postId);
+                          });
+                        },
+                        onPostPinned: _fetchPinnedPosts,
+                      ),
+                    ),
                   );
                 } catch (e, stackTrace) {
                   debugPrint('ERROR: Failed to render post ${post.id}: $e');

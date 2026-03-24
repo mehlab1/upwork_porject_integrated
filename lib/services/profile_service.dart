@@ -124,7 +124,21 @@ class ProfileService {
   /// Returns: Map with success (bool) and profile (Map<String, dynamic>)
   /// Profile includes: id, username, profile_picture_url, avatar_url, bio, etc.
   Future<Map<String, dynamic>> getProfileByUserId(String userId) async {
-    return await _callFunction('get-profile', body: {'user_id': userId});
+    debugPrint('=== DEBUG getProfileByUserId: calling get-profile for user_id=$userId ===');
+    final response = await _callFunction('get-profile', body: {'user_id': userId});
+    final profile = response['profile'] as Map<String, dynamic>?;
+    debugPrint(
+      'DEBUG getProfileByUserId: success=${response['success']}, wod_opted_in=${profile?['wod_opted_in']}',
+    );
+    return response;
+  }
+
+  /// Moderator/Admin view of a user's profile via mod-view-profile edge function
+  /// 
+  /// Returns rich data: profile, post_stats, moderation_summary, role_history, recent_actions
+  /// Requires moderator or admin role.
+  Future<Map<String, dynamic>> modViewProfile(String targetUserId) async {
+    return await _callFunction('mod-view-profile', body: {'target_user_id': targetUserId});
   }
 
   /// Get profile data by user_id as a structured object with caching
@@ -464,6 +478,18 @@ class ProfileService {
       print('================================');
       rethrow;
     }
+  }
+
+  /// Opt in to Wahala of the Day (WOD) eligibility using `wod-opt-in` edge function.
+  /// Returns: Map with success (bool), message (String)
+  Future<Map<String, dynamic>> wodOptIn() async {
+    return await _callFunction('wod-opt-in', body: {});
+  }
+
+  /// Opt out of Wahala of the Day (WOD) eligibility using `wod-opt-out` edge function.
+  /// Returns: Map with success (bool), message (String)
+  Future<Map<String, dynamic>> wodOptOut() async {
+    return await _callFunction('wod-opt-out', body: {});
   }
 
   // ============================================================================

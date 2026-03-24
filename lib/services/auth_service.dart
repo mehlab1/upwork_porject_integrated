@@ -277,7 +277,12 @@ class AuthService {
   }
 
   /// Call the send-otp edge function to send an OTP to email or phone.
-  Future<Map<String, dynamic>> sendOtp({String? email, String? phone, String? userId}) async {
+  Future<Map<String, dynamic>> sendOtp({
+    String? email,
+    String? phone,
+    String? userId,
+    String? purpose,
+  }) async {
     final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/send-otp');
 
     try {
@@ -285,6 +290,15 @@ class AuthService {
       final anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
       final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
       
+      final requestBody = <String, dynamic>{
+        'email': email,
+        'phone': phone,
+        'user_id': userId,
+      };
+      if (purpose != null && purpose.isNotEmpty) {
+        requestBody['purpose'] = purpose;
+      }
+
       final resp = await http.post(
         uri,
         headers: {
@@ -292,16 +306,12 @@ class AuthService {
           'apikey': anonKey,
           'Authorization': 'Bearer ${sessionToken ?? anonKey}',
         },
-        body: jsonEncode({
-          'email': email,
-          'phone': phone,
-          'user_id': userId,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       final body = jsonDecode(resp.body ?? '{}');
       if (resp.statusCode >= 400) {
-        throw Exception(body['message'] ?? 'Failed to send OTP');
+        throw Exception(body['message'] ?? body['error'] ?? 'Failed to send OTP');
       }
       return Map<String, dynamic>.from(body);
     } catch (e) {
@@ -363,6 +373,44 @@ class AuthService {
       throw AuthException(e.message);
     } catch (e) {
       print('ERROR forgotPassword: Unexpected error - $e');
+      throw AuthException('An unexpected error occurred: $e');
+    }
+  }
+
+  /// Check whether a user exists for the provided email using check-user-exists edge function.
+  /// Returns a map containing keys like: success, exists, user_id, email, message.
+  Future<Map<String, dynamic>> checkUserExists({
+    required String email,
+  }) async {
+    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/check-user-exists');
+
+    try {
+      final anonKey =
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+      final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
+
+      final resp = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+          'Authorization': 'Bearer ${sessionToken ?? anonKey}',
+        },
+        body: jsonEncode({'email': email.trim()}),
+      );
+
+      final body = jsonDecode(resp.body ?? '{}');
+
+      if (resp.statusCode >= 400) {
+        final message =
+            body['message'] ?? body['error'] ?? 'Failed to check email';
+        throw AuthException(message);
+      }
+
+      return Map<String, dynamic>.from(body);
+    } on AuthException {
+      rethrow;
+    } catch (e) {
       throw AuthException('An unexpected error occurred: $e');
     }
   }

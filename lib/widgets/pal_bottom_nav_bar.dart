@@ -53,19 +53,15 @@ class PalBottomNavigationBar extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Notification icon centered with slight right offset
-              Transform.translate(
-                offset: Offset(Responsive.scaledPadding(context, 8), 0),
-                child: ValueListenableBuilder<int>(
-                  valueListenable: NotificationCountManager.instance.notifier,
-                  builder: (context, unreadCount, _) {
-                    return _NotificationSegment(
-                      active: _notificationsActive,
-                      onTap: onNotificationsTap,
-                      unreadCount: unreadCount > 0 && !_notificationsActive ? unreadCount : 0,
-                    );
-                  },
-                ),
+              ValueListenableBuilder<int>(
+                valueListenable: NotificationCountManager.instance.notifier,
+                builder: (context, unreadCount, _) {
+                  return _NotificationSegment(
+                    active: _notificationsActive,
+                    onTap: onNotificationsTap,
+                    unreadCount: unreadCount > 0 && !_notificationsActive ? unreadCount : 0,
+                  );
+                },
               ),
               // Home and Settings positioned at edges
               Row(

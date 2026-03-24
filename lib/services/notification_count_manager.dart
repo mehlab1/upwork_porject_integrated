@@ -37,6 +37,13 @@ class NotificationCountManager {
     _setupRealtimeListener();
   }
 
+  /// Directly set the unread count without a DB call
+  /// Use this when you already know the correct count (e.g., after marking all as read)
+  void setCount(int count) {
+    if (_isDisposed) return;
+    _unreadCount.value = count;
+  }
+
   /// Refresh count from database
   /// Call this when you need to manually refresh (e.g., after marking as read)
   Future<void> refreshCount() async {

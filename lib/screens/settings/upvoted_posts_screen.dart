@@ -27,7 +27,7 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
 
   List<PostCardData> _posts = [];
   ProfileData? _profileData;
-  bool _isLoading = true;
+  late bool _isLoading;
   String? _errorMessage;
   int _totalUpvotedPosts = 0;
   // Profile cache for posts (similar to feed section)
@@ -36,12 +36,12 @@ class _UpvotedPostsScreenState extends State<UpvotedPostsScreen> {
   @override
   void initState() {
     super.initState();
+    _isLoading = !_postService.isUpvotedPostsCached;
     _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() {
-      _isLoading = true;
       _errorMessage = null;
     });
 

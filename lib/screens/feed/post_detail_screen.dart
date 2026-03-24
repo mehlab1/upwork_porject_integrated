@@ -192,7 +192,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       body: body,
       commentsCount: commentsCount,
       votes: votes,
-      avatarAsset: 'assets/feedPage/profile.png',
       profilePictureUrl: profilePictureUrl,
       initials: initials,
       badges: [],

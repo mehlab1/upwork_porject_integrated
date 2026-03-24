@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:pal/widgets/pal_toast.dart';
+import '../../services/auth_service.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({
@@ -20,6 +21,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -59,13 +61,25 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     if (password.isEmpty) return 0;
 
     int strength = 0;
-    if (password.length >= 8) strength++;
-    if (password.length >= 12) strength++;
-    if (password.contains(RegExp(r'[a-z]'))) strength++;
-    if (password.contains(RegExp(r'[A-Z]'))) strength++;
+    if (password.length >= 6) strength++;
+    if (password.contains(RegExp(r'[A-Za-z]'))) strength++;
     if (password.contains(RegExp(r'[0-9]'))) strength++;
     if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength++;
-    return strength > 4 ? 4 : strength;
+    return strength;
+  }
+
+  bool _meetsAllPasswordCriteria(String password) {
+    return _calculatePasswordStrength(password) == 4;
+  }
+
+  bool get _canSubmitReset {
+    final password = _passwordController.text.trim();
+    final confirm = _confirmPasswordController.text.trim();
+    return !_isSubmitting &&
+        password.isNotEmpty &&
+        confirm.isNotEmpty &&
+        _meetsAllPasswordCriteria(password) &&
+        password == confirm;
   }
 
   bool _validateForm() {
@@ -76,6 +90,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     if (password.length < 6) {
       passwordError = 'Password must be at least 6 characters';
+    } else if (!_meetsAllPasswordCriteria(password)) {
+      passwordError =
+          'Use 6+ characters with a mix of letters, numbers & symbols';
     }
     if (confirm != password) {
       confirmError = 'Passwords do not match';
@@ -91,16 +108,46 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   Future<void> _handleReset() async {
     if (!_validateForm()) return;
+    final otpCode = widget.otpCode?.trim();
+    if (otpCode == null || otpCode.isEmpty) {
+      PalToast.show(
+        context,
+        message: 'Verification code is missing. Please request a new code.',
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
+    try {
+      await _authService.resetPassword(
+        email: widget.email,
+        otpCode: otpCode,
+        newPassword: _passwordController.text.trim(),
+      );
 
-    setState(() => _isSubmitting = false);
+      if (!mounted) return;
 
-    PalToast.show(context, message: 'Password reset successfully');
+      PalToast.show(context, message: 'Password reset successfully');
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    } catch (e) {
+      if (!mounted) return;
+      final errorMessage = e
+          .toString()
+          .replaceFirst('Exception: ', '')
+          .replaceFirst('AuthException: ', '');
 
-    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      PalToast.show(
+        context,
+        message: errorMessage.isNotEmpty
+            ? errorMessage
+            : 'Failed to reset password. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -168,11 +215,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         controller: _passwordController,
                         obscureText: _obscurePassword,
                         onToggleVisibility: _togglePassword,
+                        hintText: 'New Password',
                         errorText: _passwordError,
                         showSuccess:
                             _passwordError == null &&
                             _passwordController.text.isNotEmpty &&
-                            _passwordStrength >= 3,
+                          _passwordStrength == 4,
                         onChanged: (value) {
                           setState(() {
                             _passwordError = null;
@@ -221,12 +269,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                _passwordStrength >= 3
+                                _passwordStrength == 4
                                     ? 'Strong password'
                                     : 'Use 6+ characters with a mix of letters, numbers & symbols',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: _passwordStrength >= 3
+                                  color: _passwordStrength == 4
                                       ? const Color(0xFF00A63E)
                                       : _bodyColor,
                                   fontFamily: 'Inter',
@@ -240,6 +288,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         controller: _confirmPasswordController,
                         obscureText: _obscureConfirmPassword,
                         onToggleVisibility: _toggleConfirmPassword,
+                        hintText: 'Confirm New Password',
                         errorText: _confirmPasswordError,
                         showSuccess:
                             _passwordsMatch &&
@@ -292,9 +341,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _handleReset,
+                  onPressed: _canSubmitReset ? _handleReset : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _primaryColor,
+                    disabledBackgroundColor: _primaryColor.withOpacity(0.35),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -332,6 +382,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     required TextEditingController controller,
     required bool obscureText,
     required VoidCallback onToggleVisibility,
+    required String hintText,
     String? errorText,
     bool showSuccess = false,
     ValueChanged<String>? onChanged,
@@ -369,8 +420,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     fontFamily: 'Inter',
                     letterSpacing: -0.3125,
                   ),
-                  decoration: const InputDecoration(
-                    hintText: 'My Strong Password Here',
+                  decoration: InputDecoration(
+                    hintText: hintText,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 4),
                   ),
@@ -397,8 +448,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               IconButton(
                 icon: Icon(
                   obscureText
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
                   color: _greyIconColor,
                   size: 20,
                 ),
