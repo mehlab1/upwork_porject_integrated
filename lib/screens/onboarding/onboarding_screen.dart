@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/responsive/responsive.dart';
+import '../../widgets/pal_app_icon.dart';
+import '../../utils/tracking_consent_flow.dart';
 import '../signup/email_collection_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -52,13 +54,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // Dark color for "pal" text (final state: #0F172B)
   static const Color _darkPalColor = Color(0xFF0F172B);
 
+  // Startup sequence timing (tuned faster than original 1200ms / 4s delays)
+  static const Duration _animDuration = Duration(milliseconds: 750);
+  static const Duration _slideDuration = Duration(milliseconds: 950);
+  static const Duration _palColorDelay = Duration(milliseconds: 550);
+  static const Duration _kobiPrepDelay = Duration(milliseconds: 1500);
+  static const Duration _textFadeDelay = Duration(milliseconds: 2350);
+
   @override
   void initState() {
     super.initState();
 
     // 1. Logo fade in (standard)
     _logoAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: _animDuration,
       vsync: this,
     );
     _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -67,7 +76,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 2. Text fade out
     _textAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: _animDuration,
       vsync: this,
     );
     _textFadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
@@ -79,7 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 3. Pal Color Animation
     _palColorAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: _animDuration,
       vsync: this,
     );
     _palColorAnimation =
@@ -92,7 +101,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 4. Kobi Fade In
     _kobiFadeAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: _animDuration,
       vsync: this,
     );
     _kobiFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -104,7 +113,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 5. Dot Color
     _dotColorAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: _animDuration,
       vsync: this,
     );
     _dotColorAnimation =
@@ -117,7 +126,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 6. Button Color
     _buttonColorAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: _animDuration,
       vsync: this,
     );
     _buttonColorAnimation = ColorTween(begin: Colors.white, end: _brightBlue)
@@ -130,7 +139,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // 7. Slide Animation
     _kobiPalSlideAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: _slideDuration,
       vsync: this,
     );
     _kobiPalSlideYAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -209,18 +218,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     // --- TIMING SEQUENCE ---
 
-    // T=1000ms: Start "pal" color change
-    Timer(const Duration(milliseconds: 1000), () {
+    Timer(_palColorDelay, () {
       if (mounted && _showText) {
         _palColorAnimationController.forward();
       }
     });
 
-    // T=2500ms: PREPARE KOBI
-    // We show it immediately so it rests at the "Initial Position" (bottom)
-    // before sliding. This prevents the "starts from bottom" jump.
-    // Increased delay to allow pal color animation to complete (1000ms + 1200ms = 2200ms, then add 300ms gap)
-    Timer(const Duration(milliseconds: 2500), () {
+    Timer(_kobiPrepDelay, () {
       if (mounted && _showText) {
         setState(() {
           _showKobi = true;
@@ -231,11 +235,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       }
     });
 
-    // T=4000ms: TRANSITION
-    // Only trigger the first step of the chain.
-    // The rest is handled by the StatusListener above.
-    // Increased delay to allow kobi/dot/button animations to complete (2500ms + 1200ms = 3700ms, then add 300ms gap)
-    Timer(const Duration(milliseconds: 4000), () {
+    Timer(_textFadeDelay, () {
       if (mounted) {
         _textAnimationController.forward();
       }
@@ -254,31 +254,48 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     super.dispose();
   }
 
-  void _handleLogIn() {
+  @override
+  void activate() {
+    super.activate();
+    _resetButtonPressState();
+  }
+
+  void _resetButtonPressState() {
+    if (!_isLogInPressed && !_isSignUpPressed) return;
     setState(() {
-      _isLogInPressed = true;
+      _isLogInPressed = false;
+      _isSignUpPressed = false;
     });
-    // Navigate to login page after a brief moment to show the pressed state
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        Navigator.pushNamed(context, '/login');
+  }
+
+  void _handleLogIn() {
+    Future.delayed(const Duration(milliseconds: 150), () async {
+      if (!mounted) return;
+      try {
+        await runWithTrackingConsentCheck(context, () async {
+          if (mounted) {
+            await Navigator.pushNamed(context, '/login');
+          }
+        });
+      } finally {
+        if (mounted) _resetButtonPressState();
       }
     });
   }
 
   void _handleSignUp() {
-    setState(() {
-      _isSignUpPressed = true;
-    });
-    // Navigate to email collection page first, then the full signup form
-    Future.delayed(const Duration(milliseconds: 150), () {
+    Future.delayed(const Duration(milliseconds: 150), () async {
+      if (!mounted) return;
       if (mounted) {
-        Navigator.push(
+        setState(() => _isSignUpPressed = false);
+      }
+      try {
+        await navigateWithTrackingConsentCheck(
           context,
-          MaterialPageRoute(
-            builder: (context) => const EmailCollectionScreen(),
-          ),
+          destination: const EmailCollectionScreen(),
         );
+      } finally {
+        if (mounted) _resetButtonPressState();
       }
     });
   }
@@ -339,40 +356,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                         .center, // CRITICAL: Center alignment
                                     children: [
                                       // Left icon container - FIXED SIZE, always centered
-                                      Container(
-                                        width: 60, // FIXED ratio
-                                        height: 60, // FIXED ratio
-                                        transform: Matrix4.translationValues(
+                                      Transform.translate(
+                                        offset: Offset(
                                           -((MediaQuery.of(context).size.width /
                                                   100) *
-                                              5) + 18,
+                                              5) +
+                                              18,
                                           195,
-                                          0,
-                                        ), // Use transform to move visually without affecting layout flow
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF155DFC),
-                                          borderRadius: BorderRadius.circular(
-                                            18,
-                                          ),
+                                        ),
+                                        child: const PalAppIcon(
+                                          size: 60,
+                                          borderRadius: 18,
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withOpacity(
-                                                0.25,
-                                              ),
-                                              offset: const Offset(0, 6),
+                                              color: Color(0x40000000),
+                                              offset: Offset(0, 6),
                                               blurRadius: 2,
-                                              spreadRadius: 0,
                                             ),
                                           ],
-                                        ),
-                                        child: Center(
-                                          // FIXED: Ensures icon is centered in container
-                                          child: SvgPicture.asset(
-                                            'assets/images/icon.svg',
-                                            width: 40,
-                                            height: 40,
-                                            fit: BoxFit.contain,
-                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -863,8 +864,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                                 .w500, // Poppins Medium
                                             color: _isSignUpPressed
                                                 ? Colors.white
-                                                : Colors
-                                                      .black, // Figma: black text
+                                                : Colors.black,
                                           ),
                                         ),
                                       ),

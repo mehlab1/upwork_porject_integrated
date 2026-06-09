@@ -1,7 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-const _deleteCommentIconAsset = 'assets/feedPage/deleteIcon.svg';
+const _deleteCommentHeaderIconAsset = 'assets/settings/alertDeactivate.svg';
+const _deleteCommentButtonIconAsset = 'assets/feedPage/deleteIcon.svg';
 
 const _dialogBorderColor = Color(0xFFE2E8F0);
 const _dialogBackground = Color.fromRGBO(255, 255, 255, 0.95);
@@ -63,7 +64,7 @@ class ReviewerDeleteCommentDialog extends StatelessWidget {
                     ),
                     child: Center(
                       child: SvgPicture.asset(
-                        _deleteCommentIconAsset,
+                        _deleteCommentHeaderIconAsset,
                         width: 20,
                         height: 20,
                         colorFilter: const ColorFilter.mode(
@@ -187,7 +188,7 @@ class ReviewerDeleteCommentDialog extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           SvgPicture.asset(
-                            _deleteCommentIconAsset,
+                            _deleteCommentButtonIconAsset,
                             width: 16,
                             height: 16,
                             colorFilter: const ColorFilter.mode(

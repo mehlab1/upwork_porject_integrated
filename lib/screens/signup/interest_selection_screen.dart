@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'profile_upload_screen.dart';
 import '../../core/responsive/responsive.dart';
+import 'widgets/signup_flow_header.dart';
 
 class InterestSelectionScreen extends StatefulWidget {
   const InterestSelectionScreen({super.key, required this.email});
@@ -114,83 +115,45 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              // Back button and title row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Back Button
-                  IconButton(
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: Color(0xFF0F172B),
-                      size: 32,
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  // Title - centered
-                  Expanded(
-                    child: Text(
-                      'Select Your Interest',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SignupFlowHeader(
+              title: 'Select Your Interest',
+              onBack: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(height: 26),
+            _buildProgressIndicator(context, currentStep: 2),
+            const SizedBox(height: 24),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your Interests (Choose 2-3)',
                       style: TextStyle(
-                        fontSize: Responsive.scaledFont(context, 24),
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                         color: _headingColor,
                         fontFamily: 'Rubik',
-                        letterSpacing: 0,
-                        height: 1.2,
                       ),
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.left,
                     ),
-                  ),
-                  // Spacer to balance the back button
-                  const SizedBox(width: 40),
-                ],
-              ),
-              // Progress indicator (Step 2 of 3)
-              const SizedBox(height: 26),
-              _buildProgressIndicator(context, currentStep: 2),
-              const SizedBox(height: 24),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  'Your Interests (Choose 2-3)',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: _headingColor,
-                    fontFamily: 'Rubik',
-                  ),
-                  textAlign: TextAlign.left,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  "Select topics you'd like to see:",
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: _subheadingColor,
-                    fontFamily: 'Inter',
-                  ),
-                  textAlign: TextAlign.left,
-                ),
-              ),
-              const SizedBox(height: 36),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: LayoutBuilder(
+                    const SizedBox(height: 12),
+                    const Text(
+                      "Select topics you'd like to see:",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: _subheadingColor,
+                        fontFamily: 'Inter',
+                      ),
+                      textAlign: TextAlign.left,
+                    ),
+                    const SizedBox(height: 36),
+                    LayoutBuilder(
                   builder: (context, constraints) {
                     final double available = constraints.maxWidth;
                     const double gap = 16;
@@ -251,60 +214,64 @@ class _InterestSelectionScreenState extends State<InterestSelectionScreen> {
                       }).toList(),
                     );
                   },
+                    ),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: Text(
+                        countLabel,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: _countColor,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                    if (_showSelectionError)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Select at least two interests to continue.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFE11D48),
+                            fontFamily: 'Inter',
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    const Spacer(),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed:
+                            _selected.length >= 2 ? _handleContinue : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _primaryBlue,
+                          disabledBackgroundColor:
+                              _primaryBlue.withOpacity(0.3),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: const Text(
+                          'Continue',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            fontFamily: 'Rubik',
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 36),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              Center(
-                child: Text(
-                  countLabel,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: _countColor,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ),
-              if (_showSelectionError)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Select at least two interests to continue.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFE11D48),
-                      fontFamily: 'Inter',
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _selected.length >= 2 ? _handleContinue : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryBlue,
-                    disabledBackgroundColor: _primaryBlue.withOpacity(0.3),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  child: const Text(
-                    'Continue',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      fontFamily: 'Rubik',
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 36),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

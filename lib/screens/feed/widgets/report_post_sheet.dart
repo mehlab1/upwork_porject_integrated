@@ -576,83 +576,109 @@ class ReportSuccessDialog extends StatelessWidget {
       insetPadding: const EdgeInsets.symmetric(horizontal: 32),
       child: Center(
         child: Container(
-          width: double.infinity,
+          width: 360,
+          height: 394,
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _successBorder, width: 1.513),
+            border: Border.all(color: Color(0xFFE2E8F0), width: 1.51),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x1A0F172A),
-                blurRadius: 30,
-                offset: Offset(0, 18),
+                color: Color(0x1A000000),
+                offset: Offset(0, 8),
+                blurRadius: 10,
+                spreadRadius: -6,
+              ),
+              BoxShadow(
+                color: Color(0x1A000000),
+                offset: Offset(0, 20),
+                blurRadius: 25,
+                spreadRadius: -5,
               ),
             ],
           ),
-          padding: const EdgeInsets.fromLTRB(26, 26, 26, 24),
+          padding: const EdgeInsets.fromLTRB(15.12, 25.03, 15.12, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color.fromRGBO(220, 252, 231, 1),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
-                      child: SvgPicture.asset(
-                        'assets/images/checkIcon.svg',
-                        width: 20,
-                        height: 20,
+              // Title row: icon + texts (exact layout values)
+              Container(
+                width: 330,
+                height: 48,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 47.99144744873047,
+                      height: 47.99144744873047,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.only(right: 0.01),
+                      child: Center(
+                        child: SvgPicture.asset(
+                          'assets/images/checkIcon.svg',
+                          width: 20,
+                          height: 20,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
+                    const SizedBox(width: 11.99),
+                    // Text column with precise widths/heights
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'Report Submitted',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: _successAccent,
-                            fontFamily: 'Inter',
-                            letterSpacing: -0.3125,
+                        SizedBox(
+                          width: 184.6388397216797,
+                          height: 24.001632690429688,
+                          child: const Text(
+                            'Report Submitted',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: _successAccent,
+                              fontFamily: 'Inter',
+                              letterSpacing: -0.3125,
+                            ),
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Thank you for your feedback',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: _successSecondary,
-                            fontFamily: 'Inter',
-                            letterSpacing: -0.1504,
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          width: 184.6388397216797,
+                          height: 19.995450973510742,
+                          child: const Text(
+                            'Thank you for your feedback',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                              color: _successSecondary,
+                              fontFamily: 'Inter',
+                              letterSpacing: -0.1504,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Your report has been submitted successfully. Our moderation team will review it within 24 hours.You’ll be notified if further action or input is required',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
-                  color: _successBody,
-                  fontFamily: 'Inter',
-                  letterSpacing: -0.3125,
-                  height: 1.6,
+              const SizedBox(height: 40),
+              Container(
+                width: 330,
+                height: 78,
+                child: const Text(
+                  "Your report has been submitted successfully. Our moderation team will review this report as soon as possible. You'll be notified if further actions or input is required",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                    color: _successBody,
+                    fontFamily: 'Inter',
+                    letterSpacing: -0.3125,
+                    height: 1.6,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),

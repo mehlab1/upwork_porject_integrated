@@ -4,6 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/onboarding/tracking_permissions_screen.dart';
+import 'services/tracking_consent_service.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/signup/email_collection_screen.dart';
@@ -15,10 +17,13 @@ import 'screens/settings/upvoted_posts_screen.dart';
 import 'screens/settings/community_guidelines_screen.dart';
 import 'screens/feed/post_detail_screen.dart';
 import 'services/auth_state_service.dart';
+import 'services/post_vote_cache_service.dart';
+import 'services/comment_vote_cache_service.dart';
 import 'services/admin_service.dart';
 import 'services/moderator_service.dart';
 import 'services/post_service.dart';
 import 'services/fcm_service.dart';
+import 'services/push_notification_display_service.dart';
 import 'services/notification_service.dart';
 import 'services/notification_count_manager.dart';
 import 'services/user_role_service.dart';
@@ -62,6 +67,9 @@ void main() async {
       _initializeSupabase(),
       // Google Fonts preload (non-critical, but improves UX)
       _preloadFonts(),
+      // Post vote highlights (persist across refresh / app restart)
+      PostVoteCacheService.instance.initialize(),
+      CommentVoteCacheService.instance.initialize(),
     ]);
 
     // =========================================================================
@@ -170,13 +178,25 @@ class _PalAppState extends State<PalApp> {
     });
 
     // Register foreground message callback — shows in-app PalPushNotification banner
-    FCMService().setForegroundMessageCallback((title, body, data) {
-      final context = navigatorKey.currentContext;
-      if (context != null) {
-        PalPushNotification.show(context, title: title, message: body);
-      }
-      // Also refresh the badge count
+    FCMService().setForegroundMessageCallback((title, body, data) async {
       NotificationCountManager.instance.refreshCount();
+
+      final context = navigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        await PalPushNotification.show(
+          context,
+          title: title,
+          message: body,
+          data: data,
+        );
+        return;
+      }
+
+      await PushNotificationDisplayService.showFromData(
+        data: data,
+        fallbackTitle: title,
+        fallbackBody: body,
+      );
     });
 
     // Check for pending navigation data when app starts
@@ -192,7 +212,9 @@ class _PalAppState extends State<PalApp> {
   void _handleNotificationNavigation(Map<String, dynamic> data) {
     if (!mounted) return;
 
-    final notificationType = data['notification_type']?.toString() ?? '';
+    final notificationType = data['notification_type']?.toString()
+        ?? data['type']?.toString()
+        ?? '';
     final postId = data['post_id']?.toString();
     final commentId = data['comment_id']?.toString();
 
@@ -201,8 +223,11 @@ class _PalAppState extends State<PalApp> {
     // Navigate based on notification type
     switch (notificationType) {
       case 'new_comment':
+      case 'comment':
       case 'reply_to_comment':
+      case 'reply':
       case 'post_upvote':
+      case 'upvote':
       case 'post_hot':
       case 'post_top':
       case 'post_trending':
@@ -227,6 +252,7 @@ class _PalAppState extends State<PalApp> {
         break;
       case 'mention_in_comment':
       case 'mention_in_post':
+      case 'mention':
         if (postId != null) {
           navigatorKey.currentState?.pushNamed(
             PostDetailScreen.routeName,
@@ -317,13 +343,18 @@ class _PalAppState extends State<PalApp> {
           shouldShowWelcome = false;
         }
 
-        // Navigate to home with appropriate arguments
+        // Navigate to home (via tracking consent on first launch if needed)
         if (mounted) {
+          final home = HomeScreen(
+            showWelcomeModal: shouldShowWelcome,
+            showFirstPostCard: shouldShowWelcome,
+          );
+          final needsConsent =
+              await TrackingConsentService.instance.shouldShowConsentScreen();
           setState(() {
-            _initialRoute = HomeScreen(
-              showWelcomeModal: shouldShowWelcome,
-              showFirstPostCard: shouldShowWelcome,
-            );
+            _initialRoute = needsConsent
+                ? TrackingPermissionsScreen(replacement: home)
+                : home;
             _isCheckingAuth = false;
           });
           // Note: unread notifications will be shown by FeedHomeScreen.initState
@@ -383,7 +414,10 @@ class _PalAppState extends State<PalApp> {
                   as Map<String, dynamic>?;
           final showWelcomeModal = args?['showWelcomeModal'] == true;
           final showFirstPostCard = args?['showFirstPostCard'] == true;
-          return HomeScreen(showWelcomeModal: showWelcomeModal, showFirstPostCard: showFirstPostCard);
+          return HomeScreen(
+            showWelcomeModal: showWelcomeModal,
+            showFirstPostCard: showFirstPostCard,
+          );
         },
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const EmailCollectionScreen(),

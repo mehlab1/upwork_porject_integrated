@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+
+import 'pal_app_icon.dart';
 
 class PalLoadingOverlay extends StatelessWidget {
   const PalLoadingOverlay({super.key, this.showTagline = true});
@@ -21,26 +22,16 @@ class PalLoadingOverlay extends StatelessWidget {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 75,
-                  height: 75,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF155DFC),
-                    borderRadius: BorderRadius.circular(25),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x1A000000),
-                        blurRadius: 32,
-                        offset: Offset(0, 18),
-                      ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(12),
-                  child: SvgPicture.asset(
-                    'assets/images/icon.svg',
-                    width: 25,
-                    height: 25,
-                  ),
+                const PalAppIcon(
+                  size: 75,
+                  borderRadius: 25,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 32,
+                      offset: Offset(0, 18),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 44),
                 const PalAnimatedLoadingBar(),

@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -13,7 +13,9 @@ import 'package:pal/widgets/pal_toast.dart';
 import 'package:pal/widgets/profile_avatar_widget.dart';
 import 'package:pal/widgets/pal_app_header.dart';
 import 'package:pal/services/post_service.dart';
+import 'package:pal/services/post_vote_cache_service.dart';
 import 'package:pal/services/profile_service.dart';
+import 'package:pal/utils/post_vote_utils.dart';
 
 import 'reviewer_create_post_screen.dart';
 import 'widgets/reviewer_post_card.dart';
@@ -977,12 +979,17 @@ class _JmFeedHomeScreenState extends State<ReviewerFeedHomeScreen> with Automati
     final commentsCount = _parseInt(
       post['comments_count'] ?? post['comment_count'] ?? post['replies_count'],
     );
-    final votes = _parseInt(
-      post['votes'] ??
-          post['upvote_count'] ??
-          post['engagement_score'] ??
-          post['net_score'],
-    );
+    final int votes;
+    if (post['net_score'] != null) {
+      votes = _parseInt(post['net_score']);
+    } else if (post['votes'] != null) {
+      votes = _parseInt(post['votes']);
+    } else if (post['upvote_count'] != null || post['downvote_count'] != null) {
+      votes = _parseInt(post['upvote_count'] ?? 0) -
+          _parseInt(post['downvote_count'] ?? 0);
+    } else {
+      votes = _parseInt(post['engagement_score']);
+    }
 
     return ReviewerPostCardData(
       id: post['id']?.toString(),
@@ -1000,6 +1007,10 @@ class _JmFeedHomeScreenState extends State<ReviewerFeedHomeScreen> with Automati
       initials: initials,
       badges: badges,
       userId: userId,
+      userVote: PostVoteCacheService.instance.resolveVote(
+        postId: post['id']?.toString(),
+        apiVote: parseUserVoteFromMap(post),
+      ),
     );
   }
 

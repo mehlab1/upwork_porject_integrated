@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/post_service.dart';
+import '../../services/post_vote_cache_service.dart';
 import '../../services/profile_service.dart';
+import '../../utils/post_vote_utils.dart';
 import '../../widgets/pal_bottom_nav_bar.dart';
 import '../../widgets/pal_loading_widgets.dart';
 import 'widgets/post_card.dart';
@@ -196,6 +198,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       initials: initials,
       badges: [],
       userId: userId,
+      userVote: PostVoteCacheService.instance.resolveVote(
+        postId: post['id']?.toString(),
+        apiVote: parseUserVoteFromMap(post),
+      ),
     );
   }
 

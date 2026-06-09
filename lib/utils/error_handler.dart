@@ -13,6 +13,9 @@ class ErrorHandler {
     return errorStr.contains('clientexception') ||
         errorStr.contains('socketexception') ||
         errorStr.contains('failed host lookup') ||
+      errorStr.contains('network request failed') ||
+      errorStr.contains('failed to fetch') ||
+      errorStr.contains('fetch failed') ||
         errorStr.contains('socket failed') ||
         errorStr.contains('network is unreachable') ||
         errorStr.contains('connection refused') ||

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../../services/profile_picture_service.dart';
 import '../../widgets/pal_toast.dart';
 import '../../core/responsive/responsive.dart';
+import 'widgets/signup_flow_header.dart';
 
 class ProfileUploadScreen extends StatefulWidget {
   const ProfileUploadScreen({super.key, required this.email});
@@ -213,61 +214,33 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompactPhone = !Responsive.isLargeDevice(context);
+    final contentPadding = isCompactPhone ? 16.0 : 45.0;
+    final subtitleToAvatarSpacing = isCompactPhone
+        ? Responsive.scaledPadding(context, 46)
+        : 120.0;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 48),
-            // Header with back button and title
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Back Button
-                  IconButton(
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: Color(0xFF100B3C),
-                      size: 32,
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  // Title - centered
-                  Expanded(
-                    child: Text(
-                      'Add a Profile Picture',
-                      style: TextStyle(
-                        fontSize: Responsive.scaledFont(context, 24),
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF0A0A0A),
-                        fontFamily: 'Rubik',
-                        letterSpacing: -0.44,
-                        height: 1.0,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  // Spacer to balance the back button
-                  const SizedBox(width: 40),
-                ],
-              ),
+            SignupFlowHeader(
+              title: 'Add a Profile Picture',
+              onBack: () => Navigator.of(context).pop(),
             ),
             // Progress indicator (Step 3 of 3)
             const SizedBox(height: 26),
             _buildProgressIndicator(context, currentStep: 3),
             // Main content
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 45),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(horizontal: contentPadding),
                 child: Column(
                   children: [
-                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: Responsive.scaledPadding(context, 46),
+                      ),
                       // Subtitle
                       FittedBox(
                         fit: BoxFit.scaleDown,
@@ -287,11 +260,11 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 120),
+                      SizedBox(height: subtitleToAvatarSpacing),
 
                       // Profile Picture Container
                       SizedBox(
-                        width: 400,
+                        width: double.infinity,
                         child: Column(
                           children: [
                             // Profile Picture Circle
@@ -413,10 +386,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
 
                             // Info Box
                             Container(
-                              width: Responsive.scaledPadding(context, 360).clamp(300.0, 380.0),
-                              constraints: BoxConstraints(
-                                minHeight: Responsive.scaledPadding(context, 60).clamp(55.0, 65.0),
-                              ),
+                              width: double.infinity,
                               padding: EdgeInsets.all(
                                 Responsive.scaledPadding(context, 16),
                               ),
@@ -469,16 +439,14 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                                       style: TextStyle(
                                         fontSize: Responsive.scaledFont(
                                           context,
-                                          11,
+                                          isCompactPhone ? 12 : 11,
                                         ),
                                         fontWeight: FontWeight.w400,
                                         color: _textColor, // #45556C
                                         fontFamily: 'Rubik',
                                         letterSpacing: 0,
-                                        height: 1.77, // 19.5px / 11px = 1.7727
+                                        height: 1.45,
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.visible,
                                     ),
                                   ),
                                 ],
@@ -492,12 +460,12 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
 
                       // Buttons
                       SizedBox(
-                        width: 400,
+                        width: double.infinity,
                         child: Column(
                           children: [
                             // Finish & Proceed Button
                             SizedBox(
-                              width: 400,
+                              width: double.infinity,
                               height: 48,
                               child: ElevatedButton(
                                 onPressed: _isUploading ? null : _handleFinish,
@@ -538,7 +506,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
 
                             // I'll Add It Later Button
                             SizedBox(
-                              width: 400,
+                              width: double.infinity,
                               height: 48,
                               child: OutlinedButton(
                                 onPressed: _isUploading ? null : _handleSkip,
@@ -568,7 +536,7 @@ class _ProfileUploadScreenState extends State<ProfileUploadScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 50),
+                      SizedBox(height: isCompactPhone ? 24 : 50),
                   ],
                 ),
               ),

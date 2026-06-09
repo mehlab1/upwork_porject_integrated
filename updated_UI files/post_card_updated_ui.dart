@@ -1,3 +1,8 @@
+String _sanitizeLocation(String loc) {
+  final sanitized = loc.replaceAll(RegExp(r"\s*\([^)]*\)"), '').trim();
+  if (sanitized.toLowerCase().contains('victoria island')) return 'Victoria Island';
+  return sanitized;
+}
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +14,7 @@ import 'delete_comment_dialog.dart';
 import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
 import 'package:pal/widgets/pal_toast.dart';
+import '../lib/widgets/post_deleted_debug_dialog.dart';
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 const _menuDeleteIconUrl = 'assets/feedPage/deleteIcon.svg';
@@ -446,30 +452,40 @@ class _PostCardState extends State<PostCard> {
   }
 
   void _handleUpvote() {
+    final previousVotes = _currentVotes;
     setState(() {
       if (_userVote == 1) {
-        _currentVotes -= 1;
+        // Remove upvote
+        _currentVotes = (previousVotes - 1).clamp(0, double.infinity).toInt();
         _userVote = 0;
       } else {
         if (_userVote == -1) {
-          _currentVotes += 1;
+          // Switch from downvote to upvote (+2)
+          _currentVotes = (previousVotes + 2).clamp(0, double.infinity).toInt();
+        } else {
+          // Neutral -> upvote (+1)
+          _currentVotes = (previousVotes + 1).clamp(0, double.infinity).toInt();
         }
-        _currentVotes += 1;
         _userVote = 1;
       }
     });
   }
 
   void _handleDownvote() {
+    final previousVotes = _currentVotes;
     setState(() {
       if (_userVote == -1) {
-        _currentVotes += 1;
+        // Remove downvote - restore previous value
+        _currentVotes = previousVotes;
         _userVote = 0;
       } else {
         if (_userVote == 1) {
-          _currentVotes -= 1;
+          // Switch from upvote to downvote (-2)
+          _currentVotes = (previousVotes - 2).clamp(0, double.infinity).toInt();
+        } else {
+          // Neutral -> downvote (-1) but don't go negative
+          _currentVotes = (previousVotes - 1).clamp(0, double.infinity).toInt();
         }
-        _currentVotes -= 1;
         _userVote = -1;
       }
     });
@@ -668,7 +684,7 @@ class _PostHeader extends StatelessWidget {
                     children: [
                       _Badge(
                         icon: 'assets/images/locationIcon.svg',
-                        label: data.location,
+                        label: _sanitizeLocation(data.location),
                         background: palette.locationBackground,
                         foreground: palette.locationForeground,
                         borderColor: palette.locationBorder,
@@ -859,7 +875,19 @@ Future<void> _showDeleteDialog(BuildContext context, String title) async {
 
   if (result?.confirmed == true && context.mounted) {
     // TODO: Hook into actual delete logic when available.
-    PalToast.show(context, message: 'Post deleted successfully');
+    try {
+      showPostDeletedDebugDialog(
+        context,
+        onUndo: () {
+          PalToast.show(context, message: 'Deletion undone for this session');
+        },
+        onClose: () {
+          PalToast.show(context, message: 'Post deleted successfully');
+        },
+      );
+    } catch (_) {
+      PalToast.show(context, message: 'Post deleted successfully');
+    }
   }
 }
 
@@ -931,8 +959,7 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 22,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(80),
@@ -941,20 +968,30 @@ class _Badge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SvgPicture.asset(
-            icon,
-            width: 14,
-            height: 14,
-            colorFilter: ColorFilter.mode(foreground, BlendMode.srcIn),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: foreground,
-              fontFamily: 'Inter',
+            SvgPicture.asset(
+              icon,
+              width: 12,
+              height: 12,
+              colorFilter: ColorFilter.mode(foreground, BlendMode.srcIn),
+              errorBuilder: (context, error, stackTrace) => Icon(
+                Icons.image,
+                size: 12,
+                color: foreground,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: foreground,
+                  fontFamily: 'Inter',
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.clip,
+              ),
             ),
           ),
         ],

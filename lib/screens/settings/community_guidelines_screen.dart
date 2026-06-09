@@ -171,7 +171,7 @@ class _WelcomeCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Our forum is built on mutual respect and the shared goal of making Lagos better for everyone. These guidelines help ensure everyone has a positive experience. By participating, you agree to follow these rules.',
+            'Our forum is built on mutual respect and a shared commitment to improving your local community. These guidelines help ensure everyone has a safe, positive experience. By participating, you agree to follow the rules and contribute thoughtfully.',
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w400,
@@ -216,7 +216,7 @@ class _UnderstandingCategories extends StatelessWidget {
             description:
                 'Share news, updates, events, or interesting things happening in your neighborhood. Traffic alerts, power outages, new businesses, local events, or general community updates.',
             example:
-                '"New restaurant opening in Ikoyi next week" or "Traffic alert: Lekki-Epe Expressway"',
+                'Example: "New restaurant opening in Ikoyi next week" or "Traffic alert: Lekki-Epe Expressway"',
             background: Color(0xFFFAF5FF),
             borderColor: Color(0xFFE9D4FF),
             titleColor: Color(0xFF59168B),
@@ -230,7 +230,7 @@ class _UnderstandingCategories extends StatelessWidget {
             description:
                 'Ask for recommendations, advice, or help from the community. Best for seeking information, suggestions, or local knowledge from your neighbors.',
             example:
-                '"Best barber in Lekki Phase 1?" or "Good mechanic around VI?"',
+                'Example: "Best barber in Lekki Phase 1?" or "Good mechanic around VI?"',
             background: Color(0xFFF0FDF4),
             borderColor: Color(0xFFB9F8CF),
             titleColor: Color(0xFF0D542B),
@@ -244,7 +244,7 @@ class _UnderstandingCategories extends StatelessWidget {
             description:
                 'Start conversations about local issues, community matters, or topics that affect your area. Engage in thoughtful dialogue about neighborhood concerns or improvements.',
             example:
-                '"Thoughts on the new security measures in Ikoyi?" or "How can we improve waste management?"',
+                'Example: "Thoughts on the new security measures in Ikoyi?" or "How can we improve waste management?"',
             background: Color(0xFFFFFBEB),
             borderColor: Color(0xFFFEE685),
             titleColor: Color(0xFF7B3306),
@@ -454,7 +454,7 @@ class _CommunityRules extends StatelessWidget {
           iconTint: Color(0xFF008236),
           title: 'Be Respectful & Civil',
           body:
-              'Treat everyone with respect. No harassment, hate speech, personal attacks, or bullying. Disagree with ideas, not people. We\'re all neighbors working to make Lagos better.',
+              "Treat everyone with respect. No harassment, hate speech, personal attacks, or bullying. Disagree with ideas, not people. We're all neighbors working to make our communities better.",
           example:
               'Example: Instead of "You\'re stupid for thinking that," say "I disagree because..." or "I see it differently..."',
           extraBoxColor: Color(0xFFF8FAFC),
@@ -896,7 +896,7 @@ class _FooterSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Last updated: October 2025',
+          'Last updated: March 2026',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(
             fontSize: 12,

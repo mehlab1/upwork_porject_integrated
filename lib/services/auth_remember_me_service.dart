@@ -1,36 +1,55 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Service to manage "Remember Me" functionality
-/// Handles storing and retrieving the user's preference to stay logged in
+class SavedLoginCredentials {
+  const SavedLoginCredentials({
+    required this.email,
+    required this.password,
+  });
+
+  final String email;
+  final String password;
+}
+
+/// Service to manage "Remember Me" functionality.
+/// Stores login preference, optional saved credentials, and last user id for session checks.
 class AuthRememberMeService {
   static const String _rememberMeKey = 'auth_remember_me';
   static const String _lastLoginUserIdKey = 'auth_last_login_user_id';
+  static const String _savedEmailKey = 'auth_remember_email';
+  static const String _savedPasswordKey = 'auth_remember_password';
 
-  /// Save the "Remember Me" preference
-  /// If rememberMe is true, also save the current user ID
-  /// If rememberMe is false, clear the stored user ID
-  Future<void> setRememberMe(bool rememberMe) async {
+  /// Saves Remember Me preference and, when enabled, credentials for login autofill.
+  Future<void> setRememberMe(
+    bool rememberMe, {
+    String? email,
+    String? password,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_rememberMeKey, rememberMe);
-      
+
       if (rememberMe) {
-        // Save current user ID when Remember Me is enabled
         final user = Supabase.instance.client.auth.currentUser;
         if (user != null) {
           await prefs.setString(_lastLoginUserIdKey, user.id);
         }
+        if (email != null && email.trim().isNotEmpty) {
+          await prefs.setString(_savedEmailKey, email.trim());
+        }
+        if (password != null && password.isNotEmpty) {
+          await prefs.setString(_savedPasswordKey, password);
+        }
       } else {
-        // Clear user ID when Remember Me is disabled
         await prefs.remove(_lastLoginUserIdKey);
+        await prefs.remove(_savedEmailKey);
+        await prefs.remove(_savedPasswordKey);
       }
     } catch (e) {
       print('Error saving Remember Me preference: $e');
     }
   }
 
-  /// Get the "Remember Me" preference
   Future<bool> getRememberMe() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -41,11 +60,26 @@ class AuthRememberMeService {
     }
   }
 
-  /// Check if user should be auto-logged in
-  /// Returns true if:
-  /// 1. Remember Me was enabled
-  /// 2. There's a current user (Supabase handles session/token refresh automatically)
-  /// 3. The user ID matches the stored user ID (if available)
+  /// Returns saved email/password when Remember Me is enabled.
+  Future<SavedLoginCredentials?> getSavedLoginCredentials() async {
+    try {
+      final rememberMe = await getRememberMe();
+      if (!rememberMe) return null;
+
+      final prefs = await SharedPreferences.getInstance();
+      final email = prefs.getString(_savedEmailKey);
+      if (email == null || email.isEmpty) return null;
+
+      return SavedLoginCredentials(
+        email: email,
+        password: prefs.getString(_savedPasswordKey) ?? '',
+      );
+    } catch (e) {
+      print('Error reading saved login credentials: $e');
+      return null;
+    }
+  }
+
   Future<bool> shouldAutoLogin() async {
     try {
       final rememberMe = await getRememberMe();
@@ -53,18 +87,14 @@ class AuthRememberMeService {
         return false;
       }
 
-      // Check if there's a current user
-      // Supabase automatically handles token refresh using the refresh token
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
         return false;
       }
 
-      // Optionally verify the user ID matches the stored one
       final prefs = await SharedPreferences.getInstance();
       final lastLoginUserId = prefs.getString(_lastLoginUserIdKey);
       if (lastLoginUserId != null && lastLoginUserId != user.id) {
-        // User ID changed, clear the preference
         await clearRememberMe();
         return false;
       }
@@ -76,19 +106,19 @@ class AuthRememberMeService {
     }
   }
 
-  /// Clear the Remember Me preference and stored user ID
-  /// Called when user explicitly logs out
+  /// Clears Remember Me preference, saved credentials, and stored user id.
   Future<void> clearRememberMe() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_rememberMeKey);
       await prefs.remove(_lastLoginUserIdKey);
+      await prefs.remove(_savedEmailKey);
+      await prefs.remove(_savedPasswordKey);
     } catch (e) {
       print('Error clearing Remember Me preference: $e');
     }
   }
 
-  /// Get the current user ID if Remember Me is enabled
   Future<String?> getRememberedUserId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -99,4 +129,3 @@ class AuthRememberMeService {
     }
   }
 }
-

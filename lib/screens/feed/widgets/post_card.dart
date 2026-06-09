@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'delete_comment_dialog.dart';
 import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
+import '../../../widgets/report_connection_error_dialog.dart';
 import 'block_user_dialog.dart';
 import 'moderation_reason_dialog.dart';
 import 'change_category_dialog.dart';
@@ -18,10 +19,20 @@ import '../../../services/junior_moderator_service.dart';
 import '../../../services/moderator_service.dart';
 import '../../../widgets/pal_toast.dart';
 import '../../../utils/error_handler.dart';
+import '../../../utils/post_vote_utils.dart';
+import '../../../services/post_vote_cache_service.dart';
+import '../../../services/comment_vote_cache_service.dart';
+import '../../../widgets/post_deleted_debug_dialog.dart';
 import '../create_post_screen.dart';
 import '../edit_post_screen.dart';
 import '../../admin/admin_user_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+String _sanitizeLocation(String loc) {
+  final sanitized = loc.replaceAll(RegExp(r"\s*\([^)]*\)"), '').trim();
+  if (sanitized.toLowerCase().contains('victoria island')) return 'Victoria Island';
+  return sanitized;
+}
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 const _menuBlockIconUrl = 'assets/feedPage/blockUser.svg';
@@ -312,12 +323,14 @@ class _PostCardState extends State<PostCard> {
   OverlayEntry? _overlayEntry;
 
   bool _showComments = false;
+  bool _isPendingDeleteHidden = false;
 
   final TextEditingController _commentController = TextEditingController();
 
   late int _currentVotes;
 
   int _userVote = 0; // 1 = upvoted, -1 = downvoted, 0 = neutral
+  bool _isVotingPost = false;
 
   List<CommentData> _comments = const [];
 
@@ -356,8 +369,6 @@ class _PostCardState extends State<PostCard> {
     // Initialize menu key
     _menuKey = widget.externalMenuKey ?? GlobalKey();
 
-    _currentVotes = data.votes;
-
     _comments = _cloneComments(widget.data.comments ?? const []);
 
     // Initialize comment count from feed data, but we'll verify it when comments are loaded
@@ -368,14 +379,7 @@ class _PostCardState extends State<PostCard> {
     // Set initial comments expanded state if requested
     _showComments = widget.initialCommentsExpanded;
 
-    final initialUserVote = data.userVote?.toLowerCase();
-    if (initialUserVote == 'upvote') {
-      _userVote = 1;
-    } else if (initialUserVote == 'downvote') {
-      _userVote = -1;
-    } else {
-      _userVote = 0;
-    }
+    _syncVoteStateFromData();
 
     _loadCurrentUsername();
     _loadCurrentUserId();
@@ -487,6 +491,12 @@ class _PostCardState extends State<PostCard> {
 
     if (oldWidget.data.comments != widget.data.comments) {
       _comments = _cloneComments(widget.data.comments ?? const []);
+    }
+
+    if (oldWidget.data.id != widget.data.id ||
+        oldWidget.data.votes != widget.data.votes ||
+        oldWidget.data.userVote != widget.data.userVote) {
+      _syncVoteStateFromData();
     }
   }
 
@@ -604,14 +614,10 @@ class _PostCardState extends State<PostCard> {
     final downvotes = _parseInt(commentData['downvote_count'] ?? 0);
     final status = commentData['status']?.toString() ?? 'active';
 
-    // Extract user's vote state from API response
-    int userVote = 0;
-    final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
-    if (userVoteStr == 'upvote') {
-      userVote = 1;
-    } else if (userVoteStr == 'downvote') {
-      userVote = -1;
-    }
+    final userVote = CommentVoteCacheService.instance.resolveUserVoteInt(
+      commentId: id,
+      apiVote: commentData['user_vote']?.toString(),
+    );
 
     // Get replies if present
     final repliesData = commentData['replies'] as List<dynamic>? ?? [];
@@ -681,6 +687,46 @@ class _PostCardState extends State<PostCard> {
     if (value is int) return value;
     if (value is double) return value.round();
     return int.tryParse(value.toString()) ?? 0;
+  }
+
+  void _syncVoteStateFromData() {
+    _currentVotes = data.votes;
+    final resolved = PostVoteCacheService.instance.resolveVote(
+      postId: data.id,
+      apiVote: data.userVote,
+    );
+    _userVote = userVoteStringToInt(resolved);
+    if (normalizeUserVoteString(data.userVote) != null) {
+      _persistPostVoteState();
+    }
+  }
+
+  void _persistPostVoteState() {
+    final postId = data.id;
+    if (postId == null || postId.isEmpty) return;
+    final vote = _userVote == 1
+        ? 'upvote'
+        : _userVote == -1
+            ? 'downvote'
+            : null;
+    unawaited(PostVoteCacheService.instance.setVote(postId, vote));
+  }
+
+  void _applyPostVoteResponse(Map<String, dynamic> response) {
+    if (response['net_score'] != null) {
+      _currentVotes = _parseInt(response['net_score']);
+    } else {
+      final upvotes = _parseInt(response['upvote_count'] ?? 0);
+      final downvotes = _parseInt(response['downvote_count'] ?? 0);
+      _currentVotes = upvotes - downvotes;
+    }
+
+    final apiVote = userVoteFromVoteResponse(response);
+    _userVote = userVoteStringToInt(apiVote);
+    final postId = data.id;
+    if (postId != null && postId.isNotEmpty) {
+      unawaited(PostVoteCacheService.instance.setVote(postId, apiVote));
+    }
   }
 
   String _formatTimeAgo(DateTime? dateTime) {
@@ -869,14 +915,10 @@ class _PostCardState extends State<PostCard> {
 
         final content = commentData['content']?.toString() ?? trimmed;
 
-        // Extract user's vote state from API response
-        int userVote = 0;
-        final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
-        if (userVoteStr == 'upvote') {
-          userVote = 1;
-        } else if (userVoteStr == 'downvote') {
-          userVote = -1;
-        }
+        final userVote = CommentVoteCacheService.instance.resolveUserVoteInt(
+          commentId: realId,
+          apiVote: commentData['user_vote']?.toString(),
+        );
 
         setState(() {
           final updatedComments = List<CommentData>.from(_currentComments);
@@ -1109,14 +1151,10 @@ class _PostCardState extends State<PostCard> {
 
         final content = commentData['content']?.toString() ?? trimmed;
 
-        // Extract user's vote state from API response
-        int userVote = 0;
-        final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
-        if (userVoteStr == 'upvote') {
-          userVote = 1;
-        } else if (userVoteStr == 'downvote') {
-          userVote = -1;
-        }
+        final userVote = CommentVoteCacheService.instance.resolveUserVoteInt(
+          commentId: realId,
+          apiVote: commentData['user_vote']?.toString(),
+        );
 
         setState(() {
           final updatedComments = List<CommentData>.from(_currentComments);
@@ -1821,6 +1859,10 @@ class _PostCardState extends State<PostCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isPendingDeleteHidden) {
+      return const SizedBox.shrink();
+    }
+
     final palette = _PostCardPalette.fromVariant(data.variant);
 
     final bool isAdminPinned = widget.isPinnedAdmin;
@@ -1864,33 +1906,12 @@ class _PostCardState extends State<PostCard> {
   }
 
   Future<void> _handleUpvote() async {
-    if (data.id == null) return;
+    if (data.id == null || _isVotingPost) return;
 
     final previousVote = _userVote;
-
     final previousVotes = _currentVotes;
 
-    setState(() {
-      if (_userVote == 1) {
-        // Already upvoted, unvote (remove the upvote)
-
-        _currentVotes = (_currentVotes - 1).clamp(0, double.infinity).toInt();
-
-        _userVote = 0;
-      } else {
-        if (_userVote == -1) {
-          // Currently downvoted, switch to upvote (remove downvote, add upvote = +2)
-
-          _currentVotes += 2;
-        } else {
-          // Neutral, add upvote
-
-          _currentVotes += 1;
-        }
-
-        _userVote = 1;
-      }
-    });
+    setState(() => _isVotingPost = true);
 
     try {
       final voteType = previousVote == 1 ? 'remove' : 'upvote';
@@ -1900,38 +1921,20 @@ class _PostCardState extends State<PostCard> {
         voteType: voteType,
       );
 
-      // Sync with backend response to ensure consistency
+      if (!mounted) return;
 
-      if (response['net_score'] != null && mounted) {
-        final netScore = _parseInt(response['net_score']);
-
-        final userVoteStr = response['user_vote']?.toString().toLowerCase();
-
-        setState(() {
-          _currentVotes = netScore.clamp(0, double.infinity).toInt();
-
-          // Map backend user_vote string to our integer state
-
-          if (userVoteStr == 'upvote') {
-            _userVote = 1;
-          } else if (userVoteStr == 'downvote') {
-            _userVote = -1;
-          } else {
-            _userVote = 0;
-          }
-        });
-      }
+      setState(() {
+        _applyPostVoteResponse(response);
+        _isVotingPost = false;
+      });
     } catch (e) {
-      // Revert on error
-
       if (mounted) {
         setState(() {
           _currentVotes = previousVotes;
-
           _userVote = previousVote;
+          _isVotingPost = false;
         });
 
-        // Check if it's a network error
         if (ErrorHandler.isNetworkError(e)) {
           ErrorHandler.showOfflineToast(context);
         } else {
@@ -1946,33 +1949,12 @@ class _PostCardState extends State<PostCard> {
   }
 
   Future<void> _handleDownvote() async {
-    if (data.id == null) return;
+    if (data.id == null || _isVotingPost) return;
 
     final previousVote = _userVote;
-
     final previousVotes = _currentVotes;
 
-    setState(() {
-      if (_userVote == -1) {
-        // Already downvoted, unvote (remove the downvote)
-
-        _currentVotes += 1;
-
-        _userVote = 0;
-      } else {
-        if (_userVote == 1) {
-          // Currently upvoted, switch to downvote (remove upvote, add downvote = -2)
-
-          _currentVotes = (_currentVotes - 2).clamp(0, double.infinity).toInt();
-        } else {
-          // Neutral, add downvote (but don't go negative)
-
-          _currentVotes = (_currentVotes - 1).clamp(0, double.infinity).toInt();
-        }
-
-        _userVote = -1;
-      }
-    });
+    setState(() => _isVotingPost = true);
 
     try {
       final voteType = previousVote == -1 ? 'remove' : 'downvote';
@@ -1982,38 +1964,20 @@ class _PostCardState extends State<PostCard> {
         voteType: voteType,
       );
 
-      // Sync with backend response to ensure consistency
+      if (!mounted) return;
 
-      if (response['net_score'] != null && mounted) {
-        final netScore = _parseInt(response['net_score']);
-
-        final userVoteStr = response['user_vote']?.toString().toLowerCase();
-
-        setState(() {
-          _currentVotes = netScore.clamp(0, double.infinity).toInt();
-
-          // Map backend user_vote string to our integer state
-
-          if (userVoteStr == 'upvote') {
-            _userVote = 1;
-          } else if (userVoteStr == 'downvote') {
-            _userVote = -1;
-          } else {
-            _userVote = 0;
-          }
-        });
-      }
+      setState(() {
+        _applyPostVoteResponse(response);
+        _isVotingPost = false;
+      });
     } catch (e) {
-      // Revert on error
-
       if (mounted) {
         setState(() {
           _currentVotes = previousVotes;
-
           _userVote = previousVote;
+          _isVotingPost = false;
         });
 
-        // Check if it's a network error
         if (ErrorHandler.isNetworkError(e)) {
           ErrorHandler.showOfflineToast(context);
         } else {
@@ -2148,13 +2112,15 @@ class _PostCardState extends State<PostCard> {
       builder: (_) => const ReportPostSheet(subject: ReportSubject.post),
     );
 
-    if (result != null && context.mounted) {
+    if (result == null || !context.mounted) return;
+
+    Future<void> submitReport(ReportResult selectedResult) async {
       try {
-        final backendReason = _mapReportReasonToBackendEnum(result.reason);
+        final backendReason = _mapReportReasonToBackendEnum(selectedResult.reason);
         await _postService.reportPost(
           postId: data.id!,
           reason: backendReason,
-          description: result.details.isNotEmpty ? result.details : null,
+          description: selectedResult.details.isNotEmpty ? selectedResult.details : null,
         );
 
         if (context.mounted) {
@@ -2163,7 +2129,6 @@ class _PostCardState extends State<PostCard> {
             barrierDismissible: false,
             builder: (_) => const ReportSuccessDialog(),
           );
-          // Show success toast after dialog is closed
           if (context.mounted) {
             PalToast.show(
               context,
@@ -2174,49 +2139,64 @@ class _PostCardState extends State<PostCard> {
           }
         }
       } catch (e) {
-        if (context.mounted) {
-          final errorStr = e.toString().replaceFirst('Exception: ', '');
-          final errorStrLower = errorStr.toLowerCase();
+        if (!context.mounted) return;
 
-          String errorHeading;
-          String errorSubtext;
+        if (ErrorHandler.isNetworkError(e)) {
+          await showReportConnectionErrorDialog(
+            context,
+            onCancel: () {
+              if (!context.mounted) return;
+              PalToast.show(
+                context,
+                message: 'Failed to submit report',
+                heading: 'Failed to submit report',
+                subtext: 'Please check your connection and try again.',
+                isError: true,
+              );
+            },
+            onTryAgain: () {
+              submitReport(selectedResult);
+            },
+          );
+          return;
+        }
 
-          // Check for "cannot report own post" error (case-insensitive)
-          if (errorStrLower.contains('cannot report own post') ||
-              errorStrLower.contains('cannot report your own post') ||
-              errorStrLower.contains('you cannot report your own post')) {
-            errorHeading = 'Failed to submit report';
-            errorSubtext = 'You cannot report your own post.';
-          } else if (errorStrLower.contains('already reported')) {
-            errorHeading = 'Failed to submit report';
-            errorSubtext = 'You have already reported this post.';
-          } else if (errorStrLower.contains('post not found')) {
-            errorHeading = 'Failed to submit report';
-            errorSubtext = 'This post no longer exists.';
-          } else if (errorStrLower.contains('unauthorized')) {
-            errorHeading = 'Failed to submit report';
-            errorSubtext = 'You must be logged in to report posts.';
+        final errorStr = e.toString().replaceFirst('Exception: ', '');
+        final errorStrLower = errorStr.toLowerCase();
+
+        String errorHeading;
+        String errorSubtext;
+
+        if (errorStrLower.contains('cannot report own post') ||
+            errorStrLower.contains('cannot report your own post') ||
+            errorStrLower.contains('you cannot report your own post')) {
+          errorHeading = 'Failed to submit report';
+          errorSubtext = 'You cannot report your own post.';
+        } else if (errorStrLower.contains('already reported')) {
+          errorHeading = 'Failed to submit report';
+          errorSubtext = 'You have already reported this post.';
+        } else if (errorStrLower.contains('post not found')) {
+          errorHeading = 'Failed to submit report';
+          errorSubtext = 'This post no longer exists.';
+        } else if (errorStrLower.contains('unauthorized')) {
+          errorHeading = 'Failed to submit report';
+          errorSubtext = 'You must be logged in to report posts.';
         } else {
-          // Use generic error message for general failures
           errorHeading = 'Failed to submit report';
           errorSubtext = 'Please try again.';
         }
 
-        // Check if it's a network error
-        if (ErrorHandler.isNetworkError(e)) {
-          ErrorHandler.showOfflineToast(context);
-        } else {
-          PalToast.show(
-            context,
-            message: errorHeading,
-            heading: errorHeading,
-            subtext: errorSubtext,
-            isError: true,
-          );
-        }
-        }
+        PalToast.show(
+          context,
+          message: errorHeading,
+          heading: errorHeading,
+          subtext: errorSubtext,
+          isError: true,
+        );
       }
     }
+
+    await submitReport(result);
   }
 
   Future<void> _showDeleteDialog(BuildContext context, String title) async {
@@ -2230,75 +2210,108 @@ class _PostCardState extends State<PostCard> {
 
     if (result?.confirmed != true) return;
 
-    // Simple: call edge function and show message based on response
-    try {
-      final response = await _postService.deletePost(postId: data.id!);
+    bool deleteFinalized = false;
+    bool undoRequested = false;
 
-      // Check response from edge function
-      if (response['success'] == true) {
-        // Notify parent widget about deletion
-        if (mounted && widget.onPostDeleted != null) {
-          widget.onPostDeleted!(data.id!);
-        }
-        // Show success message
-        if (mounted) {
+    Future<void> finalizeDelete() async {
+      if (deleteFinalized || undoRequested || !mounted) return;
+      deleteFinalized = true;
+
+      try {
+        final response = await _postService.deletePost(postId: data.id!);
+        if (!mounted) return;
+
+        if (response['success'] == true) {
           PalToast.show(context, message: 'Post deleted successfully');
+          return;
         }
-      } else {
-        // Show error from response
-        final message =
-            response['message']?.toString() ?? 'Failed to delete post.';
-        if (mounted) {
-          PalToast.show(
-            context,
-            message: 'Failed to delete post',
-            heading: 'Failed to delete post',
-            subtext: 'Please check your connection and try again',
-            isError: true,
-          );
+
+        String message = 'Failed to delete post';
+        String subtext = 'Please check your connection and try again';
+        final responseMessage = response['message']?.toString();
+        if (responseMessage != null && responseMessage.isNotEmpty) {
+          subtext = responseMessage;
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        // Check if it's a network error
+
+        PalToast.show(
+          context,
+          message: message,
+          heading: message,
+          subtext: subtext,
+          isError: true,
+        );
+      } catch (e) {
+        if (!mounted) return;
         if (ErrorHandler.isNetworkError(e)) {
           ErrorHandler.showOfflineToast(context);
-        } else {
-          // Handle exception
-          final errorStr = e.toString().replaceFirst('Exception: ', '');
-          final errorStrLower = errorStr.toLowerCase();
-
-          String errorHeading = 'Failed to delete post';
-          String errorSubtext;
-
-          if (errorStrLower.contains('cannot delete another user\'s post') ||
-              errorStrLower.contains('you cannot delete another user\'s post')) {
-            errorSubtext = 'You cannot delete another user\'s post.';
-          } else if (errorStrLower.contains('cannot delete') ||
-              errorStrLower.contains('not owner') ||
-              errorStrLower.contains('only owner') ||
-              errorStrLower.contains('permission denied') ||
-              errorStrLower.contains('forbidden') ||
-              errorStrLower.contains('not authorized')) {
-            errorSubtext = 'You can only delete your own posts.';
-          } else if (errorStrLower.contains('post not found')) {
-            errorSubtext = 'This post no longer exists.';
-          } else if (errorStrLower.contains('unauthorized')) {
-            errorSubtext = 'You must be logged in to delete posts.';
-          } else {
-            // For general failures
-            errorSubtext = 'Please try again.';
-          }
-
-          PalToast.show(
-            context,
-            message: errorHeading,
-            heading: errorHeading,
-            subtext: errorSubtext,
-            isError: true,
-          );
+          return;
         }
+
+        final errorStr = e.toString().replaceFirst('Exception: ', '');
+        final errorStrLower = errorStr.toLowerCase();
+
+        String errorHeading = 'Failed to delete post';
+        String errorSubtext;
+
+        if (errorStrLower.contains('cannot delete another user\'s post') ||
+            errorStrLower.contains('you cannot delete another user\'s post')) {
+          errorSubtext = 'You cannot delete another user\'s post.';
+        } else if (errorStrLower.contains('cannot delete') ||
+            errorStrLower.contains('not owner') ||
+            errorStrLower.contains('only owner') ||
+            errorStrLower.contains('permission denied') ||
+            errorStrLower.contains('forbidden') ||
+            errorStrLower.contains('not authorized')) {
+          errorSubtext = 'You can only delete your own posts.';
+        } else if (errorStrLower.contains('post not found')) {
+          errorSubtext = 'This post no longer exists.';
+        } else if (errorStrLower.contains('unauthorized')) {
+          errorSubtext = 'You must be logged in to delete posts.';
+        } else {
+          errorSubtext = 'Please try again.';
+        }
+
+        PalToast.show(
+          context,
+          message: errorHeading,
+          heading: errorHeading,
+          subtext: errorSubtext,
+          isError: true,
+        );
       }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isPendingDeleteHidden = true;
+      });
+    }
+
+    if (!mounted) return;
+
+    await showPostDeletedDebugDialog(
+      context,
+      timeoutSeconds: 30,
+      onUndo: () {
+        undoRequested = true;
+        if (!mounted) return;
+        setState(() {
+          _isPendingDeleteHidden = false;
+        });
+        PalToast.show(context, message: 'Deletion undone');
+      },
+      onClose: () async {
+        await finalizeDelete();
+      },
+      onTimeout: () async {
+        await finalizeDelete();
+      },
+    );
+
+    if (!deleteFinalized && mounted) {
+      setState(() {
+        _isPendingDeleteHidden = false;
+      });
     }
   }
 
@@ -3433,32 +3446,136 @@ class _PostHeader extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: _Badge(
-                          icon: 'assets/images/locationIcon.svg',
-
-                          label: data.location,
-
-                          background: palette.locationBackground,
-
-                          foreground: palette.locationForeground,
-
-                          borderColor: palette.locationBorder,
-                        ),
+                        child: data.category.toLowerCase() == 'gist'
+                            ? Container(
+                                height: 22,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFAF5FF),
+                                  border: const Border(
+                                    top: BorderSide(
+                                      color: Color(0xFFE9D4FF),
+                                      width: 0.76,
+                                    ),
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SvgPicture.asset(
+                                      'assets/images/gistIcon.svg',
+                                      width: 12,
+                                      height: 12,
+                                      colorFilter: const ColorFilter.mode(
+                                        Color(0xFF8200DB),
+                                        BlendMode.srcIn,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        data.category,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: Color(0xFF8200DB),
+                                          fontFamily: 'Inter',
+                                          height: 16 / 12,
+                                          letterSpacing: 0,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : data.category.toLowerCase() == 'discussion'
+                                ? Container(
+                                    height: 22,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFFBEB),
+                                      border: const Border(
+                                        top: BorderSide(
+                                          color: Color(0xFFFEE685),
+                                          width: 0.76,
+                                        ),
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SvgPicture.asset(
+                                              'assets/images/discussionIcon.svg',
+                                              width: 12,
+                                              height: 12,
+                                              colorFilter:
+                                                  const ColorFilter.mode(
+                                                Color(0xFFBB4D00),
+                                                BlendMode.srcIn,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              data.category,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                                color: Color(0xFFBB4D00),
+                                                fontFamily: 'Inter',
+                                                height: 16 / 12,
+                                                letterSpacing: 0,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                  )
+                                : _Badge(
+                                    icon: 'assets/images/askIcon.svg',
+                                    label: data.category,
+                                    background: const Color(0xFFEFFDF4),
+                                    foreground: const Color(0xFF15803D),
+                                    borderColor: const Color(0xFFBDE9CE),
+                                  ),
                       ),
 
                       const SizedBox(width: 8),
 
                       Flexible(
-                        child: _Badge(
-                          icon: 'assets/images/askIcon.svg',
-
-                          label: data.category,
-
-                          background: const Color(0xFFEFFDF4),
-
-                          foreground: const Color(0xFF15803D),
-
-                          borderColor: const Color(0xFFBDE9CE),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SvgPicture.asset(
+                              'assets/images/locationIcon.svg',
+                              width: 12,
+                              height: 12,
+                              colorFilter: const ColorFilter.mode(
+                                Color(0xFF62748E),
+                                BlendMode.srcIn,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                _sanitizeLocation(data.location),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF62748E),
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w400,
+                                  height: 16 / 12,
+                                  letterSpacing: 0,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.clip,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -3947,9 +4064,7 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 22,
-
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
 
       decoration: BoxDecoration(
         color: background,
@@ -3988,8 +4103,8 @@ class _Badge extends StatelessWidget {
                 fontFamily: 'Inter',
               ),
 
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+              overflow: TextOverflow.clip,
             ),
           ),
         ],
@@ -4707,6 +4822,18 @@ class _PopoverMenuItem extends StatelessWidget {
               height: 16,
 
               colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+              package: null,
+              semanticsLabel: label,
+              placeholderBuilder: (context) => Icon(
+                Icons.delete,
+                size: 16,
+                color: color,
+              ),
+              errorBuilder: (context, error, stackTrace) => Icon(
+                Icons.delete,
+                size: 16,
+                color: color,
+              ),
             ),
 
             const SizedBox(width: 10),
@@ -5547,6 +5674,18 @@ class _CommentCardState extends State<_CommentCard> {
 
   String get _currentVotesLabel => _currentVotesValue.toString();
 
+  void _applyCommentVoteResponse(Map<String, dynamic> response) {
+    final snapshot = snapshotFromVoteResponse(response);
+    if (snapshot != null) {
+      _currentVotes = snapshot.netScore;
+      _userVote = snapshot.userVoteInt;
+    }
+    final apiVote = userVoteFromVoteResponse(response);
+    unawaited(
+      CommentVoteCacheService.instance.setVote(widget.comment.id, apiVote),
+    );
+  }
+
   Future<void> _handleUpvote() async {
     // Prevent multiple simultaneous votes
     if (_isVoting) return;
@@ -5624,29 +5763,9 @@ class _CommentCardState extends State<_CommentCard> {
         return;
       }
 
-      // Sync with backend response to ensure consistency
-      if (mounted && response['upvote_count'] != null) {
-        final upvotes = _parseInt(response['upvote_count']);
-        final downvotes = _parseInt(response['downvote_count'] ?? 0);
-        final userVoteStr = response['user_vote']?.toString().toLowerCase();
-
+      if (mounted) {
         setState(() {
-          // Update vote counts from backend
-          final netScore = upvotes - downvotes;
-          _currentVotes = netScore;
-
-          // Map backend user_vote string to our integer state
-          if (userVoteStr == 'upvote') {
-            _userVote = 1;
-          } else if (userVoteStr == 'downvote') {
-            _userVote = -1;
-          } else {
-            _userVote = 0;
-          }
-          _isVoting = false;
-        });
-      } else if (mounted) {
-        setState(() {
+          _applyCommentVoteResponse(response);
           _isVoting = false;
         });
       }
@@ -5705,9 +5824,7 @@ class _CommentCardState extends State<_CommentCard> {
 
       if (_userVote == -1) {
         // Already downvoted, unvote (remove the downvote)
-
         updated += 1;
-
         _userVote = 0;
       } else if (_userVote == 1) {
         // Currently upvoted, switch to downvote (remove upvote, add downvote = -2)
@@ -5768,29 +5885,9 @@ class _CommentCardState extends State<_CommentCard> {
         return;
       }
 
-      // Sync with backend response to ensure consistency
-      if (mounted && response['upvote_count'] != null) {
-        final upvotes = _parseInt(response['upvote_count']);
-        final downvotes = _parseInt(response['downvote_count'] ?? 0);
-        final userVoteStr = response['user_vote']?.toString().toLowerCase();
-
+      if (mounted) {
         setState(() {
-          // Update vote counts from backend
-          final netScore = upvotes - downvotes;
-          _currentVotes = netScore;
-
-          // Map backend user_vote string to our integer state
-          if (userVoteStr == 'upvote') {
-            _userVote = 1;
-          } else if (userVoteStr == 'downvote') {
-            _userVote = -1;
-          } else {
-            _userVote = 0;
-          }
-          _isVoting = false;
-        });
-      } else if (mounted) {
-        setState(() {
+          _applyCommentVoteResponse(response);
           _isVoting = false;
         });
       }

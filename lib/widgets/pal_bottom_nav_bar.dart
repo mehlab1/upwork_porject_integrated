@@ -161,56 +161,40 @@ class _NotificationSegment extends StatelessWidget {
             clipBehavior: Clip.none,
             alignment: Alignment.center,
             children: [
-              SvgPicture.asset(
-                'assets/navbar/notification.svg',
+              SizedBox(
                 width: Responsive.scaledIcon(context, 24),
                 height: Responsive.scaledIcon(context, 24),
-                colorFilter: ColorFilter.mode(
-                  active
-                      ? Colors.white
-                      : PalBottomNavigationBar._inactiveIconColor,
-                  BlendMode.srcIn,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/navbar/notification.svg',
+                      width: Responsive.scaledIcon(context, 24),
+                      height: Responsive.scaledIcon(context, 24),
+                      colorFilter: ColorFilter.mode(
+                        active
+                            ? Colors.white
+                            : PalBottomNavigationBar._inactiveIconColor,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        top: 0,
+                        right: 1,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE7000B),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              if (unreadCount > 0)
-                Positioned(
-                  top: Responsive.scaledPadding(context, 8),
-                  right: Responsive.scaledPadding(context, 8),
-                  child: Container(
-                    constraints: BoxConstraints(
-                      minWidth: Responsive.scaledPadding(context, 18),
-                      minHeight: Responsive.scaledPadding(context, 18),
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: unreadCount > 9 
-                          ? Responsive.scaledPadding(context, 6)
-                          : Responsive.scaledPadding(context, 4),
-                      vertical: Responsive.scaledPadding(context, 2),
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE7000B),
-                      borderRadius: BorderRadius.circular(
-                        Responsive.scaledPadding(context, 9),
-                      ),
-                      border: const Border.fromBorderSide(
-                        BorderSide(color: Colors.white, width: 1.5),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        unreadCount > 99 ? '99+' : unreadCount.toString(),
-                        style: TextStyle(
-                          fontSize: Responsive.scaledFont(context, 10),
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          fontFamily: 'Inter',
-                          height: 1.0,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ),

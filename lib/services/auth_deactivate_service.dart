@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Service for account deactivation API calls
-/// Handles deactivation through the Supabase Edge Function
+/// Service for account deactivation / reactivation API calls.
 class AuthDeactivateService {
   AuthDeactivateService();
 
@@ -112,6 +111,64 @@ class AuthDeactivateService {
       final errorString = e.toString().replaceFirst('Exception: ', '');
       throw Exception(errorString);
     }
+  }
+
+  /// GET check-account-status — returns deactivation state for the signed-in user.
+  Future<Map<String, dynamic>> checkAccountStatus() async {
+    return _callFunction('check-account-status', method: 'GET');
+  }
+
+  /// POST reactivate-account — reactivates a deactivated account.
+  Future<Map<String, dynamic>> reactivateAccount() async {
+    return _callFunction('reactivate-account');
+  }
+
+  /// After login: if the account is deactivated, reactivate it silently.
+  Future<void> reactivateOnLoginIfNeeded() async {
+    if (_supabaseClient.auth.currentSession?.accessToken == null) {
+      return;
+    }
+
+    final status = await checkAccountStatus();
+    if (!_isDeactivated(status)) {
+      return;
+    }
+
+    await reactivateAccount();
+  }
+
+  /// Permanently delete the signed-in user's account.
+  ///
+  /// Body: `{ "confirm": true, "reason": "optional, ≤500 chars" }`
+  Future<Map<String, dynamic>> deleteAccount({String? reason}) async {
+    String? trimmedReason;
+    if (reason != null) {
+      trimmedReason = reason.trim();
+      if (trimmedReason.isEmpty) {
+        trimmedReason = null;
+      } else if (trimmedReason.length > 500) {
+        throw Exception('Reason must be 500 characters or less');
+      }
+    }
+
+    final body = <String, dynamic>{'confirm': true};
+    if (trimmedReason != null) {
+      body['reason'] = trimmedReason;
+    }
+
+    try {
+      return await _callFunction('delete-account', body: body);
+    } catch (e) {
+      final errorString = e.toString().replaceFirst('Exception: ', '');
+      throw Exception(errorString);
+    }
+  }
+
+  bool _isDeactivated(Map<String, dynamic> status) {
+    final value = status['is_deactivated'];
+    if (value == true) return true;
+    if (value is String && value.toLowerCase() == 'true') return true;
+    return false;
   }
 }
 

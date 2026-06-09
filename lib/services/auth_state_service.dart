@@ -20,27 +20,24 @@ class AuthStateService {
       if (!rememberMeEnabled) {
         // User didn't check Remember Me - sign out any existing session
         // This ensures users are logged out when they reopen the app
-        final session = Supabase.instance.client.auth.currentSession;
-        if (session != null) {
+        final staleSession = Supabase.instance.client.auth.currentSession;
+        if (staleSession != null) {
           await Supabase.instance.client.auth.signOut();
         }
         return false;
       }
 
       // Remember Me is enabled - check if we have a valid session
-      // Supabase automatically handles token refresh using the refresh token
-      // so we don't manually check expiresAt (that's just the access token expiry)
       final session = Supabase.instance.client.auth.currentSession;
+
+      // No session available — user must sign in again, but keep saved credentials.
       if (session == null) {
-        // No session available, clear Remember Me preference
-        await _rememberMeService.clearRememberMe();
         return false;
       }
 
       // Verify user still exists
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
-        await _rememberMeService.clearRememberMe();
         return false;
       }
 

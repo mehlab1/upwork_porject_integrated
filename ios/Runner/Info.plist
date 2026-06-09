@@ -60,5 +60,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Pal uses this permission to personalize your feed and improve your experience across the app.</string>
 </dict>
 </plist>

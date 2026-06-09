@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/responsive/responsive.dart';
 import '../../services/auth_service.dart';
+import '../../services/auth_deactivate_service.dart';
 import '../../services/post_service.dart';
 import '../../services/auth_remember_me_service.dart';
 import '../../services/fcm_service.dart';
@@ -35,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _passwordError;
   bool _isLoading = false;
   final AuthService _authService = AuthService();
+  final AuthDeactivateService _deactivateService = AuthDeactivateService();
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
   final AdminService _adminService = AdminService();
   final ModeratorService _moderatorService = ModeratorService();
@@ -47,6 +49,23 @@ class _LoginScreenState extends State<LoginScreen> {
   static const Color _primary900 = Color(0xFF100B3C);
   static const Color _grey400 = Color(0xFF8A8D9E);
   static const Color _grey600 = Color(0xFF6F7786);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedCredentials();
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    final saved = await _rememberMeService.getSavedLoginCredentials();
+    if (!mounted || saved == null) return;
+
+    setState(() {
+      _rememberMe = true;
+      _emailController.text = saved.email;
+      _passwordController.text = saved.password;
+    });
+  }
 
   @override
   void dispose() {
@@ -419,9 +438,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   // Checkbox
                                   GestureDetector(
                                     onTap: () {
+                                      final nextValue = !_rememberMe;
                                       setState(() {
-                                        _rememberMe = !_rememberMe;
+                                        _rememberMe = nextValue;
                                       });
+                                      if (!nextValue) {
+                                        _rememberMeService.setRememberMe(false);
+                                      }
                                     },
                                     child: Container(
                                       width: Responsive.scaledPadding(
@@ -627,6 +650,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             const TextSpan(text: "Don't have an account? "),
                             WidgetSpan(
+                              alignment: PlaceholderAlignment.baseline,
+                              baseline: TextBaseline.alphabetic,
                               child: GestureDetector(
                                 onTap: () {
                                   Navigator.push(
@@ -971,6 +996,18 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      // Auto-reactivate accounts that were self-deactivated (login = intent to return).
+      if (!isHardcodedAdminWithoutSupabase &&
+          !isHardcodedModeratorWithoutSupabase &&
+          !isHardcodedJuniorModeratorWithoutSupabase &&
+          !isHardcodedReviewerWithoutSupabase) {
+        try {
+          await _deactivateService.reactivateOnLoginIfNeeded();
+        } catch (e) {
+          debugPrint('[LoginScreen] Auto-reactivate on login failed: $e');
+        }
+      }
+
       // Determine admin/moderator/junior moderator/reviewer status from backend role (not email).
       // Keep hardcoded access for dev/testing accounts.
       bool isAdmin = isHardcodedAdmin || isHardcodedAdminWithoutSupabase;
@@ -1022,8 +1059,12 @@ class _LoginScreenState extends State<LoginScreen> {
       await _juniorModeratorService.setJuniorModeratorStatus(isJuniorModerator);
       await _reviewerService.setReviewerStatus(isReviewer);
 
-      // Save Remember Me preference after successful login
-      await _rememberMeService.setRememberMe(_rememberMe);
+      // Save Remember Me preference and credentials after successful login
+      await _rememberMeService.setRememberMe(
+        _rememberMe,
+        email: email,
+        password: password,
+      );
 
       // Initialize FCM for push notifications
       try {

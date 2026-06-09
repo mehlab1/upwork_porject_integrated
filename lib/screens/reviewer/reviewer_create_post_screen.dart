@@ -4,6 +4,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../services/post_service.dart';
 import '../../services/admin_service.dart';
 import '../../widgets/pal_toast.dart';
+import '../../widgets/invalid_content_detected_dialog.dart';
+import '../../widgets/post_failed_submit_dialog.dart';
 import '../../utils/error_handler.dart';
 import '../../core/responsive/responsive.dart';
 import 'reviewer_community_guidelines_screen.dart';
@@ -21,7 +23,6 @@ class ReviewerCreatePostScreen extends StatefulWidget {
 class _JmCreatePostScreenState extends State<ReviewerCreatePostScreen> {
   String? _activeCategory;
   bool _spotlightEnabled = true;
-  bool _dettyDecemberEnabled = false;
   bool _wodEnabled = false;
   String? _selectedLocation;
   bool _isLocationInlineOpen = false;
@@ -1214,6 +1215,11 @@ class _JmCreatePostScreenState extends State<ReviewerCreatePostScreen> {
   }
 
   Widget _buildDettyDecemberCard() {
+    final isAvailable = _spotlightStatus?['is_available'] as bool? ?? false;
+    if (isAvailable) {
+      return const SizedBox.shrink();
+    }
+
     return Row(
       children: [
         // Info icon outside the container on the left
@@ -1302,14 +1308,14 @@ class _JmCreatePostScreenState extends State<ReviewerCreatePostScreen> {
                 ),
                 GestureDetector(
                   onTap: () {
-                    setState(() => _dettyDecemberEnabled = !_dettyDecemberEnabled);
+                    setState(() => _spotlightEnabled = !_spotlightEnabled);
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     width: 32,
                     height: 19,
                     decoration: BoxDecoration(
-                      color: _dettyDecemberEnabled
+                      color: _spotlightEnabled
                           ? const Color(0xFF155DFC) // Bold blue when ON
                           : const Color.fromRGBO(21, 93, 252, 0.12), // Faint when OFF
                       borderRadius: BorderRadius.circular(19),
@@ -1320,7 +1326,7 @@ class _JmCreatePostScreenState extends State<ReviewerCreatePostScreen> {
                       vertical: 1.0,
                     ),
                     child: Align(
-                      alignment: _dettyDecemberEnabled
+                      alignment: _spotlightEnabled
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
@@ -1950,14 +1956,14 @@ class _JmCreatePostScreenState extends State<ReviewerCreatePostScreen> {
           content: combinedContent,
           categoryId: categoryId,
           locationId: locationId,
-          enableMonthlySpotlight: _spotlightEnabled,
+          enableMonthlySpotlight: _spotlightEnabled == true,
         );
       } else {
         response = await _postService.createPost(
           content: combinedContent,
           categoryId: categoryId,
           locationId: locationId,
-          enableMonthlySpotlight: _spotlightEnabled,
+          enableMonthlySpotlight: _spotlightEnabled == true,
         );
       }
       if (!mounted) {
@@ -1988,18 +1994,37 @@ class _JmCreatePostScreenState extends State<ReviewerCreatePostScreen> {
       setState(() {
         _isSubmitting = false;
       });
-      // Wait a bit for keyboard to dismiss before showing toast
+      // Wait a bit for keyboard to dismiss before showing dialog
       await Future.delayed(const Duration(milliseconds: 100));
       if (mounted) {
+        final errorText = e.toString();
+        final isInvalidContent = errorText.contains('inappropriate language') ||
+            errorText.contains('Please revise and try again') ||
+            errorText.contains('contains inappropriate language');
+
+        if (isInvalidContent) {
+          final result = await showInvalidContentDetectedDialog(context);
+          if (result?.editPost == true) {
+            // Stay on the editor so the user can revise the content.
+          }
+          return;
+        }
+
         // Check if it's a network error
         if (ErrorHandler.isNetworkError(e)) {
-          ErrorHandler.showOfflineToast(context);
+          final result = await showPostFailedSubmitDialog(context);
+          if (result?.saveAsDraft == false) {
+            // User wants to try again - stay on this screen
+            // They can edit and resubmit
+          }
+          // If saveAsDraft is true or null, just stay on screen (post content is preserved)
         } else {
-          PalToast.show(
-            context,
-            message: e.toString().replaceFirst('Exception: ', ''),
-            isError: true,
-          );
+          final result = await showPostFailedSubmitDialog(context);
+          if (result?.saveAsDraft == false) {
+            // User wants to try again - stay on this screen
+            // They can edit and resubmit
+          }
+          // If saveAsDraft is true or null, just stay on screen (post content is preserved)
         }
       }
     }

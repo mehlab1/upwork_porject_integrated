@@ -5,6 +5,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pal/services/post_vote_cache_service.dart';
+import 'package:pal/utils/post_vote_utils.dart';
+import 'package:pal/widgets/session_expired_dialog.dart';
 
 import 'package:pal/widgets/pal_bottom_nav_bar.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
@@ -15,6 +18,7 @@ import 'package:pal/widgets/pal_app_header.dart';
 import 'package:pal/services/notification_service.dart';
 import 'package:pal/services/post_service.dart';
 import 'package:pal/services/profile_service.dart';
+import 'package:pal/widgets/account_suspended_dialog.dart';
 
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
@@ -68,8 +72,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
   int _currentOffset = 0;
   bool _hasMorePosts = true;
   
-  // Seed posts + Remote posts pattern
-  late final List<PostCardData> _seedPosts = _buildSeedPosts().take(3).toList();
+  // Seed posts + Remote posts pattern (top/hot slots filled from API; third stays placeholder)
+  List<PostCardData> _seedPosts =
+      _FeedHomeScreenState._buildSeedPostsStatic().take(3).toList();
   final List<PostCardData> _remotePosts = [];
   bool _isFeedFetching = false;
   
@@ -154,7 +159,13 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     return ['All Categories', ...categoryNames];
   }
 
-  List<PostCardData> get _allPosts => [..._seedPosts, ..._remotePosts];
+  List<PostCardData> get _allPosts {
+    final seedIds = _seedPosts.map((p) => p.id).whereType<String>().toSet();
+    final remoteWithoutFeatured = _remotePosts
+        .where((p) => p.id == null || !seedIds.contains(p.id))
+        .toList();
+    return [..._seedPosts, ...remoteWithoutFeatured];
+  }
 
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
 
@@ -165,6 +176,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
   int? _cachedVisibleLimit;
   bool? _cachedVisibleSpotlight;
   int? _cachedSpotlightLen;
+  String? _cachedSeedSignature;
+
+  String get _seedPostsSignature =>
+      _seedPosts.map((p) => '${p.id}:${p.votes}:${p.title}').join('|');
 
   /// Returns the visible slice of posts.
   /// Results are cached and only recomputed when inputs change.
@@ -192,7 +207,8 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
         _cachedVisibleSpotlight == false &&
         _cachedVisibleFilter == _selectedFilter &&
         _cachedVisibleRemoteLen == remoteLen &&
-        _cachedVisibleLimit == limit) {
+        _cachedVisibleLimit == limit &&
+        _cachedSeedSignature == _seedPostsSignature) {
       return _cachedVisiblePosts!;
     }
 
@@ -204,6 +220,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     _cachedVisibleFilter = _selectedFilter;
     _cachedVisibleRemoteLen = remoteLen;
     _cachedVisibleLimit = newLimit;
+    _cachedSeedSignature = _seedPostsSignature;
     return _cachedVisiblePosts = result;
   }
 
@@ -269,6 +286,9 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       if (!mounted) return;
       await NotificationService().showUnreadNotificationsInApp(context);
     });
+
+    // Run all initialization tasks that were scheduled above.
+    // This line was accidentally displaced and is restored here.
   }
 
   /// Initialize all data operations in parallel for faster loading
@@ -281,7 +301,65 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       _fetchCategoryAndLocationMappings(),
       _fetchPinnedPosts(),
       _fetchWodPost(),
+      _fetchFeaturedSeedPosts(),
     ]);
+  }
+
+  static List<PostCardData> _defaultSeedPosts() =>
+      _buildSeedPostsStatic().take(3).toList();
+
+  Map<String, dynamic>? _extractPostMap(
+    Map<String, dynamic> response,
+    String key,
+  ) {
+    if (response['success'] == false) return null;
+    final raw = response[key];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  Future<void> _fetchFeaturedSeedPosts() async {
+    try {
+      final results = await Future.wait([
+        _postService.getTopPost(period: 'week'),
+        _postService.getHottestPost(timeframe: 'week'),
+      ]);
+
+      final topPostMap = _extractPostMap(results[0], 'top_post');
+      final hotPostMap = _extractPostMap(results[1], 'hottest_post');
+
+      final postsToProfile = <Map<String, dynamic>>[
+        if (topPostMap != null) topPostMap,
+        if (hotPostMap != null) hotPostMap,
+      ];
+      if (postsToProfile.isNotEmpty) {
+        await _fetchProfilesForPosts(postsToProfile);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        final defaults = _defaultSeedPosts();
+        _seedPosts = List<PostCardData>.from(defaults);
+
+        if (topPostMap != null) {
+          final mapped = _mapPostToCardData(topPostMap, PostCardVariant.top);
+          if (mapped != null) {
+            _seedPosts[0] = mapped;
+          }
+        }
+
+        if (hotPostMap != null) {
+          final mapped = _mapPostToCardData(hotPostMap, PostCardVariant.hot);
+          if (mapped != null) {
+            _seedPosts[1] = mapped;
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('ERROR _fetchFeaturedSeedPosts: $e');
+    }
   }
 
   Future<void> _fetchWodPost() async {
@@ -784,7 +862,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     }
   }
 
-  List<PostCardData> _buildSeedPosts() {
+  static List<PostCardData> _buildSeedPostsStatic() {
     return [
       PostCardData(
         variant: PostCardVariant.top,
@@ -1091,12 +1169,17 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     final commentsCount = _parseInt(
       post['comments_count'] ?? post['comment_count'] ?? post['replies_count'],
     );
-    final votes = _parseInt(
-      post['votes'] ??
-          post['upvote_count'] ??
-          post['engagement_score'] ??
-          post['net_score'],
-    );
+    final int votes;
+    if (post['net_score'] != null) {
+      votes = _parseInt(post['net_score']);
+    } else if (post['votes'] != null) {
+      votes = _parseInt(post['votes']);
+    } else if (post['upvote_count'] != null || post['downvote_count'] != null) {
+      votes = _parseInt(post['upvote_count'] ?? 0) -
+          _parseInt(post['downvote_count'] ?? 0);
+    } else {
+      votes = _parseInt(post['engagement_score']);
+    }
 
     return PostCardData(
       id: post['id']?.toString(),
@@ -1114,7 +1197,10 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       initials: initials,
       badges: badges,
       userId: userId,
-      userVote: post['user_vote']?.toString(),
+      userVote: PostVoteCacheService.instance.resolveVote(
+        postId: post['id']?.toString(),
+        apiVote: parseUserVoteFromMap(post),
+      ),
       role: post['role']?.toString(),
     );
   }
@@ -1298,6 +1384,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     await _fetchSpotlightStatus();
     await _fetchPinnedPosts();
     await _fetchWodPost();
+    await _fetchFeaturedSeedPosts();
 
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
@@ -2498,6 +2585,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
             if (_selectedFilter == 'New' && !_isShowingSpotlightPosts) ...[
               if (_wodPost != null) ...[
                 PostCard(
+                  key: ValueKey('wod_${_wodPost!.id}'),
                   data: _wodPost!,
                   isPinnedAdmin: true,
                 ),
@@ -2508,6 +2596,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
                 padding: const EdgeInsets.only(bottom: 24),
                 child: RepaintBoundary(
                   child: PostCard(
+                    key: ValueKey('pinned_${pinnedPost.id}'),
                     data: pinnedPost,
                     isPinnedAdmin: true,
                     onPostPinned: _fetchPinnedPosts,
@@ -2538,6 +2627,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
                     padding: const EdgeInsets.only(bottom: 20),
                     child: RepaintBoundary(
                       child: PostCard(
+                        key: ValueKey('post_${post.id}'),
                         data: post,
                         onPostEdited: (_) => _refreshFeed(),
                         onPostDeleted: (postId) {

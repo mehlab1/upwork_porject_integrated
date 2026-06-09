@@ -25,6 +25,8 @@ import 'package:pal/services/junior_moderator_service.dart';
 import 'package:pal/services/reviewer_service.dart';
 import 'package:pal/services/fcm_service.dart';
 import 'package:pal/services/notification_count_manager.dart';
+import 'package:pal/services/post_vote_cache_service.dart';
+import 'package:pal/services/comment_vote_cache_service.dart';
 import 'package:pal/screens/admin/admin_settings_screen.dart';
 import 'package:pal/screens/moderator/moderator_settings_screen.dart';
 import 'package:pal/screens/junior_moderator/jm_settings_screen.dart';
@@ -36,6 +38,7 @@ import 'package:pal/services/auth_service.dart';
 import 'package:pal/widgets/profile_avatar_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'upvoted_posts_screen.dart';
+import 'delete_account_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -46,6 +49,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _pushNotificationsEnabled = true;
+  bool _isUpdatingPushNotifications = false;
   bool _wodEnabled = false;
   bool _isPageLoading = true;
   final AuthLogoutService _logoutService = AuthLogoutService();
@@ -115,9 +119,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      final profileData = await _profileService.getProfileData(
-        forceRefresh: forceRefresh,
-      );
+      final results = await Future.wait([
+        _profileService.getProfileData(forceRefresh: forceRefresh),
+        _profileService.getPushNotificationsEnabled(),
+      ]);
+      final profileData = results[0] as ProfileData?;
+      final pushNotificationsEnabled = results[1] as bool;
       print(
         'DEBUG _loadProfileData: profileData received: ${profileData != null}',
       );
@@ -128,9 +135,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'DEBUG _loadProfileData: totalUpvotesReceived: ${profileData.totalUpvotesReceived}',
         );
       }
+      print(
+        'DEBUG _loadProfileData: pushNotificationsEnabled: $pushNotificationsEnabled',
+      );
       if (!mounted) return;
       setState(() {
         _profileData = profileData;
+        if (profileData != null) {
+          _wodEnabled = profileData.wodOptedIn;
+        }
+        if (!_isUpdatingPushNotifications) {
+          _pushNotificationsEnabled = pushNotificationsEnabled;
+        }
         _isLoadingProfile = false;
       });
       print(
@@ -195,6 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Navigator.of(context).pop();
 
         await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
         await _adminService.clearAdminStatus();
         await _juniorModeratorService.clearJuniorModeratorStatus();
         await _reviewerService.clearReviewerStatus();
@@ -230,6 +248,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
           message: errorMessage.isNotEmpty
               ? errorMessage
               : 'Failed to deactivate account. Please try again.',
+        );
+      }
+    }
+  }
+
+  Future<void> _showDeleteAccountDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: DeleteAccountDialog(
+            reasonController: controller,
+            onDelete: () => Navigator.of(dialogContext).pop(true),
+            onCancel: () => Navigator.of(dialogContext).pop(false),
+          ),
+        );
+      },
+    );
+
+    final reasonText = controller.text.trim();
+    controller.dispose();
+
+    if (result == true && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        final deleteResponse = await _deactivateService.deleteAccount(
+          reason: reasonText.isNotEmpty ? reasonText : null,
+        );
+
+        if (!mounted) return;
+
+        Navigator.of(context).pop();
+
+        await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
+        _profileService.clearAllProfileCaches();
+        await _adminService.clearAdminStatus();
+        await _juniorModeratorService.clearJuniorModeratorStatus();
+        await _reviewerService.clearReviewerStatus();
+
+        try {
+          await Supabase.instance.client.auth.signOut();
+        } catch (e) {
+          print('Note: Local signOut had an issue (non-critical): $e');
+        }
+
+        final message =
+            deleteResponse['message'] as String? ??
+            'Your account has been permanently deleted.';
+
+        PalToast.show(context, message: message);
+
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (!mounted) return;
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      } catch (e) {
+        if (!mounted) return;
+
+        Navigator.of(context).pop();
+
+        final errorMessage = e.toString().replaceFirst('Exception: ', '');
+        PalToast.show(
+          context,
+          message: errorMessage.isNotEmpty
+              ? errorMessage
+              : 'Failed to delete account. Please try again.',
         );
       }
     }
@@ -769,8 +867,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Call the logout edge function to invalidate session on server
         final logoutResponse = await _logoutService.logout();
 
-        // Clear Remember Me preference on logout
-        await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
 
         // Clear admin, junior moderator, and reviewer status on logout
         await _adminService.clearAdminStatus();
@@ -816,8 +914,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } catch (e) {
         if (!mounted) return;
 
-        // Clear Remember Me preference even if logout API failed
-        await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
 
         // Clear notification count manager even if logout API failed
         NotificationCountManager.instance.clear();
@@ -881,71 +979,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _togglePushNotifications() async {
+    if (_isUpdatingPushNotifications) return;
+
     final newValue = !_pushNotificationsEnabled;
 
-    print('=== TOGGLE PUSH NOTIFICATIONS ===');
-    print('Current state: $_pushNotificationsEnabled');
-    print('New value: $newValue');
-    print('Request payload: {push_notifications_enabled: $newValue}');
-    print('================================');
-
-    // Optimistically update UI
     setState(() {
       _pushNotificationsEnabled = newValue;
+      _isUpdatingPushNotifications = true;
     });
 
     try {
       final response = await _profileService.updateNotificationPreferences({
         'push_notifications_enabled': newValue,
       });
-      
-      print('=== TOGGLE PUSH NOTIFICATIONS - RESPONSE ===');
-      print('Response received: ${response != null}');
-      print('Response keys: ${response?.keys.toList()}');
-      print('Response success: ${response?['success']}');
-      print('Response message: ${response?['message']}');
-      print('Response preferences: ${response?['preferences']}');
-      if (response?['preferences'] != null) {
-        final prefs = response!['preferences'] as Map<String, dynamic>?;
-        print('Push notifications enabled in response: ${prefs?['push_notifications_enabled']}');
-      }
-      print('Full response body: $response');
-      print('==========================================');
-      
-      // Verify the response
-      if (response['success'] == true && response['preferences'] != null) {
-        final prefs = response['preferences'] as Map<String, dynamic>;
-        final actualValue = prefs['push_notifications_enabled'] as bool?;
-        print('Response verification: actualValue=$actualValue, expectedValue=$newValue');
-        // Sync with actual response value
-        if (mounted && actualValue != null) {
-          setState(() {
-            _pushNotificationsEnabled = actualValue;
-          });
-          print('UI synced with response value: $actualValue');
-        }
-      }
-    } catch (e, stackTrace) {
-      print('=== TOGGLE PUSH NOTIFICATIONS - ERROR ===');
-      print('Error type: ${e.runtimeType}');
-      print('Error message: ${e.toString()}');
-      print('Error details: $e');
-      print('Stack trace: $stackTrace');
-      print('========================================');
-      
-      // Revert on error
-      if (mounted) {
-        setState(() {
-          _pushNotificationsEnabled = !newValue;
-        });
-        print('UI reverted to previous state: ${!newValue}');
-        PalToast.show(
-          context,
-          message: 'Failed to update notification settings',
-          isError: true,
+
+      if (response['success'] != true) {
+        throw Exception(
+          response['message'] ?? 'Failed to update notification settings',
         );
       }
+
+      var confirmedValue = newValue;
+      final prefs = response['preferences'];
+      if (prefs is Map<String, dynamic>) {
+        confirmedValue = ProfileData.parseBoolean(
+          prefs['push_notifications_enabled'],
+          defaultValue: newValue,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _pushNotificationsEnabled = confirmedValue;
+        _isUpdatingPushNotifications = false;
+      });
+      PalToast.show(
+        context,
+        message: confirmedValue
+            ? 'Push notifications enabled'
+            : 'Push notifications disabled',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _pushNotificationsEnabled = !newValue;
+        _isUpdatingPushNotifications = false;
+      });
+      PalToast.show(
+        context,
+        message: 'Failed to update notification settings',
+        isError: true,
+      );
     }
+  }
+
+  bool _isWodAlreadyInDesiredState(Object? message, bool enabling) {
+    final normalized = message?.toString().toLowerCase() ?? '';
+    if (enabling) {
+      return normalized.contains('already opted in');
+    }
+    return normalized.contains('already opted out');
   }
 
   Future<void> _toggleWOD() async {
@@ -961,9 +1054,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : await _profileService.wodOptOut();
 
       if (response['success'] != true) {
+        if (_isWodAlreadyInDesiredState(response['message'], newValue)) {
+          _profileService.invalidateCurrentUserCache();
+          if (mounted) {
+            PalToast.show(
+              context,
+              message: newValue ? 'WOD enabled' : 'WOD disabled',
+            );
+          }
+          return;
+        }
         throw Exception(response['message'] ?? 'Failed to update WOD settings');
       }
+
+      _profileService.invalidateCurrentUserCache();
+
+      if (mounted) {
+        PalToast.show(
+          context,
+          message: newValue ? 'WOD enabled' : 'WOD disabled',
+        );
+      }
     } catch (e) {
+      if (_isWodAlreadyInDesiredState(e, newValue)) {
+        _profileService.invalidateCurrentUserCache();
+        if (mounted) {
+          setState(() {
+            _wodEnabled = newValue;
+          });
+          PalToast.show(
+            context,
+            message: newValue ? 'WOD enabled' : 'WOD disabled',
+          );
+        }
+        return;
+      }
+
       if (mounted) {
         setState(() {
           _wodEnabled = !newValue;
@@ -1096,6 +1222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               iconAsset: 'assets/settings/pushNotification.svg',
                               iconBackground: const Color(0xFFF1F5F9),
                               trailingBuilder: (context) => GestureDetector(
+                                behavior: HitTestBehavior.opaque,
                                 onTap: _togglePushNotifications,
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 180),
@@ -1292,6 +1419,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               titleColor: const Color(0xFFE7000B),
                               onTap: () =>
                                   _showDeactivateAccountDialog(context),
+                            ),
+                            _SettingsTileData(
+                              title: 'Delete Account',
+                              subtitle: 'Permanently delete your account',
+                              iconAsset: 'assets/settings/settingsdelete.svg',
+                              iconBackground: const Color(0xFFFEF2F2),
+                              titleColor: const Color(0xFFE7000B),
+                              onTap: () => _showDeleteAccountDialog(context),
                             ),
                             _SettingsTileData(
                               title: 'Logout',
@@ -1710,8 +1845,10 @@ class _SettingsTile extends StatelessWidget {
               child: Center(
                 child: svg.SvgPicture.asset(
                   data.iconAsset,
+                  key: ValueKey(data.iconAsset),
                   width: 16,
                   height: 16,
+                  fit: BoxFit.contain,
                   colorFilter: data.iconTint == null
                       ? (isDisabled
                             ? const ColorFilter.mode(

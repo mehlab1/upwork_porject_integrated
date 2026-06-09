@@ -3,9 +3,13 @@ import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'push_notification_display_service.dart';
+import 'push_notification_group_store.dart';
 
 /// FCM Service for handling push notifications
 /// 
@@ -109,21 +113,9 @@ class FCMService {
   /// Set up notification channels for Android
   Future<void> _setupNotificationChannels() async {
     if (!Platform.isAndroid) return;
-
-    const androidChannel = AndroidNotificationChannel(
-      'high_importance_channel', // Must match AndroidManifest.xml
-      'High Importance Notifications',
-      description: 'This channel is used for important notifications.',
-      importance: Importance.high,
-      playSound: true,
-      enableVibration: true,
+    await PushNotificationDisplayService.ensureAndroidNotificationChannel(
+      _localNotifications,
     );
-
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(androidChannel);
-
     debugPrint('[FCMService] Notification channel created: high_importance_channel');
   }
 
@@ -147,14 +139,26 @@ class FCMService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
+    await PushNotificationDisplayService.ensureInitialized(_localNotifications);
+
     debugPrint('[FCMService] Local notifications initialized');
   }
 
   /// Handle notification tap (from local/system notification shown for foreground FCM)
   void _onNotificationTapped(NotificationResponse response) {
     debugPrint('[FCMService] Notification tapped: ${response.payload}');
-    // Use the stored foreground message data for navigation
-    final data = _lastForegroundMessageData;
+
+    Map<String, dynamic>? data = _lastForegroundMessageData;
+    if ((data == null || data.isEmpty) &&
+        response.payload != null &&
+        response.payload!.isNotEmpty) {
+      try {
+        data = jsonDecode(response.payload!) as Map<String, dynamic>;
+      } catch (_) {
+        debugPrint('[FCMService] Could not parse notification payload');
+      }
+    }
+
     if (data != null && data.isNotEmpty) {
       _pendingNavigationData = data;
       if (_onNotificationTapCallback != null) {
@@ -392,14 +396,11 @@ class FCMService {
       // Store message data so it's available if the local notification is tapped
       _lastForegroundMessageData = message.data;
       if (_onForegroundMessageCallback != null) {
-        // Show in-app PalPushNotification overlay
         _onForegroundMessageCallback!(title, body, message.data);
       } else {
-        // Fallback: show system notification when no in-app callback is registered
-        _showLocalNotificationFromContent(
-          title: title,
-          body: body,
-          payload: message.data.toString(),
+        await PushNotificationDisplayService.showFromRemoteMessage(
+          message,
+          plugin: _localNotifications,
         );
       }
     });
@@ -486,7 +487,18 @@ class FCMService {
     required String title,
     required String body,
     String? payload,
+    Map<String, dynamic>? data,
   }) async {
+    if (data != null && data.isNotEmpty) {
+      await PushNotificationDisplayService.showFromData(
+        data: data,
+        fallbackTitle: title,
+        fallbackBody: body,
+        payload: payload,
+        plugin: _localNotifications,
+      );
+      return;
+    }
 
     const androidDetails = AndroidNotificationDetails(
       'high_importance_channel',
@@ -541,6 +553,7 @@ class FCMService {
       await _firebaseMessaging.deleteToken();
       _currentToken = null;
       _isInitialized = false;
+      await PushNotificationGroupStore.clear();
 
       debugPrint('[FCMService] Device unregistered');
     } catch (e) {
@@ -560,8 +573,42 @@ class FCMService {
 /// Must be a top-level function, not a class method
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(
+    InitializationSettings(
+      android: Platform.isAndroid
+          ? const AndroidInitializationSettings('@mipmap/ic_launcher')
+          : null,
+      iOS: Platform.isIOS
+          ? const DarwinInitializationSettings(
+              requestAlertPermission: false,
+              requestBadgePermission: false,
+              requestSoundPermission: false,
+            )
+          : null,
+    ),
+  );
+  await PushNotificationDisplayService.ensureInitialized(plugin);
+  await PushNotificationDisplayService.ensureAndroidNotificationChannel(plugin);
+
+  try {
+    if (message.notification == null) {
+      await PushNotificationDisplayService.showFromRemoteMessage(
+        message,
+        plugin: plugin,
+        generateAvatars: false,
+      );
+    }
+  } catch (e, stack) {
+    debugPrint('[FCMService] Background styled notification failed: $e');
+    debugPrint('$stack');
+  }
+
   debugPrint('[FCMService] Background message received: ${message.messageId}');
-  // Handle background message processing here
 }
 

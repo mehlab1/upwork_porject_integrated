@@ -85,12 +85,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
   // UI state
   int _passwordStrength = 0; // Password strength (0-4 segments)
   bool _isLoading = false;
-  
+
+  static final RegExp _passwordUppercase = RegExp(r'[A-Z]');
+  static final RegExp _passwordLowercase = RegExp(r'[a-z]');
+  static final RegExp _passwordDigit = RegExp(r'\d');
+  static final RegExp _passwordSpecial = RegExp(
+    r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;/`~]',
+  );
+
   // Password validation state
   bool _hasMinLength = false;
   bool _hasCapital = false;
   bool _hasLowercase = false;
   bool _hasNumber = false;
+  bool _hasSpecial = false;
 
   // Username checking state
   bool _isCheckingUsername = false;
@@ -670,21 +678,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  /// Calculates password strength based on required validation rules (returns 0-4)
-  /// Rules:
-  /// - Length >= 8
-  /// - Contains uppercase [A-Z]
-  /// - Contains lowercase [a-z]
-  /// - Contains number [0-9]
+  /// Calculates password strength for the 4-segment bar (returns 0-4).
+  /// Bar 1: length, 2: uppercase, 3: lowercase, 4: number + special (both required).
   int _calculatePasswordStrength(String password) {
     if (password.isEmpty) return 0;
 
-    // Count how many required validation rules are met
     int rulesMet = 0;
     if (password.length >= 8) rulesMet++;
-    if (password.contains(RegExp(r'[A-Z]'))) rulesMet++;
-    if (password.contains(RegExp(r'[a-z]'))) rulesMet++;
-    if (password.contains(RegExp(r'\d'))) rulesMet++;
+    if (password.contains(_passwordUppercase)) rulesMet++;
+    if (password.contains(_passwordLowercase)) rulesMet++;
+    if (password.contains(_passwordDigit) &&
+        password.contains(_passwordSpecial)) {
+      rulesMet++;
+    }
 
     return rulesMet;
   }
@@ -693,9 +699,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void _validatePasswordRequirements(String password) {
     setState(() {
       _hasMinLength = password.length >= 8;
-      _hasCapital = password.contains(RegExp(r'[A-Z]'));
-      _hasLowercase = password.contains(RegExp(r'[a-z]'));
-      _hasNumber = password.contains(RegExp(r'\d'));
+      _hasCapital = password.contains(_passwordUppercase);
+      _hasLowercase = password.contains(_passwordLowercase);
+      _hasNumber = password.contains(_passwordDigit);
+      _hasSpecial = password.contains(_passwordSpecial);
     });
   }
 
@@ -703,19 +710,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isPasswordFullyValid(String password) {
     if (password.isEmpty) return false;
     return password.length >= 8 &&
-        password.contains(RegExp(r'[A-Z]')) &&
-      password.contains(RegExp(r'[a-z]')) &&
-      password.contains(RegExp(r'\d'));
+        password.contains(_passwordUppercase) &&
+        password.contains(_passwordLowercase) &&
+        password.contains(_passwordDigit) &&
+        password.contains(_passwordSpecial);
   }
 
   /// Gets the current password hint (one at a time, in priority order)
   String? _getPasswordHint() {
-    final password = _passwordController.text;
-    if (password.isEmpty) {
-      return 'Use 8+ characters with uppercase, lowercase, and number';
+    if (_passwordController.text.isEmpty) {
+      return 'Use 8+ characters with uppercase, lowercase, number, and special character';
     }
-    
-    // Show hints one at a time in priority order
+
     if (!_hasMinLength) {
       return 'Password must be at least 8 characters';
     }
@@ -728,8 +734,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (!_hasNumber) {
       return 'Password must contain at least one number';
     }
-    
-    // All requirements met
+    if (!_hasSpecial) {
+      return 'Password must contain at least one special character (e.g. !, @, #, %)';
+    }
+
     return null;
   }
 
@@ -749,14 +757,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: Row(
             children: List.generate(4, (index) {
               final isFilled = index < _passwordStrength;
-                // Determine a single color for the current strength level.
-                // Green appears ONLY when all 4 requirements are met.
+              // Green when all 4 segments are filled (all 5 rules satisfied).
               final int s = _passwordStrength;
               final Color activeColor = s <= 1
                   ? const Color(0xFFDC2626) // red
                   : (s < 4
-                    ? const Color(0xFFF59E0B) // yellow
-                    : const Color(0xFF16A34A)); // green (all requirements)
+                      ? const Color(0xFFF59E0B) // yellow
+                      : const Color(0xFF16A34A)); // green
               return Expanded(
                 child: Container(
                   margin: EdgeInsets.only(right: index < 3 ? 3.5 : 0),
@@ -1957,11 +1964,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     // Check Password
-    if (password.isEmpty ||
-        password.length < 8 ||
-        !password.contains(RegExp(r'[A-Z]')) ||
-        !password.contains(RegExp(r'[a-z]')) ||
-        !password.contains(RegExp(r'\d'))) {
+    if (!_isPasswordFullyValid(password)) {
       return false;
     }
 
@@ -2099,14 +2102,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } else if (password.length < 8) {
       newPasswordError = 'Password must be at least 8 characters';
       isValid = false;
-    } else if (!password.contains(RegExp(r'[A-Z]'))) {
+    } else if (!password.contains(_passwordUppercase)) {
       newPasswordError = 'Password must contain at least one capital letter';
       isValid = false;
-    } else if (!password.contains(RegExp(r'[a-z]'))) {
+    } else if (!password.contains(_passwordLowercase)) {
       newPasswordError = 'Password must contain at least one lowercase letter';
       isValid = false;
-    } else if (!password.contains(RegExp(r'\d'))) {
+    } else if (!password.contains(_passwordDigit)) {
       newPasswordError = 'Password must contain at least one number';
+      isValid = false;
+    } else if (!password.contains(_passwordSpecial)) {
+      newPasswordError =
+          'Password must contain at least one special character (e.g. !, @, #, %)';
       isValid = false;
     } else {
       newPasswordError = null;

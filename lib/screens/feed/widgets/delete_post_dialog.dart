@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-const _deleteIconAsset = 'assets/feedPage/deleteIcon.svg';
+const _deleteIconAsset = 'assets/settings/alertDeactivate.svg';
 const _deleteButtonIconAsset = 'assets/feedPage/deleteIcon.svg';
 
 const _dialogBorderColor = Color(0xFFE2E8F0);

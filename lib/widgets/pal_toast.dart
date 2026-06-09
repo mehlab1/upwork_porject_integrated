@@ -123,31 +123,36 @@ class _ToastWidget extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: Responsive.scaledPadding(context, 19.995),
-            height: Responsive.scaledPadding(context, 19.995),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 2,
-                  offset: const Offset(0, 4),
+          if (isError)
+            SvgPicture.asset(
+              'assets/images/exclamationIcon.svg',
+              width: Responsive.scaledIcon(context, 20),
+              height: Responsive.scaledIcon(context, 20),
+            )
+          else
+            Container(
+              width: Responsive.scaledPadding(context, 19.995),
+              height: Responsive.scaledPadding(context, 19.995),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 2,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: SvgPicture.asset(
+                  'assets/images/checkIcon.svg',
+                  width: Responsive.scaledIcon(context, 12),
+                  height: Responsive.scaledIcon(context, 12),
                 ),
-              ],
-            ),
-            child: Center(
-              child: SvgPicture.asset(
-                isError
-                    ? 'assets/images/exclamationIcon.svg'
-                    : 'assets/images/checkIcon.svg',
-                width: Responsive.scaledIcon(context, 12),
-                height: Responsive.scaledIcon(context, 12),
               ),
             ),
-          ),
           SizedBox(width: Responsive.scaledPadding(context, 12)),
           Expanded(
             child: hasTwoLines

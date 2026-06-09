@@ -440,6 +440,32 @@ class _NotificationTile extends StatelessWidget {
                       ),
                   ],
                 ),
+                if (item.body != null && item.bodyAsQuote) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: Color(0xFFCBD5E1), width: 3),
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
+                    child: Text(
+                      item.body!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: Color(0xFF475467),
+                      ),
+                    ),
+                  ),
+                ],
+                if (item.postTitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    item.postTitle!,
+                    style: NotificationItem.postTitleTextStyle,
+                  ),
+                ],
                 if (item.subtitle != null) ...[
                   const SizedBox(height: 6),
                   Text(
@@ -452,41 +478,23 @@ class _NotificationTile extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (item.body != null) ...[
+                if (item.body != null && !item.bodyAsQuote) ...[
                   const SizedBox(height: 6),
-                  if (item.bodyAsQuote)
-                    Container(
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: Color(0xFFCBD5E1), width: 3),
-                        ),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
-                      child: Text(
-                        item.body!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                          color: Color(0xFF475467),
-                        ),
-                      ),
-                    )
-                  else
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                      child: Text(
-                        item.body!,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          color: Color(0xFF475467),
-                        ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Text(
+                      item.body!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.4,
+                        color: Color(0xFF475467),
                       ),
                     ),
+                  ),
                 ],
                 if (item.ctaLabel != null) ...[
                   const SizedBox(height: 10),

@@ -1,20 +1,29 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:async';
+
 import '../../services/auth_service.dart';
+import '../login/login_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String email;
   final ValueChanged<String>? onSuccess;
   final bool isPasswordReset;
 
+  /// When true, no OTP was sent (e.g. signup with an existing email).
+  /// Resend is a no-op; verification always fails server-side.
+  final bool skipOtpDelivery;
+
   const OtpVerificationScreen({
-    super.key, 
-    required this.email, 
+    super.key,
+    required this.email,
     this.onSuccess,
     this.isPasswordReset = false,
+    this.skipOtpDelivery = false,
   });
 
   @override
@@ -43,6 +52,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   bool _isResending = false;
   String? _otpError;
 
+  late final TapGestureRecognizer _loginTapRecognizer;
+
   // Colors from Figma
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _primary900 = Color(0xFF100B3C);
@@ -52,6 +63,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   @override
   void initState() {
     super.initState();
+    _loginTapRecognizer = TapGestureRecognizer()
+      ..onTap = () {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      };
     _startResendTimer();
     // Focus on first OTP box when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -68,6 +87,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       focusNode.dispose();
     }
     _resendTimer?.cancel();
+    _loginTapRecognizer.dispose();
     super.dispose();
   }
 
@@ -157,7 +177,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     });
 
     try {
-      await _authService.resendOtp(email: widget.email);
+      if (!widget.skipOtpDelivery) {
+        await _authService.resendOtp(email: widget.email);
+      }
 
       if (!mounted) return;
 
@@ -165,24 +187,23 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         _isResending = false;
       });
 
-      // Clear OTP fields
       for (var controller in _controllers) {
         controller.clear();
       }
       _focusNodes[0].requestFocus();
       _currentIndex = 0;
 
-      // Restart timer
       _startResendTimer();
 
-      // Show success feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('OTP resent successfully!'),
-          backgroundColor: Colors.green.shade600,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      if (!widget.skipOtpDelivery) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('OTP resent successfully!'),
+            backgroundColor: Colors.green.shade600,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -264,7 +285,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: horizontalScreenPadding),
                     child: Text(
-                      'Code has been sent to ${widget.email}',
+                      'If this email can be used, we sent a code to ${widget.email}.',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.normal, // Rubik Regular
@@ -475,6 +496,43 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         );
                       }
                     },
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: horizontalScreenPadding,
+                    ),
+                    child: RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.normal,
+                          color: _primary900.withOpacity(0.75),
+                          fontFamily: 'Rubik',
+                          height: 1.4,
+                          letterSpacing: 0.1,
+                        ),
+                        children: [
+                          const TextSpan(
+                            text: 'Didn\'t get a code? Check spam or ',
+                          ),
+                          TextSpan(
+                            text: 'Log in',
+                            style: TextStyle(
+                              color: _primaryColor,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.underline,
+                              decorationColor: _primaryColor,
+                            ),
+                            recognizer: _loginTapRecognizer,
+                          ),
+                          const TextSpan(text: '.'),
+                        ],
+                      ),
+                    ),
                   ),
 
                   const SizedBox(height: 18),

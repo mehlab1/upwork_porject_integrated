@@ -26,6 +26,8 @@ import 'package:pal/services/moderator_service.dart';
 import 'package:pal/services/junior_moderator_service.dart';
 import 'package:pal/services/fcm_service.dart';
 import 'package:pal/services/notification_count_manager.dart';
+import 'package:pal/services/post_vote_cache_service.dart';
+import 'package:pal/services/comment_vote_cache_service.dart';
 import 'package:pal/services/profile_service.dart';
 import 'package:pal/services/profile_picture_service.dart';
 import 'package:pal/services/post_service.dart';
@@ -44,6 +46,7 @@ class JmSettingsScreen extends StatefulWidget {
 
 class _JmSettingsScreenState extends State<JmSettingsScreen> {
   bool _pushNotificationsEnabled = true;
+  bool _isUpdatingPushNotifications = false;
   bool _isPageLoading = true;
   final AuthLogoutService _logoutService = AuthLogoutService();
   final AuthRememberMeService _rememberMeService = AuthRememberMeService();
@@ -92,7 +95,12 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
     });
 
     try {
-      final profileData = await _profileService.getProfileData(forceRefresh: forceRefresh);
+      final results = await Future.wait([
+        _profileService.getProfileData(forceRefresh: forceRefresh),
+        _profileService.getPushNotificationsEnabled(),
+      ]);
+      final profileData = results[0] as ProfileData?;
+      final pushNotificationsEnabled = results[1] as bool;
       print(
         'DEBUG _loadProfileData: profileData received: ${profileData != null}',
       );
@@ -103,9 +111,15 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
           'DEBUG _loadProfileData: totalUpvotesReceived: ${profileData.totalUpvotesReceived}',
         );
       }
+      print(
+        'DEBUG _loadProfileData: pushNotificationsEnabled: $pushNotificationsEnabled',
+      );
       if (!mounted) return;
       setState(() {
         _profileData = profileData;
+        if (!_isUpdatingPushNotifications) {
+          _pushNotificationsEnabled = pushNotificationsEnabled;
+        }
         _isLoadingProfile = false;
       });
       print(
@@ -182,6 +196,8 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
 
         // Clear Remember Me preference on deactivation
         await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
 
         // Clear admin and junior moderator status on deactivation
         await _adminService.clearAdminStatus();
@@ -763,8 +779,8 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
         // Call the logout edge function to invalidate session on server
         final logoutResponse = await _logoutService.logout();
 
-        // Clear Remember Me preference on logout
-        await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
 
         // Clear admin and junior moderator status on logout
         await _adminService.clearAdminStatus();
@@ -809,8 +825,8 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
       } catch (e) {
         if (!mounted) return;
 
-        // Clear Remember Me preference even if logout API failed
-        await _rememberMeService.clearRememberMe();
+        await PostVoteCacheService.instance.clear();
+        await CommentVoteCacheService.instance.clear();
 
         // Clear notification count manager even if logout API failed
         NotificationCountManager.instance.clear();
@@ -874,70 +890,57 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
   }
 
   Future<void> _togglePushNotifications() async {
+    if (_isUpdatingPushNotifications) return;
+
     final newValue = !_pushNotificationsEnabled;
 
-    print('=== TOGGLE PUSH NOTIFICATIONS ===');
-    print('Current state: $_pushNotificationsEnabled');
-    print('New value: $newValue');
-    print('Request payload: {push_notifications_enabled: $newValue}');
-    print('================================');
-
-    // Optimistically update UI
     setState(() {
       _pushNotificationsEnabled = newValue;
+      _isUpdatingPushNotifications = true;
     });
 
     try {
       final response = await _profileService.updateNotificationPreferences({
         'push_notifications_enabled': newValue,
       });
-      
-      print('=== TOGGLE PUSH NOTIFICATIONS - RESPONSE ===');
-      print('Response received: ${response != null}');
-      print('Response keys: ${response?.keys.toList()}');
-      print('Response success: ${response?['success']}');
-      print('Response message: ${response?['message']}');
-      print('Response preferences: ${response?['preferences']}');
-      if (response?['preferences'] != null) {
-        final prefs = response!['preferences'] as Map<String, dynamic>?;
-        print('Push notifications enabled in response: ${prefs?['push_notifications_enabled']}');
-      }
-      print('Full response body: $response');
-      print('==========================================');
-      
-      // Verify the response
-      if (response['success'] == true && response['preferences'] != null) {
-        final prefs = response['preferences'] as Map<String, dynamic>;
-        final actualValue = prefs['push_notifications_enabled'] as bool?;
-        print('Response verification: actualValue=$actualValue, expectedValue=$newValue');
-        // Sync with actual response value
-        if (mounted && actualValue != null) {
-          setState(() {
-            _pushNotificationsEnabled = actualValue;
-          });
-          print('UI synced with response value: $actualValue');
-        }
-      }
-    } catch (e, stackTrace) {
-      print('=== TOGGLE PUSH NOTIFICATIONS - ERROR ===');
-      print('Error type: ${e.runtimeType}');
-      print('Error message: ${e.toString()}');
-      print('Error details: $e');
-      print('Stack trace: $stackTrace');
-      print('========================================');
-      
-      // Revert on error
-      if (mounted) {
-        setState(() {
-          _pushNotificationsEnabled = !newValue;
-        });
-        print('UI reverted to previous state: ${!newValue}');
-        PalToast.show(
-          context,
-          message: 'Failed to update notification settings',
-          isError: true,
+
+      if (response['success'] != true) {
+        throw Exception(
+          response['message'] ?? 'Failed to update notification settings',
         );
       }
+
+      var confirmedValue = newValue;
+      final prefs = response['preferences'];
+      if (prefs is Map<String, dynamic>) {
+        confirmedValue = ProfileData.parseBoolean(
+          prefs['push_notifications_enabled'],
+          defaultValue: newValue,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _pushNotificationsEnabled = confirmedValue;
+        _isUpdatingPushNotifications = false;
+      });
+      PalToast.show(
+        context,
+        message: confirmedValue
+            ? 'Push notifications enabled'
+            : 'Push notifications disabled',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _pushNotificationsEnabled = !newValue;
+        _isUpdatingPushNotifications = false;
+      });
+      PalToast.show(
+        context,
+        message: 'Failed to update notification settings',
+        isError: true,
+      );
     }
   }
 
@@ -1089,6 +1092,7 @@ class _JmSettingsScreenState extends State<JmSettingsScreen> {
                               iconAsset: 'assets/settings/pushNotification.svg',
                               iconBackground: const Color(0xFFF1F5F9),
                               trailingBuilder: (context) => GestureDetector(
+                                behavior: HitTestBehavior.opaque,
                                 onTap: _togglePushNotifications,
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 180),

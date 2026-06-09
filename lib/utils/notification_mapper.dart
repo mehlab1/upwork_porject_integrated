@@ -14,7 +14,14 @@ class NotificationMapper {
       final title = notification['title']?.toString() ?? '';
       final body = notification['body']?.toString()
           ?? notification['message']?.toString() ?? '';
-      final data = notification['data'] as Map<String, dynamic>? ?? {};
+      final data = Map<String, dynamic>.from(
+        notification['data'] as Map<String, dynamic>? ?? {},
+      );
+      for (final key in ['post_content', 'comment_content', 'content', 'post_title']) {
+        if (notification[key] != null && data[key] == null) {
+          data[key] = notification[key];
+        }
+      }
 
       // Edge function marks read via read_at timestamp; fallback to is_read bool.
       final rawIsRead = notification['is_read'];
@@ -143,6 +150,7 @@ class NotificationMapper {
       final mappedItem = NotificationItem(
         headlineParts: item.headlineParts,
         subtitle: item.subtitle,
+        postTitle: item.postTitle,
         body: item.body,
         bodyAsQuote: item.bodyAsQuote,
         timestamp: item.timestamp,
@@ -186,16 +194,13 @@ class NotificationMapper {
     final formattedUsername = (raw == 'Someone' || raw.isEmpty)
         ? 'Someone'
         : (raw.startsWith('@') ? raw : '@$raw');
-    final postContent = data['post_content']?.toString() ?? '';
 
     return NotificationItem(
       headlineParts: [
         HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' commented on one of your posts'),
       ],
-      subtitle: postContent.isNotEmpty && postContent.length <= 100
-          ? postContent
-          : (postContent.length > 100 ? '${postContent.substring(0, 100)}...' : null),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -226,7 +231,9 @@ class NotificationMapper {
         HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' replied to your comment'),
       ],
-      subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
+      body: _commentContentFromData(data),
+      bodyAsQuote: true,
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -257,7 +264,7 @@ class NotificationMapper {
         HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' upvoted your post'),
       ],
-      subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -288,9 +295,9 @@ class NotificationMapper {
         HeadlinePart(formattedUsername, isEmphasized: true),
         const HeadlinePart(' upvoted your comment'),
       ],
-      body: data['comment_content']?.toString() ?? data['content']?.toString(),
+      body: _commentContentFromData(data),
       bodyAsQuote: true,
-      subtitle: data['post_content']?.toString(),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -323,7 +330,7 @@ class NotificationMapper {
         HeadlinePart(formattedUsername, isEmphasized: true),
         HeadlinePart(isInPost ? ' mentioned you in a post' : ' mentioned you in a comment'),
       ],
-      subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -346,7 +353,7 @@ class NotificationMapper {
       headlineParts: [
         const HeadlinePart('Your post is getting hot!'),
       ],
-      subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -370,7 +377,7 @@ class NotificationMapper {
       headlineParts: [
         const HeadlinePart('Your post reached Top Posts this week!'),
       ],
-      subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -395,7 +402,7 @@ class NotificationMapper {
       headlineParts: [
         HeadlinePart('Your post is trending in $locationName'),
       ],
-      subtitle: data['post_content']?.toString() ?? data['content']?.toString(),
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -415,12 +422,12 @@ class NotificationMapper {
     Color? tileBackgroundColor,
   ) {
     return NotificationItem(
-      headlineParts: [
-        HeadlinePart(title.isNotEmpty ? title : 'Wahala of the Day'),
+      headlineParts: const [
+        HeadlinePart('Your post is the '),
+        HeadlinePart('wahala of the Day', isEmphasized: true),
+        HeadlinePart(' for the next 24hrs!'),
       ],
-      body: body.isNotEmpty
-          ? body
-          : 'Your post is the "Wahala of the Day" for the next 24hrs.',
+      postTitle: _postTitleFromContent(data),
       timestamp: timestamp,
       unread: !isRead,
       tileBackgroundColor: tileBackgroundColor,
@@ -506,6 +513,33 @@ class NotificationMapper {
       avatarIconColor: const Color(0xFF475467),
       notificationData: null,
     );
+  }
+
+  static String? _commentContentFromData(Map<String, dynamic> data) {
+    final raw = data['comment_content']?.toString().trim()
+        ?? data['content']?.toString().trim();
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    return raw;
+  }
+
+  /// First segment of combined post content (title before `\n\n`), matching feed parsing.
+  static String? _postTitleFromContent(Map<String, dynamic> data) {
+    final rawTitle = data['post_title']?.toString().trim();
+    if (rawTitle != null && rawTitle.isNotEmpty) {
+      return rawTitle;
+    }
+
+    final rawContent = data['post_content']?.toString().trim()
+        ?? data['content']?.toString().trim();
+    if (rawContent == null || rawContent.isEmpty) {
+      return null;
+    }
+
+    final segments = rawContent.split('\n\n');
+    final title = segments.first.trim();
+    return title.isEmpty ? null : title;
   }
 
   /// Format timestamp to relative time (e.g., "2m ago", "1h ago")

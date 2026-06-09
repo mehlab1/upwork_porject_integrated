@@ -6,6 +6,7 @@ class NotificationItem {
     required this.headlineParts,
     required this.timestamp,
     this.subtitle,
+    this.postTitle,
     this.body,
     this.bodyAsQuote = false,
     this.avatarNetworkUrl,
@@ -26,6 +27,7 @@ class NotificationItem {
 
   final List<HeadlinePart> headlineParts;
   final String? subtitle;
+  final String? postTitle;
   final String? body;
   final bool bodyAsQuote;
   final String timestamp;
@@ -44,9 +46,19 @@ class NotificationItem {
   final Color? tileBackgroundColor;
   final Map<String, dynamic>? notificationData; // Store original data for navigation
 
+  static const TextStyle postTitleTextStyle = TextStyle(
+    fontFamily: 'Inter',
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.15,
+    color: Color(0xFF62748E),
+  );
+
   NotificationItem copyWith({
     List<HeadlinePart>? headlineParts,
     String? subtitle,
+    String? postTitle,
     String? body,
     bool? bodyAsQuote,
     String? timestamp,
@@ -68,6 +80,7 @@ class NotificationItem {
     return NotificationItem(
       headlineParts: headlineParts ?? this.headlineParts,
       subtitle: subtitle ?? this.subtitle,
+      postTitle: postTitle ?? this.postTitle,
       body: body ?? this.body,
       bodyAsQuote: bodyAsQuote ?? this.bodyAsQuote,
       timestamp: timestamp ?? this.timestamp,

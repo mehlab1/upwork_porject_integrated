@@ -345,18 +345,15 @@ class _ModeratorSettingsScreenState extends State<ModeratorSettingsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: PalBottomNavigationBar(
-          active: PalNavDestination.settings,
-          onHomeTap: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          },
-          onNotificationsTap: () {
-            Navigator.pushNamed(context, '/notifications');
-          },
-          onSettingsTap: () {},
-        ),
+      bottomNavigationBar: PalBottomNavigationBar(
+        active: PalNavDestination.settings,
+        onHomeTap: () {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+        onNotificationsTap: () {
+          Navigator.pushNamed(context, '/notifications');
+        },
+        onSettingsTap: () {},
       ),
     );
     return Stack(

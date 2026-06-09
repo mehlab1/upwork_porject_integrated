@@ -1,8 +1,12 @@
-﻿import 'dart:ui' as ui;
+﻿import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'widgets/jm_post_card.dart';
 import 'package:pal/services/post_service.dart';
+import 'package:pal/services/post_vote_cache_service.dart';
 import 'package:pal/services/profile_service.dart';
+import 'package:pal/utils/post_vote_utils.dart';
 import 'package:pal/widgets/profile_avatar_widget.dart';
 import 'package:pal/widgets/pal_loading_widgets.dart';
 import 'package:intl/intl.dart';
@@ -36,20 +40,98 @@ class _JmUpvotedPostsScreenState extends State<JmUpvotedPostsScreen> {
   @override
   void initState() {
     super.initState();
-    // Skip the loading spinner if data is already cached
-    _isLoading = !_postService.isUpvotedPostsCached;
-    _loadData();
+    final cached = _postService.peekUpvotedPostsCache();
+    if (cached != null) {
+      _applyPostsResponse(cached, notify: true);
+      _isLoading = false;
+    } else {
+      _isLoading = true;
+    }
+    unawaited(_loadData());
+    unawaited(
+      _profileService.getProfileData().then((profile) {
+        if (!mounted || profile == null || _profileData != null) return;
+        setState(() => _profileData = profile);
+      }),
+    );
+  }
+
+  List<Map<String, dynamic>> _typedPostsFromResponse(
+    Map<String, dynamic> response,
+  ) {
+    final postsList = response['posts'] as List<dynamic>? ?? [];
+    return postsList
+        .map((post) {
+          if (post is Map<String, dynamic>) return post;
+          if (post is Map) return Map<String, dynamic>.from(post);
+          return null;
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  void _applyPostsResponse(Map<String, dynamic> response, {required bool notify}) {
+    final postsListTyped = _typedPostsFromResponse(response);
+    final mappedPosts = postsListTyped
+        .map(_mapPostToCardData)
+        .whereType<JmPostCardData>()
+        .toList();
+    final totalUpvoted =
+        _parseInt(response['total_upvoted_posts']) != 0
+            ? _parseInt(response['total_upvoted_posts'])
+            : mappedPosts.length;
+
+    void apply() {
+      _posts = mappedPosts;
+      _totalUpvotedPosts = totalUpvoted;
+      _isLoading = false;
+      _errorMessage = null;
+    }
+
+    if (notify && mounted) {
+      setState(apply);
+    } else {
+      apply();
+    }
+  }
+
+  bool _postsSnapshotChanged(
+    List<JmPostCardData> nextPosts,
+    int nextTotal,
+  ) {
+    if (_totalUpvotedPosts != nextTotal) return true;
+    if (_posts.length != nextPosts.length) return true;
+    for (var i = 0; i < _posts.length; i++) {
+      final current = _posts[i];
+      final next = nextPosts[i];
+      if (current.id != next.id) return true;
+      if (current.votes != next.votes) return true;
+      if (current.commentsCount != next.commentsCount) return true;
+      if (current.userVote != next.userVote) return true;
+      if (current.title != next.title) return true;
+      if (current.body != next.body) return true;
+      if (current.username != next.username) return true;
+    }
+    return false;
   }
 
   Future<void> _loadData() async {
-    _errorMessage = null;
+    final showingCachedContent = !_isLoading && _posts.isNotEmpty;
+
+    if (!showingCachedContent && mounted) {
+      setState(() => _errorMessage = null);
+    }
 
     try {
-      // Fetch upvoted posts and profile in parallel.
-      // getUpvotedPosts returns instantly if prefetched — no spinner needed.
       final results = await Future.wait([
-        _postService.getUpvotedPosts(limit: 100, offset: 0),
-        _profileService.getProfileData(),
+        _postService.getUpvotedPosts(
+          limit: 100,
+          offset: 0,
+          forceRefresh: true,
+        ),
+        _profileData != null
+            ? Future<ProfileData?>.value(_profileData)
+            : _profileService.getProfileData(),
       ]);
 
       if (!mounted) return;
@@ -57,40 +139,41 @@ class _JmUpvotedPostsScreenState extends State<JmUpvotedPostsScreen> {
       final postsResponse = results[0] as Map<String, dynamic>;
       final profileData = results[1] as ProfileData?;
 
-      final postsList = postsResponse['posts'] as List<dynamic>? ?? [];
-      final totalUpvoted =
-          postsResponse['total_upvoted_posts'] as int? ?? postsList.length;
-      
-      // Convert to List<Map<String, dynamic>> for profile fetching
-      final postsListTyped = postsList
-          .map((post) {
-            if (post is Map<String, dynamic>) {
-              return post;
-            }
-            if (post is Map) {
-              return Map<String, dynamic>.from(post);
-            }
-            return null;
-          })
-          .whereType<Map<String, dynamic>>()
-          .toList();
-      
-      // Fetch profiles for posts (like in feed section)
+      final postsListTyped = _typedPostsFromResponse(postsResponse);
       await _fetchProfilesForPosts(postsListTyped);
-      
+
+      if (!mounted) return;
+
       final mappedPosts = postsListTyped
-          .map((post) => _mapPostToCardData(post))
+          .map(_mapPostToCardData)
           .whereType<JmPostCardData>()
           .toList();
+      final totalUpvoted =
+          _parseInt(postsResponse['total_upvoted_posts']) != 0
+              ? _parseInt(postsResponse['total_upvoted_posts'])
+              : mappedPosts.length;
+
+      final postsChanged = _postsSnapshotChanged(mappedPosts, totalUpvoted);
+      final profileChanged = _profileData?.username != profileData?.username ||
+          _profileData?.pictureUrl != profileData?.pictureUrl;
+
+      if (!postsChanged && !profileChanged) {
+        if (_isLoading && mounted) {
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
 
       setState(() {
         _posts = mappedPosts;
         _profileData = profileData;
         _totalUpvotedPosts = totalUpvoted;
         _isLoading = false;
+        _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
+      if (showingCachedContent) return;
       setState(() {
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
@@ -220,15 +303,23 @@ class _JmUpvotedPostsScreenState extends State<JmUpvotedPostsScreen> {
     final commentsCount = _parseInt(
       post['comments_count'] ?? post['comment_count'] ?? post['replies_count'],
     );
-    final votes = _parseInt(
-      post['votes'] ??
-          post['upvote_count'] ??
-          post['engagement_score'] ??
-          post['net_score'],
-    );
+    final postId = postIdFromMap(post);
+    if (postId == null) return null;
+
+    final int votes;
+    if (post['net_score'] != null) {
+      votes = _parseInt(post['net_score']);
+    } else if (post['votes'] != null) {
+      votes = _parseInt(post['votes']);
+    } else if (post['upvote_count'] != null || post['downvote_count'] != null) {
+      votes = _parseInt(post['upvote_count'] ?? 0) -
+          _parseInt(post['downvote_count'] ?? 0);
+    } else {
+      votes = _parseInt(post['engagement_score']);
+    }
 
     return JmPostCardData(
-      id: post['id']?.toString(),
+      id: postId,
       variant: PostCardVariant.newPost,
       username: username.isEmpty ? '@pal_user' : username,
       timeAgo: _formatTimeAgo(createdAt),
@@ -244,6 +335,10 @@ class _JmUpvotedPostsScreenState extends State<JmUpvotedPostsScreen> {
       profilePictureUrl: profilePictureUrl,
       initials: initials,
       userId: userId,
+      userVote: PostVoteCacheService.instance.resolveVote(
+        postId: postId,
+        apiVote: parseUserVoteFromMap(post) ?? 'upvote',
+      ),
     );
   }
 
@@ -316,6 +411,7 @@ class _JmUpvotedPostsScreenState extends State<JmUpvotedPostsScreen> {
                           return Align(
                             alignment: Alignment.center,
                             child: JmPostCard(
+                              key: ValueKey('upvoted_${post.id}'),
                               data: post,
                               isYourPosts: false,
                               showOverflowMenu: false,

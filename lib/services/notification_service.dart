@@ -255,6 +255,7 @@ class NotificationService {
             context,
             title: title,
             message: body,
+            data: Map<String, dynamic>.from(notification),
           );
           debugPrint('[NotificationService] Shown in-app notification: $title');
         } catch (e) {

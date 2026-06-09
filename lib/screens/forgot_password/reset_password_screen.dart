@@ -37,6 +37,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   static const Color _borderColor = Color(0xFFD0D5DD);
   static const Color _greyIconColor = Color(0xFF8A8D9E);
   static const Color _greenSuccess = Color(0xFF00A63E);
+  static const int _minPasswordLength = 8;
+  static const String _passwordHint =
+      'Use minimum 8 characters with a mix of letters, numbers & symbols';
 
   @override
   void dispose() {
@@ -61,7 +64,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     if (password.isEmpty) return 0;
 
     int strength = 0;
-    if (password.length >= 6) strength++;
+    if (password.length >= _minPasswordLength) strength++;
     if (password.contains(RegExp(r'[A-Za-z]'))) strength++;
     if (password.contains(RegExp(r'[0-9]'))) strength++;
     if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength++;
@@ -88,11 +91,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     String? passwordError;
     String? confirmError;
 
-    if (password.length < 6) {
-      passwordError = 'Password must be at least 6 characters';
-    } else if (!_meetsAllPasswordCriteria(password)) {
+    if (password.length < _minPasswordLength) {
       passwordError =
-          'Use 6+ characters with a mix of letters, numbers & symbols';
+          'Password must be at least $_minPasswordLength characters';
+    } else if (!_meetsAllPasswordCriteria(password)) {
+      passwordError = _passwordHint;
     }
     if (confirm != password) {
       confirmError = 'Passwords do not match';
@@ -271,7 +274,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               Text(
                                 _passwordStrength == 4
                                     ? 'Strong password'
-                                    : 'Use 6+ characters with a mix of letters, numbers & symbols',
+                                    : _passwordHint,
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: _passwordStrength == 4

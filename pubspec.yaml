@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+37
+version: 1.0.0+38
 
 environment:
   sdk: ^3.9.2
@@ -44,6 +44,8 @@ dependencies:
   firebase_messaging: ^16.0.4
   flutter_local_notifications: ^19.5.0
   google_fonts: ^6.2.1
+  app_tracking_transparency: ^2.0.7
+  url_launcher: ^6.3.2
 
 dependency_overrides:
   # Use stub package instead of firebase_messaging_web to avoid compilation errors
@@ -79,12 +81,14 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
+    - assets/branding/
     - assets/images/
     - assets/feedPage/
     - assets/notifications/
     - assets/navbar/
     - assets/authPages/
     - assets/settings/
+    - assets/settings/settingsdelete.svg
     - assets/otp/
     - assets/adminIcons/adminpostMenu/
     - assets/adminIcons/adminSettings/
@@ -127,3 +131,6 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/branding/app_icon.png
+  adaptive_icon_background: "#155DFC"
+  adaptive_icon_foreground: assets/branding/app_icon.png
+  remove_alpha_ios: true

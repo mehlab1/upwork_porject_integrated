@@ -4,8 +4,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/responsive/responsive.dart';
 import '../../services/auth_service.dart';
 import '../login/login_screen.dart';
-import '../settings/community_guidelines_screen.dart';
 import '../otp/otp_verification_screen.dart';
+import '../../utils/external_url_launcher.dart';
 import 'signup_screen.dart';
 
 class EmailCollectionScreen extends StatefulWidget {
@@ -25,6 +25,11 @@ class _EmailCollectionScreenState extends State<EmailCollectionScreen> {
   // Backend service
   final AuthService _authService = AuthService();
 
+  late final TapGestureRecognizer _termsTapRecognizer = TapGestureRecognizer()
+    ..onTap = () => launchTermsOfService();
+  late final TapGestureRecognizer _privacyTapRecognizer = TapGestureRecognizer()
+    ..onTap = () => launchPrivacyPolicy();
+
   // Colors matching signup_screen.dart exactly
   static const Color _primaryColor = Color(0xFF155DFC);
   static const Color _primary900 = Color(0xFF100B3C);
@@ -34,6 +39,8 @@ class _EmailCollectionScreenState extends State<EmailCollectionScreen> {
 
   @override
   void dispose() {
+    _termsTapRecognizer.dispose();
+    _privacyTapRecognizer.dispose();
     _emailController.dispose();
     super.dispose();
   }
@@ -54,11 +61,18 @@ class _EmailCollectionScreenState extends State<EmailCollectionScreen> {
     return emailRegex.hasMatch(email);
   }
 
+  bool _responseIndicatesUserExists(Map<String, dynamic> response) {
+    final exists = response['exists'];
+    if (exists == true) return true;
+    if (exists is String && exists.toLowerCase() == 'true') return true;
+    return false;
+  }
+
   /// Handles the "Sign up" button tap:
   /// 1. Validates email format
   /// 2. Checks terms agreement
-  /// 3. Sends OTP to the email
-  /// 4. Navigates to OTP verification screen
+  /// 3. Checks if email is already registered
+  /// 4. Sends OTP only for new emails; always navigates to OTP screen
   Future<void> _handleSendOtp() async {
     final email = _emailController.text.trim();
 
@@ -96,7 +110,12 @@ class _EmailCollectionScreenState extends State<EmailCollectionScreen> {
     });
 
     try {
-      await _authService.sendOtp(email: email);
+      final checkResponse = await _authService.checkUserExists(email: email);
+      final userAlreadyExists = _responseIndicatesUserExists(checkResponse);
+
+      if (!userAlreadyExists) {
+        await _authService.sendOtp(email: email);
+      }
 
       if (!mounted) return;
 
@@ -104,12 +123,12 @@ class _EmailCollectionScreenState extends State<EmailCollectionScreen> {
         _isLoading = false;
       });
 
-      // Navigate to OTP verification screen
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => OtpVerificationScreen(
             email: email,
+            skipOtpDelivery: userAlreadyExists,
             onSuccess: (otpCode) {
               // OTP verified successfully → navigate to SignUpScreen with verified email
               Navigator.pushReplacement(
@@ -412,50 +431,41 @@ class _EmailCollectionScreenState extends State<EmailCollectionScreen> {
                                   SizedBox(width: Responsive.scaledPadding(context, 12)),
                                   // Terms text
                                   Expanded(
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const CommunityGuidelinesScreen(),
-                                          ),
-                                        );
-                                      },
-                                      child: RichText(
-                                        text: TextSpan(
-                                          style: TextStyle(
-                                            fontSize: Responsive.scaledFont(context, 12),
-                                            fontWeight: FontWeight.normal,
-                                            color: _primary900,
-                                            letterSpacing: 0.2,
-                                            fontFamily: 'Rubik',
-                                            height: 1.4,
-                                          ),
-                                          children: [
-                                            const TextSpan(
-                                              text: 'By signing up I agree, to the ',
-                                            ),
-                                            TextSpan(
-                                              text: 'Terms of Use',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                decoration: TextDecoration.underline,
-                                                color: _primary900,
-                                              ),
-                                            ),
-                                            const TextSpan(text: ' and '),
-                                            TextSpan(
-                                              text: 'Privacy Policy',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                decoration: TextDecoration.underline,
-                                                color: _primary900,
-                                              ),
-                                            ),
-                                            const TextSpan(text: '.'),
-                                          ],
+                                    child: RichText(
+                                      text: TextSpan(
+                                        style: TextStyle(
+                                          fontSize: Responsive.scaledFont(context, 12),
+                                          fontWeight: FontWeight.normal,
+                                          color: _primary900,
+                                          letterSpacing: 0.2,
+                                          fontFamily: 'Rubik',
+                                          height: 1.4,
                                         ),
+                                        children: [
+                                          const TextSpan(
+                                            text: 'By signing up I agree, to the ',
+                                          ),
+                                          TextSpan(
+                                            text: 'Terms of Use',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              decoration: TextDecoration.underline,
+                                              color: _primary900,
+                                            ),
+                                            recognizer: _termsTapRecognizer,
+                                          ),
+                                          const TextSpan(text: ' and '),
+                                          TextSpan(
+                                            text: 'Privacy Policy',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              decoration: TextDecoration.underline,
+                                              color: _primary900,
+                                            ),
+                                            recognizer: _privacyTapRecognizer,
+                                          ),
+                                          const TextSpan(text: '.'),
+                                        ],
                                       ),
                                     ),
                                   ),

@@ -74,6 +74,10 @@ class PostService {
   /// Returns true if upvoted posts data is already cached and fresh.
   bool get isUpvotedPostsCached => _isUpvotedPostsCacheValid;
 
+  /// Cached upvoted-posts payload for instant UI (may be stale).
+  Map<String, dynamic>? peekUpvotedPostsCache() =>
+      _isUpvotedPostsCacheValid ? _upvotedPostsCache : null;
+
   /// Invalidate pinned posts cache (call after pinning/unpinning a post).
   void invalidatePinnedPostsCache() {
     _pinnedPostsCache = null;
@@ -157,7 +161,11 @@ class PostService {
       final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
 
       if (resp.statusCode >= 400) {
-        final errorMessage = parsed['message'] ?? parsed['error'] ?? 'Server error';
+        final details = parsed['details'];
+        final detailedMessage = details is Map<String, dynamic>
+            ? details['message'] as String?
+            : null;
+        final errorMessage = detailedMessage ?? parsed['message'] ?? parsed['error'] ?? 'Server error';
         print('ERROR: Function $functionName returned ${resp.statusCode}: $errorMessage');
         throw Exception(errorMessage);
       }
@@ -915,7 +923,7 @@ class PostService {
   }) async {
     final body = <String, dynamic>{
       'content': content,
-      'enable_monthly_spotlight': enableMonthlySpotlight,
+      'enable_monthly_spotlight': enableMonthlySpotlight == true,
     };
     if (categoryId != null) body['category_id'] = categoryId;
     if (locationId != null) body['location_id'] = locationId;
@@ -924,6 +932,7 @@ class PostService {
     print('DEBUG createPost: Creating post with content length: ${content.length}');
     print('DEBUG createPost: Category ID: $categoryId, Location ID: $locationId');
     print('DEBUG createPost: Monthly spotlight enabled: $enableMonthlySpotlight');
+    print('DEBUG createPost: enable_monthly_spotlight payload: ${enableMonthlySpotlight == true}');
     
     try {
       final response = await _callFunction('create-post', body: body);
@@ -1143,13 +1152,32 @@ class PostService {
   ///
   /// Parameters: limit (int, default 20), offset (int, default 0)
   /// Returns: Map with success (bool), total_upvoted_posts (int), and posts (List<Map<String, dynamic>>)
-  Future<Map<String, dynamic>> getUpvotedPosts({int limit = 20, int offset = 0}) async {
-    // Return cached data if still valid
-    if (_isUpvotedPostsCacheValid) return _upvotedPostsCache!;
-    // Deduplicate concurrent requests
-    if (_inflightUpvotedPosts != null) return _inflightUpvotedPosts!;
+  Future<Map<String, dynamic>> getUpvotedPosts({
+    int limit = 20,
+    int offset = 0,
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _isUpvotedPostsCacheValid) return _upvotedPostsCache!;
+    if (!forceRefresh && _inflightUpvotedPosts != null) {
+      return _inflightUpvotedPosts!;
+    }
 
-    final uri = Uri.parse('https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-upvoted-posts');
+    final fetch = _fetchUpvotedPostsFromNetwork(limit: limit, offset: offset);
+    if (forceRefresh) {
+      return fetch;
+    }
+
+    _inflightUpvotedPosts = fetch.whenComplete(() => _inflightUpvotedPosts = null);
+    return _inflightUpvotedPosts!;
+  }
+
+  Future<Map<String, dynamic>> _fetchUpvotedPostsFromNetwork({
+    required int limit,
+    required int offset,
+  }) async {
+    final uri = Uri.parse(
+      'https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/get-upvoted-posts',
+    );
     try {
       print('=== DEBUG getUpvotedPosts: Getting upvoted posts (limit: $limit, offset: $offset) ===');
       final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
@@ -1160,13 +1188,16 @@ class PostService {
         'Content-Type': 'application/json',
         'apikey': anonKey,
       };
-      if (sessionToken != null) headers['Authorization'] = 'Bearer $sessionToken';
+      if (sessionToken != null) {
+        headers['Authorization'] = 'Bearer $sessionToken';
+      }
 
-      final queryParams = <String, String>{
-        'limit': limit.toString(),
-        'offset': offset.toString(),
-      };
-      final uriWithParams = uri.replace(queryParameters: queryParams);
+      final uriWithParams = uri.replace(
+        queryParameters: {
+          'limit': limit.toString(),
+          'offset': offset.toString(),
+        },
+      );
       print('DEBUG getUpvotedPosts: Request URL: $uriWithParams');
 
       final resp = await http.get(uriWithParams, headers: headers);
@@ -1177,7 +1208,8 @@ class PostService {
       final parsed = jsonDecode(resp.body ?? '{}') as Map<String, dynamic>;
 
       if (resp.statusCode >= 400) {
-        final errorMessage = parsed['error'] ?? parsed['message'] ?? 'Server error';
+        final errorMessage =
+            parsed['error'] ?? parsed['message'] ?? 'Server error';
         print('ERROR getUpvotedPosts: Status ${resp.statusCode} - $errorMessage');
         throw Exception(errorMessage);
       }
@@ -1187,7 +1219,6 @@ class PostService {
       final posts = parsed['posts'] as List<dynamic>? ?? [];
       print('DEBUG getUpvotedPosts: Posts in response - ${posts.length}');
 
-      // Store in cache
       _upvotedPostsCache = parsed;
       _upvotedPostsCacheTime = DateTime.now();
 

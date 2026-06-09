@@ -439,6 +439,30 @@ class ProfileService {
     }
   }
 
+  /// Fetch whether push notifications are enabled for the current user.
+  Future<bool> getPushNotificationsEnabled({bool defaultValue = true}) async {
+    final userId = _supabaseClient.auth.currentUser?.id;
+    if (userId == null) return defaultValue;
+
+    try {
+      final row = await _supabaseClient
+          .from('notification_preferences')
+          .select('push_notifications_enabled')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (row == null) return defaultValue;
+
+      return ProfileData.parseBoolean(
+        row['push_notifications_enabled'],
+        defaultValue: defaultValue,
+      );
+    } catch (e) {
+      debugPrint('[ProfileService] getPushNotificationsEnabled error: $e');
+      return defaultValue;
+    }
+  }
+
   /// Update notification preferences using the update-notification-preferences edge function
   /// 
   /// Parameters: Map of preference keys to boolean values
@@ -549,6 +573,7 @@ class ProfileData {
   final DateTime? usernameUpdatedAt;
   final String? firstName;
   final String? lastName;
+  final bool wodOptedIn;
 
   ProfileData({
     required this.id,
@@ -566,7 +591,24 @@ class ProfileData {
     this.usernameUpdatedAt,
     this.firstName,
     this.lastName,
+    this.wodOptedIn = false,
   });
+
+  static bool parseBoolean(dynamic raw, {bool defaultValue = false}) {
+    if (raw == null) return defaultValue;
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    if (raw is String) {
+      final normalized = raw.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') return true;
+      if (normalized == 'false' || normalized == '0') return false;
+    }
+    return defaultValue;
+  }
+
+  static bool parseWodOptedIn(dynamic raw) {
+    return parseBoolean(raw, defaultValue: false);
+  }
 
   /// Get the profile picture URL (prefers profile_picture_url, falls back to avatar_url)
   String? get pictureUrl => profilePictureUrl ?? avatarUrl;
@@ -673,7 +715,8 @@ class ProfileData {
       map['total_upvotes'] ?? 
       map['upvotes'] ?? 
       map['upvote_count'] ??
-      map['net_upvotes']
+      map['net_upvotes'] ??
+      map['total_upvoted_posts']
     );
     
     print('DEBUG ProfileData.fromMap: Parsed postCount: $postCount');
@@ -695,6 +738,7 @@ class ProfileData {
       usernameUpdatedAt: parseDate(map['username_updated_at']),
       firstName: map['first_name']?.toString(),
       lastName: map['last_name']?.toString(),
+      wodOptedIn: parseWodOptedIn(map['wod_opted_in']),
     );
   }
 }
