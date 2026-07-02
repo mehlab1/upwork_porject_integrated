@@ -7,6 +7,11 @@ class AuthService {
   final _supabaseClient = Supabase.instance.client; // Direct client access
   User? get currentUser => _supabaseClient.auth.currentUser; // Get current user directly from Supabase Auth
 
+  static const String _supabaseAnonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+  static const String _functionsBaseUrl =
+      'https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1';
+
   Future<AuthResponse> signIn({
     required String email,
     required String password,
@@ -43,100 +48,241 @@ class AuthService {
     required String password,
     required Map<String, dynamic> userData,
   }) async {
+    final trimmedEmail = email.trim();
+
     try {
-      // 1. Perform the core Auth signup (only email/password needed by Supabase Auth)
       final response = await _supabaseClient.auth.signUp(
-        email: email,
+        email: trimmedEmail,
         password: password,
       );
-      
-      // 2. If Auth user creation succeeded, create the user profile record
+
       if (response.user != null) {
-        await _createUserProfile(
+        final accessToken = await _resolveSignupSessionToken(
+          email: trimmedEmail,
+          password: password,
           userId: response.user!.id,
+          existingToken: response.session?.accessToken,
+        );
+
+        await _completeSignup(
+          accessToken: accessToken,
           userData: userData,
         );
       }
-      
+
       return response;
     } on AuthException catch (e) {
-      throw AuthException(e.message);
+      if (_isEmailSendRateLimitError(e)) {
+        final recovered = await _tryRecoverSignupAfterRateLimit(
+          email: trimmedEmail,
+          password: password,
+          userData: userData,
+        );
+        if (recovered != null) {
+          return recovered;
+        }
+        throw AuthException(
+          _emailRateLimitMessage,
+          statusCode: e.statusCode,
+          code: e.code,
+        );
+      }
+      throw AuthException(e.message, statusCode: e.statusCode, code: e.code);
     } catch (e) {
       throw AuthException('An unexpected error occurred during signup');
     }
   }
 
-  Future<void> _createUserProfile({
-    required String userId,
+  static const String _emailRateLimitMessage =
+      'Too many verification emails were sent. Please wait about an hour and try again, or log in if you already created your account.';
+
+  bool _isEmailSendRateLimitError(AuthException error) {
+    final code = error.code?.toLowerCase() ?? '';
+    final message = error.message.toLowerCase();
+    return code == 'over_email_send_rate_limit' ||
+        message.contains('email rate limit exceeded') ||
+        message.contains('over_email_send_rate_limit');
+  }
+
+  /// If signup hit the email rate limit, the auth user may still exist from a
+  /// prior attempt — try signing in and finishing the profile write.
+  Future<AuthResponse?> _tryRecoverSignupAfterRateLimit({
+    required String email,
+    required String password,
     required Map<String, dynamic> userData,
   }) async {
     try {
-      // Use the class-level Supabase client
+      final signInResponse = await _supabaseClient.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      if (signInResponse.user == null) return null;
 
-      // Use the actual DOB from userData (already in YYYY-MM-DD format)
-      // If not provided, fall back to a safe default
-      String birthdayString;
-      if (userData['birthday'] != null && userData['birthday'].toString().isNotEmpty) {
-        birthdayString = userData['birthday'].toString();
-      } else {
-        // Fallback: Calculate a safe "old enough" date if DOB not provided
-        final DateTime oldEnoughDate =
-            DateTime.now().subtract(const Duration(days: 365 * 14));
-        birthdayString = oldEnoughDate.toIso8601String().substring(0, 10);
-      }
+      final accessToken = await _resolveSignupSessionToken(
+        email: email,
+        password: password,
+        userId: signInResponse.user!.id,
+        existingToken: signInResponse.session?.accessToken,
+      );
 
-      final profileData = {
-        // Required fields
-        'id': userId,
-        'username': userData['username'],
-        'birthday': birthdayString, // Use actual DOB from userData
-        'terms_accepted': userData['terms_accepted'] ?? false,
-        'privacy_accepted': userData['privacy_accepted'] ?? false,
-
-        // Include NOT NULL columns explicitly (defaults exist but being explicit).
-        'role': userData['role'] ?? 'user',
-        'account_status': userData['account_status'] ?? 'active',
-        'total_posts': userData['total_posts'] ?? 0,
-        'total_upvotes_received': userData['total_upvotes_received'] ?? 0,
-
-        // Optional/nullable
-        'gender': userData['gender']?.toString().toLowerCase(),
-        'profile_picture_url': userData['profile_picture_url'],
-      };
-
-      // Remove keys with null values so we don't send extraneous nulls
-      profileData.removeWhere((key, value) => value == null);
-
-      // Insert using the shared client. Handle duplicate-username conflicts by
-      // attempting small retries with a suffix to avoid 409 unique constraint errors.
-      const int maxRetries = 3;
-      int attempt = 0;
-      String baseUsername = profileData['username']?.toString() ?? 'user';
-      while (true) {
-        try {
-          await _supabaseClient.from('profiles').upsert(
-            profileData,
-            onConflict: 'id',
-            ignoreDuplicates: false,
-          );
-          break; // success
-        } catch (e) {
-          // Detect duplicate username unique constraint and retry with suffix
-          final msg = e.toString() ?? '';
-          if (msg.contains('profiles_username_key') || msg.contains('duplicate key value') && attempt < maxRetries) {
-            attempt++;
-            final suffix = DateTime.now().millisecondsSinceEpoch.toString().substring(9); // short suffix
-            final newUsername = '${baseUsername}_$suffix';
-            profileData['username'] = newUsername;
-            // Retrying with modified username due to duplicate
-            continue;
-          }
-          // If it's not a duplicate-username issue or we've exhausted retries, rethrow
-          rethrow;
-        }
-      }
+      await _completeSignup(
+        accessToken: accessToken,
+        userData: userData,
+      );
+      return signInResponse;
     } catch (e) {
-      // Error creating profile - auth user was created successfully
+      debugPrint('[AuthService] signup rate-limit recovery failed: $e');
+      return null;
+    }
+  }
+
+  Future<String?> _resolveSignupSessionToken({
+    required String email,
+    required String password,
+    required String userId,
+    String? existingToken,
+  }) async {
+    if (existingToken != null && existingToken.isNotEmpty) {
+      return existingToken;
+    }
+
+    await _confirmSignupEmail(email: email, userId: userId);
+
+    final signInResponse = await _supabaseClient.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
+    final token = signInResponse.session?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw AuthException(
+        'Could not start your session after signup. Please try logging in.',
+      );
+    }
+    return token;
+  }
+
+  /// Confirms the auth user's email after custom OTP verification so sign-in works
+  /// when Supabase "Confirm email" is enabled.
+  Future<void> _confirmSignupEmail({
+    required String email,
+    required String userId,
+  }) async {
+    final uri = Uri.parse('$_functionsBaseUrl/confirm-signup-email');
+    final resp = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': _supabaseAnonKey,
+        'Authorization': 'Bearer $_supabaseAnonKey',
+      },
+      body: jsonEncode({
+        'email': email.trim(),
+        'user_id': userId,
+      }),
+    );
+
+    final body = jsonDecode(resp.body.isEmpty ? '{}' : resp.body);
+    if (body is! Map<String, dynamic>) {
+      throw AuthException('Failed to confirm email for signup');
+    }
+
+    if (resp.statusCode >= 400) {
+      throw AuthException(
+        (body['error'] ?? body['message'] ?? 'Failed to confirm email for signup')
+            .toString(),
+        statusCode: resp.statusCode.toString(),
+      );
+    }
+
+    if (body['success'] != true) {
+      throw AuthException(
+        (body['error'] ?? body['message'] ?? 'Failed to confirm email for signup')
+            .toString(),
+      );
+    }
+  }
+
+  Future<void> _completeSignup({
+    required Map<String, dynamic> userData,
+    String? accessToken,
+  }) async {
+    final token =
+        accessToken ?? _supabaseClient.auth.currentSession?.accessToken;
+    if (token == null) {
+      throw AuthException(
+        'Authentication required. Sign up first, then complete your profile.',
+      );
+    }
+
+    String birthdayString;
+    if (userData['birthday'] != null &&
+        userData['birthday'].toString().isNotEmpty) {
+      birthdayString = userData['birthday'].toString();
+    } else {
+      final DateTime oldEnoughDate =
+          DateTime.now().subtract(const Duration(days: 365 * 14));
+      birthdayString = oldEnoughDate.toIso8601String().substring(0, 10);
+    }
+
+    final username = userData['username']?.toString().trim() ?? '';
+    if (username.isEmpty) {
+      throw AuthException('username is required');
+    }
+
+    final requestBody = <String, dynamic>{
+      'username': username,
+      'birthday': birthdayString,
+      'terms_accepted': userData['terms_accepted'] ?? true,
+      'privacy_accepted': userData['privacy_accepted'] ?? true,
+    };
+
+    for (final key in [
+      'first_name',
+      'last_name',
+      'gender',
+      'location_id',
+      'bio',
+      'profile_picture_url',
+      'terms_version_accepted',
+      'privacy_version_accepted',
+      'invitation_token',
+    ]) {
+      final value = userData[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        requestBody[key] = value;
+      }
+    }
+
+    final uri = Uri.parse('$_functionsBaseUrl/complete-signup');
+    final resp = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': _supabaseAnonKey,
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(requestBody),
+    );
+
+    final body = jsonDecode(resp.body.isEmpty ? '{}' : resp.body);
+    if (body is! Map<String, dynamic>) {
+      throw AuthException('Failed to complete signup');
+    }
+
+    if (resp.statusCode >= 400) {
+      final message = (body['error'] ?? body['message'] ?? 'Failed to create profile')
+          .toString();
+      throw AuthException(
+        message,
+        statusCode: resp.statusCode.toString(),
+      );
+    }
+
+    if (body['success'] != true) {
+      throw AuthException(
+        (body['error'] ?? body['message'] ?? 'Failed to create profile')
+            .toString(),
+      );
     }
   }
 
@@ -415,6 +561,77 @@ class AuthService {
     }
   }
 
+
+  /// Verify password reset OTP via verify-password-reset-otp edge function.
+  /// Must be called before navigating to [ResetPasswordScreen].
+  Future<Map<String, dynamic>> verifyPasswordResetOtp({
+    required String email,
+    required String otpCode,
+  }) async {
+    final uri = Uri.parse(
+      'https://wvkyzhnzwijfxpzsrguj.supabase.co/functions/v1/verify-password-reset-otp',
+    );
+
+    try {
+      final trimmedEmail = email.toLowerCase().trim();
+      final trimmedOtpCode = otpCode.trim();
+
+      if (trimmedEmail.isEmpty) {
+        throw AuthException('Email is required');
+      }
+      if (trimmedOtpCode.isEmpty) {
+        throw AuthException('OTP code is required');
+      }
+      if (trimmedOtpCode.length != 6) {
+        throw AuthException('OTP code must be 6 digits');
+      }
+
+      final anonKey =
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2a3l6aG56d2lqZnhwenNyZ3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDI5OTksImV4cCI6MjA3NzY3ODk5OX0.k4Z4MgL0jOahkkO3MKgINRM6rNJ6g7Mwsv8NE2TFmyY';
+      final sessionToken = _supabaseClient.auth.currentSession?.accessToken;
+
+      final resp = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+          'Authorization': 'Bearer ${sessionToken ?? anonKey}',
+        },
+        body: jsonEncode({
+          'email': trimmedEmail,
+          'otp_code': trimmedOtpCode,
+        }),
+      );
+
+      final body = jsonDecode(resp.body.isEmpty ? '{}' : resp.body);
+      final data = body is Map<String, dynamic>
+          ? body
+          : body is Map
+          ? Map<String, dynamic>.from(body)
+          : <String, dynamic>{};
+
+      if (resp.statusCode >= 400) {
+        final message =
+            (data['message'] ?? data['error'] ?? 'OTP verification failed')
+                .toString();
+        throw AuthException(message);
+      }
+
+      // Response shape: { valid: bool, message: string, attempts_remaining?: int }
+      final isValid = data['valid'] == true;
+      if (!isValid) {
+        throw AuthException(
+          data['message']?.toString() ?? 'Invalid reset code',
+        );
+      }
+
+      return data;
+    } on AuthException catch (e) {
+      throw AuthException(e.message);
+    } catch (e) {
+      throw AuthException('An unexpected error occurred during OTP verification');
+    }
+  }
 
   /// Reset password using reset-password edge function
   /// This edge function calls verify_password_reset_otp RPC which:

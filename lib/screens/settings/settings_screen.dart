@@ -72,6 +72,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _checkAdminAndNavigate();
     _loadProfileData();
+    final cachedUpvoted = _postService.peekUpvotedPostsCache();
+    if (cachedUpvoted != null) {
+      _hasUpvotedPosts = _hasUpvotedPostsInResponse(cachedUpvoted);
+    }
     _checkUpvotedPosts();
     _postService.prefetchUpvotedPosts();
     // Remove artificial delay — show content immediately.
@@ -948,26 +952,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  int _parseUpvotedCount(Object? value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  bool _hasUpvotedPostsInResponse(Map<String, dynamic> response) {
+    final rawPosts = response['posts'];
+    final posts = rawPosts is List ? rawPosts : const [];
+    final totalUpvoted = _parseUpvotedCount(response['total_upvoted_posts']);
+    return totalUpvoted > 0 || posts.isNotEmpty;
+  }
+
   Future<void> _checkUpvotedPosts() async {
     setState(() {
       _isCheckingUpvotedPosts = true;
     });
 
     try {
-      final response = await _postService.getUpvotedPosts(limit: 1, offset: 0);
+      final response = await _postService.getUpvotedPosts(
+        limit: 1,
+        offset: 0,
+        forceRefresh: true,
+      );
       if (!mounted) return;
 
-      final posts = response['posts'] as List<dynamic>? ?? [];
-      final totalUpvoted = response['total_upvoted_posts'] as int? ?? 0;
-
       setState(() {
-        _hasUpvotedPosts = totalUpvoted > 0 || posts.isNotEmpty;
+        _hasUpvotedPosts = _hasUpvotedPostsInResponse(response);
         _isCheckingUpvotedPosts = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _hasUpvotedPosts = false;
         _isCheckingUpvotedPosts = false;
       });
     }
@@ -1198,7 +1216,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       Navigator.pushNamed(
                                         context,
                                         UpvotedPostsScreen.routeName,
-                                      );
+                                      ).then((_) {
+                                        if (mounted) _checkUpvotedPosts();
+                                      });
                                     }
                                   : null,
                             ),

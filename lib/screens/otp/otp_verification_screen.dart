@@ -119,10 +119,41 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     final otp = _controllers.map((c) => c.text).join('');
     if (otp.length != _otpLength) return;
 
-    // For password reset flow: don't verify OTP here, pass it to the callback
-    // The reset-password edge function will verify the OTP + reset password atomically
+    // For password reset flow: verify the OTP via verify-password-reset-otp
+    // before allowing the user to set a new password. This catches invalid /
+    // expired codes here instead of at the final reset step.
     if (widget.isPasswordReset) {
-      widget.onSuccess?.call(otp);
+      setState(() {
+        _isVerifying = true;
+        _otpError = null;
+      });
+
+      try {
+        await _authService.verifyPasswordResetOtp(
+          email: widget.email,
+          otpCode: otp,
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          _isVerifying = false;
+        });
+
+        widget.onSuccess?.call(otp);
+      } on AuthException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isVerifying = false;
+          _otpError = e.message;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _isVerifying = false;
+          _otpError = 'Verification failed. Please try again.';
+        });
+      }
       return;
     }
 

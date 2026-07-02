@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
@@ -1067,12 +1068,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
               // Title - "Create Account"
               Text(
                 'Complete Profile ',
-                style: TextStyle(
+                style: GoogleFonts.rubik(
                   fontSize: Responsive.scaledFont(context, 32),
                   fontWeight: FontWeight.w500,
                   color: _primary900,
                   letterSpacing: 0,
-                  fontFamily: 'Rubik',
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -2331,10 +2331,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
 
       final errorMessage = e.message.toLowerCase();
-      if (errorMessage.contains('email') ||
-          errorMessage.contains('already registered')) {
+      final errorCode = e.code?.toLowerCase() ?? '';
+      if (errorCode == 'over_email_send_rate_limit' ||
+          errorMessage.contains('rate limit') ||
+          errorMessage.contains('too many verification emails')) {
         setState(() {
-          _generalError = 'This email is already registered. Please go back and use a different email.';
+          _generalError =
+              'Too many verification emails were sent. Please wait about an hour and try again, or log in if you already created your account.';
+        });
+      } else if (errorMessage.contains('already registered')) {
+        setState(() {
+          _generalError =
+              'This email is already registered. Please go back and use a different email.';
+        });
+      } else if (errorMessage.contains('email')) {
+        setState(() {
+          _generalError = e.message;
         });
       } else if (errorMessage.contains('username') ||
           errorMessage.contains('duplicate')) {

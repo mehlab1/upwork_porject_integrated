@@ -7,7 +7,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'delete_comment_dialog.dart';
 import 'delete_post_dialog.dart';
 import 'report_post_sheet.dart';
-import '../../../widgets/report_connection_error_dialog.dart';
 import 'block_user_dialog.dart';
 import 'moderation_reason_dialog.dart';
 import 'change_category_dialog.dart';
@@ -18,21 +17,15 @@ import '../../../services/reviewer_service.dart';
 import '../../../services/junior_moderator_service.dart';
 import '../../../services/moderator_service.dart';
 import '../../../widgets/pal_toast.dart';
+import '../../../widgets/post_deleted_debug_dialog.dart';
 import '../../../utils/error_handler.dart';
 import '../../../utils/post_vote_utils.dart';
+import '../../../utils/optimistic_vote_controller.dart';
 import '../../../services/post_vote_cache_service.dart';
-import '../../../services/comment_vote_cache_service.dart';
-import '../../../widgets/post_deleted_debug_dialog.dart';
 import '../create_post_screen.dart';
 import '../edit_post_screen.dart';
 import '../../admin/admin_user_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-String _sanitizeLocation(String loc) {
-  final sanitized = loc.replaceAll(RegExp(r"\s*\([^)]*\)"), '').trim();
-  if (sanitized.toLowerCase().contains('victoria island')) return 'Victoria Island';
-  return sanitized;
-}
 
 const _menuReportIconUrl = 'assets/feedPage/reportIcon.svg';
 const _menuBlockIconUrl = 'assets/feedPage/blockUser.svg';
@@ -330,7 +323,7 @@ class _PostCardState extends State<PostCard> {
   late int _currentVotes;
 
   int _userVote = 0; // 1 = upvoted, -1 = downvoted, 0 = neutral
-  bool _isVotingPost = false;
+  late final OptimisticVoteController _postVoteController;
 
   List<CommentData> _comments = const [];
 
@@ -380,6 +373,22 @@ class _PostCardState extends State<PostCard> {
     _showComments = widget.initialCommentsExpanded;
 
     _syncVoteStateFromData();
+
+    _postVoteController = OptimisticVoteController(
+      applyResponse: (response) {
+        if (!mounted) return;
+        setState(() => _applyPostVoteResponse(response));
+      },
+      revertTo: (vote, score) {
+        if (!mounted) return;
+        setState(() {
+          _userVote = vote;
+          _currentVotes = score;
+          _persistPostVoteState();
+        });
+      },
+      onError: _onPostVoteFailed,
+    );
 
     _loadCurrentUsername();
     _loadCurrentUserId();
@@ -493,9 +502,7 @@ class _PostCardState extends State<PostCard> {
       _comments = _cloneComments(widget.data.comments ?? const []);
     }
 
-    if (oldWidget.data.id != widget.data.id ||
-        oldWidget.data.votes != widget.data.votes ||
-        oldWidget.data.userVote != widget.data.userVote) {
+    if (oldWidget.data.id != widget.data.id) {
       _syncVoteStateFromData();
     }
   }
@@ -614,10 +621,14 @@ class _PostCardState extends State<PostCard> {
     final downvotes = _parseInt(commentData['downvote_count'] ?? 0);
     final status = commentData['status']?.toString() ?? 'active';
 
-    final userVote = CommentVoteCacheService.instance.resolveUserVoteInt(
-      commentId: id,
-      apiVote: commentData['user_vote']?.toString(),
-    );
+    // Extract user's vote state from API response
+    int userVote = 0;
+    final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
+    if (userVoteStr == 'upvote') {
+      userVote = 1;
+    } else if (userVoteStr == 'downvote') {
+      userVote = -1;
+    }
 
     // Get replies if present
     final repliesData = commentData['replies'] as List<dynamic>? ?? [];
@@ -687,46 +698,6 @@ class _PostCardState extends State<PostCard> {
     if (value is int) return value;
     if (value is double) return value.round();
     return int.tryParse(value.toString()) ?? 0;
-  }
-
-  void _syncVoteStateFromData() {
-    _currentVotes = data.votes;
-    final resolved = PostVoteCacheService.instance.resolveVote(
-      postId: data.id,
-      apiVote: data.userVote,
-    );
-    _userVote = userVoteStringToInt(resolved);
-    if (normalizeUserVoteString(data.userVote) != null) {
-      _persistPostVoteState();
-    }
-  }
-
-  void _persistPostVoteState() {
-    final postId = data.id;
-    if (postId == null || postId.isEmpty) return;
-    final vote = _userVote == 1
-        ? 'upvote'
-        : _userVote == -1
-            ? 'downvote'
-            : null;
-    unawaited(PostVoteCacheService.instance.setVote(postId, vote));
-  }
-
-  void _applyPostVoteResponse(Map<String, dynamic> response) {
-    if (response['net_score'] != null) {
-      _currentVotes = _parseInt(response['net_score']);
-    } else {
-      final upvotes = _parseInt(response['upvote_count'] ?? 0);
-      final downvotes = _parseInt(response['downvote_count'] ?? 0);
-      _currentVotes = upvotes - downvotes;
-    }
-
-    final apiVote = userVoteFromVoteResponse(response);
-    _userVote = userVoteStringToInt(apiVote);
-    final postId = data.id;
-    if (postId != null && postId.isNotEmpty) {
-      unawaited(PostVoteCacheService.instance.setVote(postId, apiVote));
-    }
   }
 
   String _formatTimeAgo(DateTime? dateTime) {
@@ -915,10 +886,14 @@ class _PostCardState extends State<PostCard> {
 
         final content = commentData['content']?.toString() ?? trimmed;
 
-        final userVote = CommentVoteCacheService.instance.resolveUserVoteInt(
-          commentId: realId,
-          apiVote: commentData['user_vote']?.toString(),
-        );
+        // Extract user's vote state from API response
+        int userVote = 0;
+        final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
+        if (userVoteStr == 'upvote') {
+          userVote = 1;
+        } else if (userVoteStr == 'downvote') {
+          userVote = -1;
+        }
 
         setState(() {
           final updatedComments = List<CommentData>.from(_currentComments);
@@ -1151,10 +1126,14 @@ class _PostCardState extends State<PostCard> {
 
         final content = commentData['content']?.toString() ?? trimmed;
 
-        final userVote = CommentVoteCacheService.instance.resolveUserVoteInt(
-          commentId: realId,
-          apiVote: commentData['user_vote']?.toString(),
-        );
+        // Extract user's vote state from API response
+        int userVote = 0;
+        final userVoteStr = commentData['user_vote']?.toString().toLowerCase();
+        if (userVoteStr == 'upvote') {
+          userVote = 1;
+        } else if (userVoteStr == 'downvote') {
+          userVote = -1;
+        }
 
         setState(() {
           final updatedComments = List<CommentData>.from(_currentComments);
@@ -1906,88 +1885,106 @@ class _PostCardState extends State<PostCard> {
   }
 
   Future<void> _handleUpvote() async {
-    if (data.id == null || _isVotingPost) return;
+    if (data.id == null) return;
 
-    final previousVote = _userVote;
-    final previousVotes = _currentVotes;
+    final voteBeforeTap = _userVote;
+    final votesBeforeTap = _currentVotes;
+    final optimistic = computeOptimisticUpvote(voteBeforeTap, votesBeforeTap);
 
-    setState(() => _isVotingPost = true);
+    setState(() {
+      _userVote = optimistic.userVote;
+      _currentVotes = optimistic.netScore;
+      _persistPostVoteState();
+    });
 
-    try {
-      final voteType = previousVote == 1 ? 'remove' : 'upvote';
-
-      final response = await _postService.votePost(
+    await _postVoteController.dispatch(
+      voteBeforeTap: voteBeforeTap,
+      votesBeforeTap: votesBeforeTap,
+      apiCall: () => _postService.votePost(
         postId: data.id!,
-        voteType: voteType,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _applyPostVoteResponse(response);
-        _isVotingPost = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _currentVotes = previousVotes;
-          _userVote = previousVote;
-          _isVotingPost = false;
-        });
-
-        if (ErrorHandler.isNetworkError(e)) {
-          ErrorHandler.showOfflineToast(context);
-        } else {
-          PalToast.show(
-            context,
-            message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
-            isError: true,
-          );
-        }
-      }
-    }
+        voteType: voteTypeForUpvoteTap(voteBeforeTap),
+      ),
+    );
   }
 
   Future<void> _handleDownvote() async {
-    if (data.id == null || _isVotingPost) return;
+    if (data.id == null) return;
 
-    final previousVote = _userVote;
-    final previousVotes = _currentVotes;
+    final voteBeforeTap = _userVote;
+    final votesBeforeTap = _currentVotes;
+    final optimistic = computeOptimisticDownvote(voteBeforeTap, votesBeforeTap);
 
-    setState(() => _isVotingPost = true);
+    setState(() {
+      _userVote = optimistic.userVote;
+      _currentVotes = optimistic.netScore;
+      _persistPostVoteState();
+    });
 
-    try {
-      final voteType = previousVote == -1 ? 'remove' : 'downvote';
-
-      final response = await _postService.votePost(
+    await _postVoteController.dispatch(
+      voteBeforeTap: voteBeforeTap,
+      votesBeforeTap: votesBeforeTap,
+      apiCall: () => _postService.votePost(
         postId: data.id!,
-        voteType: voteType,
+        voteType: voteTypeForDownvoteTap(voteBeforeTap),
+      ),
+    );
+  }
+
+  void _syncVoteStateFromData() {
+    _currentVotes = clampVoteCount(data.votes);
+    final resolved = PostVoteCacheService.instance.resolveVote(
+      postId: data.id,
+      apiVote: data.userVote,
+    );
+    _userVote = userVoteStringToInt(resolved);
+    if (normalizeUserVoteString(data.userVote) != null) {
+      _persistPostVoteState();
+    }
+  }
+
+  void _persistPostVoteState() {
+    final postId = data.id;
+    if (postId == null || postId.isEmpty) return;
+    final vote = _userVote == 1
+        ? 'upvote'
+        : _userVote == -1
+            ? 'downvote'
+            : null;
+    unawaited(PostVoteCacheService.instance.setVote(postId, vote));
+  }
+
+  void _applyPostVoteResponse(Map<String, dynamic> response) {
+    final snapshot = snapshotFromVoteResponse(response);
+    if (snapshot != null) {
+      _currentVotes = clampVoteCount(snapshot.netScore);
+      _userVote = snapshot.userVoteInt;
+    } else if (response['net_score'] != null) {
+      _currentVotes = clampVoteCount(_parseInt(response['net_score']));
+      _userVote = userVoteStringToInt(userVoteFromVoteResponse(response));
+    } else {
+      final upvotes = _parseInt(response['upvote_count'] ?? 0);
+      final downvotes = _parseInt(response['downvote_count'] ?? 0);
+      _currentVotes = clampVoteCount(upvotes - downvotes);
+      _userVote = userVoteStringToInt(userVoteFromVoteResponse(response));
+    }
+
+    final apiVote = userVoteFromVoteResponse(response);
+    final postId = data.id;
+    if (postId != null && postId.isNotEmpty) {
+      unawaited(PostVoteCacheService.instance.setVote(postId, apiVote));
+    }
+  }
+
+  void _onPostVoteFailed(Object e) {
+    if (!mounted) return;
+    if (ErrorHandler.isNetworkError(e)) {
+      ErrorHandler.showOfflineToast(context);
+    } else {
+      PalToast.show(
+        context,
+        message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
+        isError: true,
       );
-
-      if (!mounted) return;
-
-      setState(() {
-        _applyPostVoteResponse(response);
-        _isVotingPost = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _currentVotes = previousVotes;
-          _userVote = previousVote;
-          _isVotingPost = false;
-        });
-
-        if (ErrorHandler.isNetworkError(e)) {
-          ErrorHandler.showOfflineToast(context);
-        } else {
-          PalToast.show(
-            context,
-            message: 'Failed to vote: ${e.toString().replaceFirst('Exception: ', '')}',
-            isError: true,
-          );
-        }
-      }
     }
   }
 
@@ -2112,15 +2109,13 @@ class _PostCardState extends State<PostCard> {
       builder: (_) => const ReportPostSheet(subject: ReportSubject.post),
     );
 
-    if (result == null || !context.mounted) return;
-
-    Future<void> submitReport(ReportResult selectedResult) async {
+    if (result != null && context.mounted) {
       try {
-        final backendReason = _mapReportReasonToBackendEnum(selectedResult.reason);
+        final backendReason = _mapReportReasonToBackendEnum(result.reason);
         await _postService.reportPost(
           postId: data.id!,
           reason: backendReason,
-          description: selectedResult.details.isNotEmpty ? selectedResult.details : null,
+          description: result.details.isNotEmpty ? result.details : null,
         );
 
         if (context.mounted) {
@@ -2129,6 +2124,7 @@ class _PostCardState extends State<PostCard> {
             barrierDismissible: false,
             builder: (_) => const ReportSuccessDialog(),
           );
+          // Show success toast after dialog is closed
           if (context.mounted) {
             PalToast.show(
               context,
@@ -2139,64 +2135,49 @@ class _PostCardState extends State<PostCard> {
           }
         }
       } catch (e) {
-        if (!context.mounted) return;
+        if (context.mounted) {
+          final errorStr = e.toString().replaceFirst('Exception: ', '');
+          final errorStrLower = errorStr.toLowerCase();
 
-        if (ErrorHandler.isNetworkError(e)) {
-          await showReportConnectionErrorDialog(
-            context,
-            onCancel: () {
-              if (!context.mounted) return;
-              PalToast.show(
-                context,
-                message: 'Failed to submit report',
-                heading: 'Failed to submit report',
-                subtext: 'Please check your connection and try again.',
-                isError: true,
-              );
-            },
-            onTryAgain: () {
-              submitReport(selectedResult);
-            },
-          );
-          return;
-        }
+          String errorHeading;
+          String errorSubtext;
 
-        final errorStr = e.toString().replaceFirst('Exception: ', '');
-        final errorStrLower = errorStr.toLowerCase();
-
-        String errorHeading;
-        String errorSubtext;
-
-        if (errorStrLower.contains('cannot report own post') ||
-            errorStrLower.contains('cannot report your own post') ||
-            errorStrLower.contains('you cannot report your own post')) {
-          errorHeading = 'Failed to submit report';
-          errorSubtext = 'You cannot report your own post.';
-        } else if (errorStrLower.contains('already reported')) {
-          errorHeading = 'Failed to submit report';
-          errorSubtext = 'You have already reported this post.';
-        } else if (errorStrLower.contains('post not found')) {
-          errorHeading = 'Failed to submit report';
-          errorSubtext = 'This post no longer exists.';
-        } else if (errorStrLower.contains('unauthorized')) {
-          errorHeading = 'Failed to submit report';
-          errorSubtext = 'You must be logged in to report posts.';
+          // Check for "cannot report own post" error (case-insensitive)
+          if (errorStrLower.contains('cannot report own post') ||
+              errorStrLower.contains('cannot report your own post') ||
+              errorStrLower.contains('you cannot report your own post')) {
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'You cannot report your own post.';
+          } else if (errorStrLower.contains('already reported')) {
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'You have already reported this post.';
+          } else if (errorStrLower.contains('post not found')) {
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'This post no longer exists.';
+          } else if (errorStrLower.contains('unauthorized')) {
+            errorHeading = 'Failed to submit report';
+            errorSubtext = 'You must be logged in to report posts.';
         } else {
+          // Use generic error message for general failures
           errorHeading = 'Failed to submit report';
           errorSubtext = 'Please try again.';
         }
 
-        PalToast.show(
-          context,
-          message: errorHeading,
-          heading: errorHeading,
-          subtext: errorSubtext,
-          isError: true,
-        );
+        // Check if it's a network error
+        if (ErrorHandler.isNetworkError(e)) {
+          ErrorHandler.showOfflineToast(context);
+        } else {
+          PalToast.show(
+            context,
+            message: errorHeading,
+            heading: errorHeading,
+            subtext: errorSubtext,
+            isError: true,
+          );
+        }
+        }
       }
     }
-
-    await submitReport(result);
   }
 
   Future<void> _showDeleteDialog(BuildContext context, String title) async {
@@ -2222,6 +2203,9 @@ class _PostCardState extends State<PostCard> {
         if (!mounted) return;
 
         if (response['success'] == true) {
+          if (widget.onPostDeleted != null) {
+            widget.onPostDeleted!(data.id!);
+          }
           PalToast.show(context, message: 'Post deleted successfully');
           return;
         }
@@ -3446,136 +3430,32 @@ class _PostHeader extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: data.category.toLowerCase() == 'gist'
-                            ? Container(
-                                height: 22,
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFAF5FF),
-                                  border: const Border(
-                                    top: BorderSide(
-                                      color: Color(0xFFE9D4FF),
-                                      width: 0.76,
-                                    ),
-                                  ),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    SvgPicture.asset(
-                                      'assets/images/gistIcon.svg',
-                                      width: 12,
-                                      height: 12,
-                                      colorFilter: const ColorFilter.mode(
-                                        Color(0xFF8200DB),
-                                        BlendMode.srcIn,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        data.category,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: Color(0xFF8200DB),
-                                          fontFamily: 'Inter',
-                                          height: 16 / 12,
-                                          letterSpacing: 0,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : data.category.toLowerCase() == 'discussion'
-                                ? Container(
-                                    height: 22,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFFFBEB),
-                                      border: const Border(
-                                        top: BorderSide(
-                                          color: Color(0xFFFEE685),
-                                          width: 0.76,
-                                        ),
-                                      ),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            SvgPicture.asset(
-                                              'assets/images/discussionIcon.svg',
-                                              width: 12,
-                                              height: 12,
-                                              colorFilter:
-                                                  const ColorFilter.mode(
-                                                Color(0xFFBB4D00),
-                                                BlendMode.srcIn,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              data.category,
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: Color(0xFFBB4D00),
-                                                fontFamily: 'Inter',
-                                                height: 16 / 12,
-                                                letterSpacing: 0,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                  )
-                                : _Badge(
-                                    icon: 'assets/images/askIcon.svg',
-                                    label: data.category,
-                                    background: const Color(0xFFEFFDF4),
-                                    foreground: const Color(0xFF15803D),
-                                    borderColor: const Color(0xFFBDE9CE),
-                                  ),
+                        child: _Badge(
+                          icon: 'assets/images/locationIcon.svg',
+
+                          label: data.location,
+
+                          background: palette.locationBackground,
+
+                          foreground: palette.locationForeground,
+
+                          borderColor: palette.locationBorder,
+                        ),
                       ),
 
                       const SizedBox(width: 8),
 
                       Flexible(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SvgPicture.asset(
-                              'assets/images/locationIcon.svg',
-                              width: 12,
-                              height: 12,
-                              colorFilter: const ColorFilter.mode(
-                                Color(0xFF62748E),
-                                BlendMode.srcIn,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                _sanitizeLocation(data.location),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF62748E),
-                                  fontFamily: 'Inter',
-                                  fontWeight: FontWeight.w400,
-                                  height: 16 / 12,
-                                  letterSpacing: 0,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.clip,
-                              ),
-                            ),
-                          ],
+                        child: _Badge(
+                          icon: 'assets/images/askIcon.svg',
+
+                          label: data.category,
+
+                          background: const Color(0xFFEFFDF4),
+
+                          foreground: const Color(0xFF15803D),
+
+                          borderColor: const Color(0xFFBDE9CE),
                         ),
                       ),
                     ],
@@ -3825,25 +3705,6 @@ Future<void> _showReportPostSheet(BuildContext context) async {
   }
 }
 
-Future<void> _showDeleteDialog(BuildContext context, String title) async {
-  final result = await showDialog<DeletePostResult>(
-    context: context,
-
-    barrierDismissible: false,
-
-    builder: (_) => DeletePostDialog(postTitle: title),
-  );
-
-  if (result?.confirmed == true && context.mounted) {
-    // TODO: Hook into actual delete logic when available.
-
-    PalToast.show(
-      context,
-      message: 'Post deleted (placeholder).',
-    );
-  }
-}
-
 class _Avatar extends StatelessWidget {
   const _Avatar({
     this.asset,
@@ -4064,7 +3925,9 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      height: 22,
+
+      padding: const EdgeInsets.symmetric(horizontal: 8),
 
       decoration: BoxDecoration(
         color: background,
@@ -4103,8 +3966,8 @@ class _Badge extends StatelessWidget {
                 fontFamily: 'Inter',
               ),
 
-              maxLines: 2,
-              overflow: TextOverflow.clip,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -4822,18 +4685,6 @@ class _PopoverMenuItem extends StatelessWidget {
               height: 16,
 
               colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-              package: null,
-              semanticsLabel: label,
-              placeholderBuilder: (context) => Icon(
-                Icons.delete,
-                size: 16,
-                color: color,
-              ),
-              errorBuilder: (context, error, stackTrace) => Icon(
-                Icons.delete,
-                size: 16,
-                color: color,
-              ),
             ),
 
             const SizedBox(width: 10),
@@ -5674,18 +5525,6 @@ class _CommentCardState extends State<_CommentCard> {
 
   String get _currentVotesLabel => _currentVotesValue.toString();
 
-  void _applyCommentVoteResponse(Map<String, dynamic> response) {
-    final snapshot = snapshotFromVoteResponse(response);
-    if (snapshot != null) {
-      _currentVotes = snapshot.netScore;
-      _userVote = snapshot.userVoteInt;
-    }
-    final apiVote = userVoteFromVoteResponse(response);
-    unawaited(
-      CommentVoteCacheService.instance.setVote(widget.comment.id, apiVote),
-    );
-  }
-
   Future<void> _handleUpvote() async {
     // Prevent multiple simultaneous votes
     if (_isVoting) return;
@@ -5763,9 +5602,29 @@ class _CommentCardState extends State<_CommentCard> {
         return;
       }
 
-      if (mounted) {
+      // Sync with backend response to ensure consistency
+      if (mounted && response['upvote_count'] != null) {
+        final upvotes = _parseInt(response['upvote_count']);
+        final downvotes = _parseInt(response['downvote_count'] ?? 0);
+        final userVoteStr = response['user_vote']?.toString().toLowerCase();
+
         setState(() {
-          _applyCommentVoteResponse(response);
+          // Update vote counts from backend
+          final netScore = upvotes - downvotes;
+          _currentVotes = netScore;
+
+          // Map backend user_vote string to our integer state
+          if (userVoteStr == 'upvote') {
+            _userVote = 1;
+          } else if (userVoteStr == 'downvote') {
+            _userVote = -1;
+          } else {
+            _userVote = 0;
+          }
+          _isVoting = false;
+        });
+      } else if (mounted) {
+        setState(() {
           _isVoting = false;
         });
       }
@@ -5824,7 +5683,9 @@ class _CommentCardState extends State<_CommentCard> {
 
       if (_userVote == -1) {
         // Already downvoted, unvote (remove the downvote)
+
         updated += 1;
+
         _userVote = 0;
       } else if (_userVote == 1) {
         // Currently upvoted, switch to downvote (remove upvote, add downvote = -2)
@@ -5885,9 +5746,29 @@ class _CommentCardState extends State<_CommentCard> {
         return;
       }
 
-      if (mounted) {
+      // Sync with backend response to ensure consistency
+      if (mounted && response['upvote_count'] != null) {
+        final upvotes = _parseInt(response['upvote_count']);
+        final downvotes = _parseInt(response['downvote_count'] ?? 0);
+        final userVoteStr = response['user_vote']?.toString().toLowerCase();
+
         setState(() {
-          _applyCommentVoteResponse(response);
+          // Update vote counts from backend
+          final netScore = upvotes - downvotes;
+          _currentVotes = netScore;
+
+          // Map backend user_vote string to our integer state
+          if (userVoteStr == 'upvote') {
+            _userVote = 1;
+          } else if (userVoteStr == 'downvote') {
+            _userVote = -1;
+          } else {
+            _userVote = 0;
+          }
+          _isVoting = false;
+        });
+      } else if (mounted) {
+        setState(() {
           _isVoting = false;
         });
       }

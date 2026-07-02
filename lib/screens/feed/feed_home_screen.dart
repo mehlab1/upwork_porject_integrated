@@ -72,9 +72,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
   int _currentOffset = 0;
   bool _hasMorePosts = true;
   
-  // Seed posts + Remote posts pattern (top/hot slots filled from API; third stays placeholder)
-  List<PostCardData> _seedPosts =
-      _FeedHomeScreenState._buildSeedPostsStatic().take(3).toList();
+  // Feed is sourced entirely from the API (no hardcoded/seed posts).
   final List<PostCardData> _remotePosts = [];
   bool _isFeedFetching = false;
   
@@ -159,13 +157,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     return ['All Categories', ...categoryNames];
   }
 
-  List<PostCardData> get _allPosts {
-    final seedIds = _seedPosts.map((p) => p.id).whereType<String>().toSet();
-    final remoteWithoutFeatured = _remotePosts
-        .where((p) => p.id == null || !seedIds.contains(p.id))
-        .toList();
-    return [..._seedPosts, ...remoteWithoutFeatured];
-  }
+  List<PostCardData> get _allPosts => List<PostCardData>.from(_remotePosts);
 
   List<PostCardData> get _filteredPosts => _postsForFilter(_selectedFilter);
 
@@ -176,10 +168,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
   int? _cachedVisibleLimit;
   bool? _cachedVisibleSpotlight;
   int? _cachedSpotlightLen;
-  String? _cachedSeedSignature;
-
-  String get _seedPostsSignature =>
-      _seedPosts.map((p) => '${p.id}:${p.votes}:${p.title}').join('|');
 
   /// Returns the visible slice of posts.
   /// Results are cached and only recomputed when inputs change.
@@ -207,8 +195,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
         _cachedVisibleSpotlight == false &&
         _cachedVisibleFilter == _selectedFilter &&
         _cachedVisibleRemoteLen == remoteLen &&
-        _cachedVisibleLimit == limit &&
-        _cachedSeedSignature == _seedPostsSignature) {
+        _cachedVisibleLimit == limit) {
       return _cachedVisiblePosts!;
     }
 
@@ -220,7 +207,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     _cachedVisibleFilter = _selectedFilter;
     _cachedVisibleRemoteLen = remoteLen;
     _cachedVisibleLimit = newLimit;
-    _cachedSeedSignature = _seedPostsSignature;
     return _cachedVisiblePosts = result;
   }
 
@@ -301,65 +287,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       _fetchCategoryAndLocationMappings(),
       _fetchPinnedPosts(),
       _fetchWodPost(),
-      _fetchFeaturedSeedPosts(),
     ]);
-  }
-
-  static List<PostCardData> _defaultSeedPosts() =>
-      _buildSeedPostsStatic().take(3).toList();
-
-  Map<String, dynamic>? _extractPostMap(
-    Map<String, dynamic> response,
-    String key,
-  ) {
-    if (response['success'] == false) return null;
-    final raw = response[key];
-    if (raw is Map<String, dynamic>) return raw;
-    if (raw is Map) return Map<String, dynamic>.from(raw);
-    return null;
-  }
-
-  Future<void> _fetchFeaturedSeedPosts() async {
-    try {
-      final results = await Future.wait([
-        _postService.getTopPost(period: 'week'),
-        _postService.getHottestPost(timeframe: 'week'),
-      ]);
-
-      final topPostMap = _extractPostMap(results[0], 'top_post');
-      final hotPostMap = _extractPostMap(results[1], 'hottest_post');
-
-      final postsToProfile = <Map<String, dynamic>>[
-        if (topPostMap != null) topPostMap,
-        if (hotPostMap != null) hotPostMap,
-      ];
-      if (postsToProfile.isNotEmpty) {
-        await _fetchProfilesForPosts(postsToProfile);
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        final defaults = _defaultSeedPosts();
-        _seedPosts = List<PostCardData>.from(defaults);
-
-        if (topPostMap != null) {
-          final mapped = _mapPostToCardData(topPostMap, PostCardVariant.top);
-          if (mapped != null) {
-            _seedPosts[0] = mapped;
-          }
-        }
-
-        if (hotPostMap != null) {
-          final mapped = _mapPostToCardData(hotPostMap, PostCardVariant.hot);
-          if (mapped != null) {
-            _seedPosts[1] = mapped;
-          }
-        }
-      });
-    } catch (e) {
-      debugPrint('ERROR _fetchFeaturedSeedPosts: $e');
-    }
   }
 
   Future<void> _fetchWodPost() async {
@@ -804,8 +732,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       ),
     );
 
-    // Seed posts are always available, so we always have content to show
-    final hasContent = _seedPosts.isNotEmpty || _remotePosts.isNotEmpty;
+    final hasContent = _remotePosts.isNotEmpty;
     // Only show full loading overlay on very first page load, not when switching filters
     final shouldShowFullLoading =
         _isPageLoading &&
@@ -819,7 +746,7 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
       );
     }
 
-    // Never show overlay when there is already content visible (seed posts are always present).
+    // Never show overlay when there is already content visible.
     // This prevents a flash of loading state when returning from Settings/Notifications.
     if (_isPageLoading && _isFirstLoad && !hasContent) {
       return Stack(children: [scaffold, const PalLoadingOverlay()]);
@@ -860,47 +787,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     if (shouldCreatePost == true && mounted) {
       showCreatePostModal(context).then(_handleCreatePostResult);
     }
-  }
-
-  static List<PostCardData> _buildSeedPostsStatic() {
-    return [
-      PostCardData(
-        variant: PostCardVariant.top,
-        username: '@pal_explorer',
-        timeAgo: '2h ago',
-        location: 'Victoria Island (VI)',
-        category: 'Ask',
-        title: 'Where should we host our next product meetup?',
-        body: 'Looking for a cozy, semi-outdoor space around VI that can host about 30 people. Prefer somewhere with good WiFi and accessible parking.',
-        commentsCount: 3,
-        votes: 186,
-        avatarAsset: 'assets/feedPage/profile.png',
-      ),
-      PostCardData(
-        variant: PostCardVariant.hot,
-        username: '@naija_foodie',
-        timeAgo: '45m ago',
-        location: 'Lekki Phase 1',
-        category: 'Gist',
-        title: 'Tasting tour: who has the best party jollof?',
-        body: "Yellow Chilli? Ofada Boy? Share your undefeated jollof spots so we can plan a weekend tasting crawl.",
-        commentsCount: 54,
-        votes: 124,
-        avatarAsset: 'assets/feedPage/profile.png',
-      ),
-      PostCardData(
-        variant: PostCardVariant.newPost,
-        username: '@tech_sis',
-        timeAgo: '10m ago',
-        location: 'Yaba',
-        category: 'Discussion',
-        title: 'Coworking spaces with reliable power? ',
-        body: 'Need recommendations for coworking spots on the mainland that stay powered through late nights. Bonus points for ergonomic chairs.',
-        commentsCount: 12,
-        votes: 8,
-        avatarAsset: 'assets/feedPage/profile.png',
-      ),
-    ];
   }
 
   String _sortParamForFilter(String filter) {
@@ -1021,11 +907,18 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
 
       await _fetchProfilesForPosts(postsList);
 
-      // For Hot and Top filters: first post in initial fetch gets special variant, rest get newPost variant
-      // When loading more (reset=false), all posts get newPost variant
-      // For New filter: all posts get newPost variant
+      // For Hot and Top filters: only the very first post of the feed gets the
+      // special variant. `reset` alone is not enough — when infinite scroll loops
+      // it calls _fetchFeed(reset: true) without clearing _remotePosts, which would
+      // append a second specially-styled post mid-feed. Guarding on
+      // _remotePosts.isEmpty ensures the special variant applies to the genuine
+      // first card only (initial load, pull-to-refresh, and tab switch all clear
+      // _remotePosts first, so it is empty in those cases).
+      // For New filter, loading more, and loop-appends: all posts get newPost variant.
       final mappedPosts = <PostCardData>[];
-      if ((_selectedFilter == 'Hot' || _selectedFilter == 'Top') && reset) {
+      if ((_selectedFilter == 'Hot' || _selectedFilter == 'Top') &&
+          reset &&
+          _remotePosts.isEmpty) {
         // Initial fetch: first post gets special variant, rest get newPost variant
         final specialVariant = _selectedFilter == 'Hot' 
             ? PostCardVariant.hot 
@@ -1384,7 +1277,6 @@ class _FeedHomeScreenState extends State<FeedHomeScreen> with AutomaticKeepAlive
     await _fetchSpotlightStatus();
     await _fetchPinnedPosts();
     await _fetchWodPost();
-    await _fetchFeaturedSeedPosts();
 
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;

@@ -87,3 +87,40 @@ int parseVoteInt(Object? value) {
 
   return (netScore: netScore, userVoteInt: userVoteInt);
 }
+
+/// Floor for any displayed post vote count. Counts must never show negative.
+int clampVoteCount(int value) => value < 0 ? 0 : value;
+
+/// Optimistic score/vote after tapping upvote (based on state *before* the tap).
+({int userVote, int netScore}) computeOptimisticUpvote(
+  int voteBeforeTap,
+  int netScoreBefore,
+) {
+  if (voteBeforeTap == 1) {
+    return (userVote: 0, netScore: clampVoteCount(netScoreBefore - 1));
+  }
+  if (voteBeforeTap == -1) {
+    return (userVote: 1, netScore: clampVoteCount(netScoreBefore + 2));
+  }
+  return (userVote: 1, netScore: clampVoteCount(netScoreBefore + 1));
+}
+
+/// Optimistic score/vote after tapping downvote (based on state *before* the tap).
+({int userVote, int netScore}) computeOptimisticDownvote(
+  int voteBeforeTap,
+  int netScoreBefore,
+) {
+  if (voteBeforeTap == -1) {
+    return (userVote: 0, netScore: clampVoteCount(netScoreBefore + 1));
+  }
+  if (voteBeforeTap == 1) {
+    return (userVote: -1, netScore: clampVoteCount(netScoreBefore - 2));
+  }
+  return (userVote: -1, netScore: clampVoteCount(netScoreBefore - 1));
+}
+
+String voteTypeForUpvoteTap(int voteBeforeTap) =>
+    voteBeforeTap == 1 ? 'remove' : 'upvote';
+
+String voteTypeForDownvoteTap(int voteBeforeTap) =>
+    voteBeforeTap == -1 ? 'remove' : 'downvote';

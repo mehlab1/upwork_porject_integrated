@@ -606,7 +606,9 @@ class PostService {
 
   Future<Map<String, dynamic>> votePost({required String postId, required String voteType}) async {
     final body = {'post_id': postId, 'vote_type': voteType};
-    return await _callFunction('vote-post', body: body);
+    final response = await _callFunction('vote-post', body: body);
+    invalidateUpvotedPostsCache();
+    return response;
   }
 
   Future<Map<String, dynamic>> voteComment({required String commentId, required String voteType}) async {

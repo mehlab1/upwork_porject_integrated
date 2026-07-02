@@ -149,6 +149,7 @@ class _PalRefreshIndicatorState extends State<PalRefreshIndicator>
             onRefresh: _handleRefresh,
             color: Colors.transparent,
             backgroundColor: Colors.transparent,
+            elevation: 0,
             strokeWidth: 0,
             displacement: 64,
             // Only trigger when at the top
